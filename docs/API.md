@@ -1843,6 +1843,37 @@ first, never deleted), and `comparisons` (every real
 `ChallengerComparison` ever run for this family, including ones that
 retained the champion). Read-only, computed fresh every call.
 
+### `GET /api/sandbox/failure-modes`
+
+CEO directive "TradeTown — Statistical Validation + Research Failure
+Taxonomy," Part 2. Returns `FailureModeCount[]` — a real, computed-fresh
+clustering of `code`/`category`/`severity`/`occurrenceCount`/
+`exampleStrategyNames` across every real `FailureCodeEntry` on every
+`FailedStrategyArchiveEntry` in `state.strategy_failed_archive`, sorted
+by real occurrence count descending. Empty when the archive holds no
+entries or none carry any `failureCodes` yet (entries filed before this
+taxonomy existed carry an honest empty list, never backfilled).
+
+Each `ChallengerComparison` returned by the champion-challenger
+endpoints above also now carries `statisticalComparison`
+(`BootstrapComparisonResult | null` — a real IID percentile bootstrap
+over each side's own closed-trade R-multiples: `evidenceState`
+[`sufficient_evidence`/`insufficient_evidence`], `differenceCiLow`/
+`differenceCiHigh`, `probabilityChallengerBetterPct`, `method`,
+`resamples`, `limitationNote`; `null`/`insufficient_evidence` whenever
+either side has fewer than 20 real closed trades — never a fabricated
+CI), `classification`
+(`both`/`statistically_supported_only`/`economically_meaningful_only`/
+`neither`/`insufficient_sample` — purely informational, derived from
+`statisticalComparison` plus the pre-existing real economic `verdict`;
+never fed back into `verdict` itself or into `promote_challenger()`'s
+refusal logic), and `researchFamilyExperimentCount`/
+`multipleTestingRisk`/`challengerTuningVersion`/`highTuningExposure`
+(also informational — multiple-testing exposure reuses the already-real
+`OVERTESTED_FAMILY_THRESHOLD` from the Multiple-Testing Penalty pass;
+tuning exposure flags a challenger at version 5+ of the same strategy
+family).
+
 ### `POST /api/sandbox/register-researchable-strategy`
 
 CEO directive "Strategy Intelligence + Live Strategy Attribution,"

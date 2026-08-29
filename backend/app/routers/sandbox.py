@@ -10,6 +10,7 @@ from app.champion_challenger import get_current_champion
 from app.cost_sensitivity import run_cost_sensitivity
 from app.ema_pullback_research import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, run_ema_pullback_research
 from app.evaluation_simulator import compare_evaluation_policies
+from app.failure_taxonomy import compute_top_failure_modes
 from app.leakage_audit import audit_definition_for_look_ahead
 from app.market_intelligence import compute_strategy_match
 from app.parameter_sensitivity import run_parameter_sensitivity
@@ -29,6 +30,7 @@ from app.schemas import (
     EmaPullbackResearchResult,
     EvaluationPolicyComparisonReport,
     FailedStrategyArchiveEntry,
+    FailureModeCount,
     LookAheadAuditResult,
     ModelValidationReport,
     ParameterSensitivityResult,
@@ -286,6 +288,18 @@ async def retire_strategy(payload: RetireStrategyRequest) -> StrategyStateRespon
         strategyHallOfFameEntry=hall_of_fame_entry,
         strategyFailedArchiveEntry=failed_archive_entry,
     )
+
+
+@router.get("/failure-modes", response_model=list[FailureModeCount])
+async def top_failure_modes() -> list[FailureModeCount]:
+    """CEO directive "TradeTown — Statistical Validation + Research
+    Failure Taxonomy," Part 2 (Failure Clustering) — "the CEO should be
+    able to see TOP REPEATED FAILURE MODES." A real, computed-fresh
+    aggregation over every real `failureCodes` entry across the whole
+    permanent Failed Archive (see app/failure_taxonomy.py's
+    compute_top_failure_modes()). Read-only, no state mutated."""
+    state = await game_state.snapshot()
+    return compute_top_failure_modes(state.strategy_failed_archive)
 
 
 @router.get("/dashboard", response_model=StrategyExecutiveDashboard)

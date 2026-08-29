@@ -116,6 +116,7 @@ import hashlib
 import random
 from datetime import datetime, timezone
 
+from app.failure_taxonomy import derive_failure_codes
 from app.market_data import Candle, MarketDataProvider
 from app.market_intelligence import _REGIME_TO_SCENARIO_KEYWORD, compute_liquidity, compute_market_structure
 from app.sandbox import RISK_MAX_AVG_DRAWDOWN, STRATEGY_DEVILS_ADVOCATES, stage_index
@@ -1053,6 +1054,23 @@ def generate_strategy_retirement_outcome(
     if not lessons_learned:
         lessons_learned = ["No department ever filed a real concern against this strategy — it was retired for other reasons."]
 
+    # CEO directive "TradeTown — Statistical Validation + Research
+    # Failure Taxonomy," Part 2 — the exact same real evidence above,
+    # also tagged with a structured, machine-readable code (see
+    # app/failure_taxonomy.py's own module docstring).
+    failure_codes = derive_failure_codes(
+        trade_count=trade_count,
+        win_rate=win_rate,
+        profit_factor=profit_factor,
+        avg_drawdown=avg_drawdown,
+        avg_return=avg_return,
+        min_trade_count=HALL_OF_FAME_MIN_TRADE_COUNT,
+        min_profit_factor=HALL_OF_FAME_MIN_PROFIT_FACTOR,
+        max_avg_drawdown=HALL_OF_FAME_MAX_AVG_DRAWDOWN,
+        min_win_rate=HALL_OF_FAME_MIN_WIN_RATE,
+        latest_model_validation=latest_model_validation,
+    )
+
     archive_entry = FailedStrategyArchiveEntry(
         id=f"failedarchive-{strategy.id}",
         strategyId=strategy.id,
@@ -1061,6 +1079,7 @@ def generate_strategy_retirement_outcome(
         failedAtStage=strategy.stage,
         whatFailed=what_failed,
         lessonsLearned=lessons_learned,
+        failureCodes=failure_codes,
         retiredReason=reason,
         simDay=sim_day,
         createdAt=_now_iso(),

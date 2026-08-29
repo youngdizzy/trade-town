@@ -340,6 +340,102 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Statistical Validation + Research Failure Taxonomy" — closing the two gaps this
+  session's own Champion/Challenger final report explicitly disclosed as scope cuts: a real
+  statistical comparison layer between Champion and Challenger, and a structured, coded failure
+  taxonomy replacing free-text-only rejection reasons.** Per the directive's own explicit
+  instruction ("Do NOT rebuild existing systems. Do NOT create a second research pipeline. Do NOT
+  fabricate statistical significance. Inspect the existing implementation first and integrate into
+  it."), both parts extend the already-real Champion/Challenger and Failed Strategy Archive systems
+  in place — no new pipeline, no new archive.
+  - **Part 1 — Statistical comparison, a real, disclosed IID percentile bootstrap.** New
+    `app/statistical_comparison.py::bootstrap_compare_samples()` draws 2000 independent
+    with-replacement resamples from each side's own real closed-trade R-multiple sequence
+    (`BOOTSTRAP_RESAMPLES`), computes the empirical distribution of resampled mean differences, and
+    takes its 2.5th/97.5th percentiles for a real 95% confidence interval — never a fabricated
+    number. `probabilityChallengerBetterPct` is described precisely as a real, empirical fraction of
+    resamples, deliberately never called a p-value (a p-value tests a specific null hypothesis under
+    a specific model; this is a direct empirical read of the bootstrap distribution itself). Below
+    `MIN_TRADES_FOR_BOOTSTRAP = 20` real closed trades on either side, it honestly returns
+    `evidenceState: "insufficient_evidence"` with no CI at all — the directive's own explicit "if a
+    valid statistical estimate cannot be produced: return INSUFFICIENT_EVIDENCE" rule, never bypassed.
+    A `limitationNote` on every result discloses the one real, deliberately-not-attempted piece of
+    future work: this is an IID bootstrap, not a block bootstrap, so serial dependence between
+    consecutive trades is not modeled — a real, disclosed limitation, not silently ignored.
+    - **The statistical layer is purely additive — it can never bypass a hard risk gate.**
+      `compare_champion_challenger()` now also computes a `classification`
+      (`both`/`statistically_supported_only`/`economically_meaningful_only`/`neither`/
+      `insufficient_sample`) by combining the new statistical CI reading with the pre-existing real
+      economic `verdict` — but `verdict` itself (and therefore `promote_challenger()`'s own refusal
+      logic) is completely unchanged and still the sole gate on promotion. Statistical evidence
+      strengthens the decision's disclosure; it never lets a strategy skip the economic tradeoff
+      rule, exactly as the directive demands.
+    - **Multiple-testing and tuning-exposure visibility, reused not rebuilt.** `ChallengerComparison`
+      gained `researchFamilyExperimentCount`/`multipleTestingRisk` (reusing the already-real
+      `OVERTESTED_FAMILY_THRESHOLD`/`count_experiments_for_family()` from the prior Multiple-Testing
+      Penalty pass) and `challengerTuningVersion`/`highTuningExposure` (flagging a challenger at
+      version 5+ of the same strategy family as having real, disclosed tuning exposure) — both purely
+      informational, never gating.
+    - New `BootstrapComparisonResult`/`StatisticalEconomicClassification` schemas. `state.py`'s
+      `submit_champion_challenger_comparison()` snapshots the multiple-testing archive under the
+      state lock before the slow real backtest work runs outside it — a real race a
+      length-snapshot-then-slow-work pattern would otherwise introduce.
+    - New `ChampionChallengerView.tsx` "Statistical Evidence — an additional layer, never a
+      gate-bypass" card: the classification pill, mean difference/CI/P(challenger better)/method when
+      evidence is sufficient, an honest empty state with the real limitation note when it isn't, and
+      conditional multiple-testing/tuning-exposure warning boxes.
+    - 15 new tests (`test_statistical_comparison.py`) and 11 new tests
+      (`TestClassifyStatisticalEconomicEvidence`/`TestCompareChampionChallengerStatisticalWiring` in
+      `test_champion_challenger.py`, now 31 total).
+  - **Part 2 — A structured, coded failure taxonomy for the Failed Strategy Archive.** New
+    `app/failure_taxonomy.py` defines the directive's full requested vocabulary — all 35 codes across
+    7 categories (data integrity, sample/evidence, performance, risk, robustness, execution,
+    statistical), each with a disclosed severity (critical/high/medium/low) and category in
+    `FAILURE_CODE_METADATA` — a real, useful, complete vocabulary even before every code has a real
+    derivation path.
+    - **An honest, disclosed split between "the full vocabulary" and "what this pipeline can compute
+      today."** `derive_failure_codes()` only actually assigns 6 of the 35 codes
+      (`insufficient_sample`, `negative_net_return`, `low_profit_factor`, `excessive_drawdown`,
+      `inconsistent_returns`, `statistical_uncertainty`) from `generate_strategy_retirement_outcome()`
+      — because that sandbox/Strategy pipeline has no real walk-forward/cost-sensitivity/
+      look-ahead-audit/benchmark evidence wired to it at all; that evidence lives on the separate,
+      parallel `ResearchExperimentRecord`/`CompiledStrategyDefinition` pipeline
+      (`research_experiment.py`/`champion_challenger.py`). Every assigned code carries a real,
+      specific `evidence` string citing the exact real threshold crossing — never assigned without one.
+      Wiring the two pipelines together to honestly derive the rest is real, tractable, explicitly
+      NOT attempted this pass.
+    - **Severity rationale, one consistent, disclosed convention for all 35 codes** — critical =
+      data-integrity violations that would make an entire result meaningless
+      (`lookahead_detected`/`data_leakage`/`unacceptable_risk_of_ruin`); high = sample-size/risk/
+      robustness gaps undermining confidence in otherwise-real evidence; medium = real-but-survivable
+      performance/execution shortfalls; low = cosmetic/informational — matching the directive's own
+      two given examples exactly (`insufficient_sample = HIGH`, `benchmark_underperformance = MEDIUM`).
+    - **A real circular-import fix, not a rebuild.** `derive_failure_codes()` takes its threshold
+      values (`min_trade_count`/`min_profit_factor`/`max_avg_drawdown`/`min_win_rate`) as explicit
+      parameters rather than importing `HALL_OF_FAME_MIN_*` from `strategy_lab.py`, since
+      `strategy_lab.py` needs to import FROM `failure_taxonomy.py` — parameter-passing avoids the
+      cycle without re-declaring the same real thresholds twice.
+    - New `compute_top_failure_modes()` — real aggregation (never fabricated pattern-detection) across
+      every `FailedStrategyArchiveEntry`'s own `failureCodes`, counting real occurrences per code
+      across the permanent archive. New `GET /api/sandbox/failure-modes` endpoint. `FailedStrategyArchiveEntry`
+      gained `failureCodes: FailureCodeEntry[]` (defaulting to empty for entries filed before this
+      taxonomy existed — never backfilled or inflated).
+    - `StrategyFailedArchiveView.tsx` gained a "Top Repeated Failure Modes — real research
+      intelligence" card (top 8 by real occurrence count) and a per-entry "Failure Codes" section
+      rendering each code as a severity-toned pill with its real evidence string as a tooltip —
+      alongside, never replacing, the existing free-text "What Failed"/"Lessons Learned" sections.
+    - 20 new tests (`test_failure_taxonomy.py`) plus 4 new tests in `test_strategy_lab.py` (now 68
+      total) proving `generate_strategy_retirement_outcome()`'s real wiring.
+  - **Verified:** full backend suite (3229 tests) green, `mypy`/`ruff` clean. Frontend `tsc`/lint/
+    build clean. Live-verified against the real running dev stack: the statistical-comparison
+    endpoint returned a complete, correct real `statisticalComparison` object for a real comparison
+    (a bootstrap CI of `[-0.2053, 0.2856]` spanning zero, correctly read as `classification: "neither"`
+    — no fabricated significance where none exists); the failure-modes endpoint correctly returned an
+    empty list against the current dev save's genuinely empty archive. Both new UI cards (Statistical
+    Evidence on Champion/Challenger, Top Repeated Failure Modes + per-entry Failure Codes on the
+    Failed Archive) were confirmed rendering live with real mocked-shape data via a temporary
+    Playwright spec (removed after verification).
+
 - **"TradeTown — 11/10 Self-Improving Quant Agent System," Section 1 (Champion vs Challenger — The
   Core Upgrade) — a real, persistent Champion/Challenger framework.** A dedicated background audit
   (run before any code was written, per the directive's own "inspect the existing implementation

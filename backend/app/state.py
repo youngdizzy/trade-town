@@ -2675,6 +2675,12 @@ class GameState:
         # runs outside the lock, so a length snapshotted beforehand could
         # collide with a concurrent request's id by the time either appends.
         comparison_id = f"comparison-{challenger_definition.id}-{challenger_definition.version}-{uuid.uuid4().hex[:12]}"
+        async with self.lock:
+            # A real snapshot of the multiple-testing archive as of the START of this
+            # comparison — the slow real backtest below runs outside the lock, so any
+            # experiment filed concurrently during it is honestly not reflected in this
+            # one comparison's own count, same real limitation any point-in-time count has.
+            quant_research_experiments = self.data.quant_research_experiments
         comparison = compare_champion_challenger(
             champion_definition,
             challenger_definition,
@@ -2686,6 +2692,7 @@ class GameState:
             symbols=symbols,
             timeframe=resolved_timeframe,
             candles_per_symbol=resolved_candles,
+            quant_research_experiments=quant_research_experiments,
         )
         async with self.lock:
             updated = [*self.data.challenger_comparisons, comparison]

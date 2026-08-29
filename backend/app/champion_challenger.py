@@ -29,21 +29,26 @@ in the same call with the same `symbols`/`timeframe`/`candles_per_symbol`,
 never comparing a possibly-stale persisted record for one side against a
 freshly-computed one for the other.
 
-THE PROMOTION RULE IS ECONOMIC SIGNIFICANCE, NOT STATISTICAL
-SIGNIFICANCE — A REAL, DISCLOSED SCOPE CUT. The directive's own Section
-7 asks for confidence intervals / bootstrap comparisons / effect sizes /
-probability-of-superiority between two strategies' return distributions.
-The same background audit confirmed no two-sample statistical-comparison
-utility exists anywhere in this codebase (the real bootstrap machinery
-that does exist — `app/strategy_lab.py`'s Monte Carlo,
-`app/portfolio_monte_carlo.py` — is all single-strategy/single-portfolio
-resampling, not a champion-vs-challenger hypothesis test). Building one
-honestly is real, non-trivial, additional work, deliberately NOT
-attempted in this pass — see `_decide_verdict()`'s own docstring for the
-exact real rule this module uses instead: a disclosed, bounded, ECONOMIC
-tradeoff over already-real metrics (expectancy, drawdown), directly
-implementing the directive's own two worked examples in Section 6,
-never dressed up as a statistical proof. `_synthesize_conclusion()`'s
+THE PROMOTION RULE IS ECONOMIC SIGNIFICANCE FIRST — STATISTICAL
+EVIDENCE IS A REAL, ADDITIONAL LAYER, NEVER A GATE-BYPASS. `_decide_
+verdict()`'s own real, disclosed, bounded ECONOMIC tradeoff rule over
+already-real metrics (expectancy, drawdown) — directly implementing
+the directive's own two worked examples — remains the sole
+`verdict`-deciding logic, exactly as before. CEO directive "TradeTown
+— Statistical Validation + Research Failure Taxonomy," Part 1 adds a
+genuinely new, SEPARATE evidence layer alongside it:
+`app/statistical_comparison.py::run_statistical_comparison()` (a real
+IID percentile bootstrap over each side's own real per-trade
+R-multiples — see that module's own docstring for the exact
+methodology and its disclosed IID-not-block-bootstrap limitation) and
+`classification` (a real, disclosed combination of that statistical
+read with the existing economic `verdict`: "both" / "statistically_
+supported_only" / "economically_meaningful_only" / "neither" /
+"insufficient_sample" — see `_classify_statistical_economic_evidence()`
+below). Per that directive's own explicit instruction ("statistical
+evidence should strengthen the decision — it must NOT allow a strategy
+to bypass a hard risk gate"), `classification` is purely informational:
+it never overrides or feeds back into `verdict`. `_synthesize_conclusion()`'s
 own real per-side conclusion (from `app/research_experiment.py`) is
 still checked first — a FRAGILE/REJECTED/INVALID/INSUFFICIENT EVIDENCE
 challenger can never be recommended regardless of its raw numbers,
@@ -58,7 +63,25 @@ sides' own real `EmaPullbackStatsBucket.verdict == "enough_evidence"`
 `app/backtest_primitives.py::aggregate_bucket()` already applies to
 every bucket in this codebase) before any recommend/retain verdict is
 possible — otherwise `insufficient_evidence`, honestly, never a forced
-call.
+call. The statistical layer has its own, separately-disclosed, higher
+real floor — see `app/statistical_comparison.py`'s own
+`MIN_TRADES_FOR_BOOTSTRAP`.
+
+MULTIPLE-TESTING AND TUNING-EXPOSURE VISIBILITY, REUSED NOT REBUILT.
+"TradeTown — Statistical Validation + Research Failure Taxonomy" also
+asks to "track number of experiments attempted... flag
+MULTIPLE_TESTING_RISK" and "if the strategy has undergone excessive
+tuning... flag HIGH_TUNING_EXPOSURE." Both are real signals this
+codebase already computes elsewhere, joined here rather than
+reimplemented: `research_family_experiment_count`/`multiple_testing_risk`
+reuse `app/quant_research_lab.py`'s own real
+`count_experiments_for_family()`/`OVERTESTED_FAMILY_THRESHOLD` (the
+exact same real count `QuantResearchExperiment.researchIntegrityFlag`
+already surfaces, joined here on the challenger's own real compiled
+name); `challenger_tuning_version`/`high_tuning_exposure` reuse the
+challenger's own real `CompiledStrategyDefinition.version` (how many
+times this exact strategy name has already been revised) — no new
+tracking invented for either signal.
 
 PROMOTION IS ALWAYS A SEPARATE, EXPLICIT, NAMED-AGENT ACTION. Section
 31 ("agents cannot... secretly change production strategies") —
@@ -72,9 +95,28 @@ to justify a promotion, no matter who calls this function.
 from __future__ import annotations
 
 from app.backtest_primitives import DEFAULT_MIN_TRADES_FOR_BUCKET_VERDICT
+from app.quant_research_lab import OVERTESTED_FAMILY_THRESHOLD, count_experiments_for_family
 from app.research_experiment import run_research_experiment
-from app.schemas import AgentId, ChallengerComparison, ChallengerVerdict, ChampionRecord, CompiledStrategyDefinition
+from app.schemas import (
+    AgentId,
+    BootstrapComparisonResult,
+    ChallengerComparison,
+    ChallengerVerdict,
+    ChampionRecord,
+    CompiledStrategyDefinition,
+    QuantResearchExperiment,
+    StatisticalEconomicClassification,
+)
+from app.statistical_comparison import run_statistical_comparison
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
+
+# CEO directive "TradeTown — Statistical Validation + Research Failure
+# Taxonomy" — a real, disclosed "how many revisions is a lot" threshold,
+# reusing the challenger definition's own real, already-existing
+# version number (app/strategy_registry.py's register_strategy_version()
+# increments this on every real re-compile) rather than inventing new
+# tracking. One reasonable convention, not derived from any study.
+HIGH_TUNING_VERSION_THRESHOLD = 5
 
 # CEO directive "TradeTown — 11/10 Self-Improving Quant Agent System,"
 # Section 6 — real, disclosed thresholds directly implementing the
@@ -167,6 +209,29 @@ def _decide_verdict(
     )
 
 
+def _classify_statistical_economic_evidence(*, verdict: ChallengerVerdict, statistical_comparison: BootstrapComparisonResult) -> StatisticalEconomicClassification:
+    """CEO directive "TradeTown — Statistical Validation + Research
+    Failure Taxonomy," Part 1 — the real, disclosed combination rule.
+    "Statistical support" reads true only when the real bootstrap CI
+    for (challenger - champion) mean R excludes zero on the positive
+    side (`differenceCiLow > 0`) — real evidence the challenger's mean
+    genuinely exceeds the champion's, not just a directional guess.
+    "Economic meaning" reads true only when the existing real
+    `_decide_verdict()` rule already recommended the challenger. Purely
+    informational — never fed back into `verdict`."""
+    if statistical_comparison.evidence_state == "insufficient_evidence":
+        return "insufficient_sample"
+    statistically_supported = statistical_comparison.difference_ci_low is not None and statistical_comparison.difference_ci_low > 0
+    economically_meaningful = verdict == "challenger_recommended"
+    if statistically_supported and economically_meaningful:
+        return "both"
+    if statistically_supported:
+        return "statistically_supported_only"
+    if economically_meaningful:
+        return "economically_meaningful_only"
+    return "neither"
+
+
 def compare_champion_challenger(
     champion_definition: CompiledStrategyDefinition,
     challenger_definition: CompiledStrategyDefinition,
@@ -179,13 +244,20 @@ def compare_champion_challenger(
     symbols: list[str] | None = None,
     timeframe: str = DEFAULT_TIMEFRAME,
     candles_per_symbol: int = DEFAULT_CANDLES_PER_SYMBOL,
+    quant_research_experiments: list[QuantResearchExperiment] | None = None,
 ) -> ChallengerComparison:
     """The one real entry point. Runs BOTH definitions through the
     exact same real `run_research_experiment()` pipeline over the
     IDENTICAL real symbols/timeframe/candle window (the directive's own
     Section 5 Step 5), then applies `_decide_verdict()`'s real,
-    disclosed rule. Read-only — never mutates `champion_history`; the
-    caller decides whether/how to persist this comparison."""
+    disclosed economic rule and `app/statistical_comparison.py`'s real
+    bootstrap comparison as a separate evidence layer. `quant_research_
+    experiments` is optional (`None` leaves the real multiple-testing
+    count honestly `None` rather than fabricating a 0) — pass the
+    real, already-persisted archive to get a real
+    `researchFamilyExperimentCount`. Read-only — never mutates
+    `champion_history`; the caller decides whether/how to persist this
+    comparison."""
     champion_record = run_research_experiment(champion_definition, symbols=symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
     challenger_record = run_research_experiment(challenger_definition, symbols=symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
 
@@ -202,6 +274,17 @@ def compare_champion_challenger(
         champion_max_drawdown_r=champion_bucket.max_drawdown_r,
         challenger_max_drawdown_r=challenger_bucket.max_drawdown_r,
     )
+
+    statistical_comparison = run_statistical_comparison(
+        champion_definition, challenger_definition, symbols=symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol
+    )
+    classification = _classify_statistical_economic_evidence(verdict=verdict, statistical_comparison=statistical_comparison)
+
+    research_family_experiment_count = (
+        count_experiments_for_family(quant_research_experiments, definition_name=challenger_definition.name) if quant_research_experiments is not None else None
+    )
+    multiple_testing_risk = research_family_experiment_count is not None and research_family_experiment_count >= OVERTESTED_FAMILY_THRESHOLD
+    high_tuning_exposure = challenger_definition.version >= HIGH_TUNING_VERSION_THRESHOLD
 
     return ChallengerComparison(
         id=comparison_id,
@@ -227,6 +310,12 @@ def compare_champion_challenger(
         challengerConclusion=challenger_record.conclusion,
         verdict=verdict,
         reasoning=reasoning,
+        statisticalComparison=statistical_comparison,
+        classification=classification,
+        researchFamilyExperimentCount=research_family_experiment_count,
+        multipleTestingRisk=multiple_testing_risk,
+        challengerTuningVersion=challenger_definition.version,
+        highTuningExposure=high_tuning_exposure,
         generatedAt=generated_at,
     )
 

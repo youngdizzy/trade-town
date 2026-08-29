@@ -13,17 +13,20 @@ from __future__ import annotations
 import asyncio
 
 from app.champion_challenger import (
+    HIGH_TUNING_VERSION_THRESHOLD,
     MAX_DRAWDOWN_REGRESSION_PCT,
     MAX_EXPECTANCY_REGRESSION_PCT,
     MIN_DRAWDOWN_IMPROVEMENT_PCT,
     MIN_EXPECTANCY_IMPROVEMENT_PCT,
+    _classify_statistical_economic_evidence,
     _decide_verdict,
     compare_champion_challenger,
     get_current_champion,
     promote_challenger,
 )
+from app.quant_research_lab import OVERTESTED_FAMILY_THRESHOLD, file_quant_research_experiment
 from app.research_experiment import run_research_experiment
-from app.schemas import ChampionRecord
+from app.schemas import BootstrapComparisonResult, ChampionRecord
 from app.state import GameState
 from app.strategy_compiler import compile_strategy_text
 
@@ -253,3 +256,155 @@ class TestChampionChallengerState:
         )
         assert first.id != second.id
         assert len(saved.challenger_comparisons) == 2
+
+
+def _bootstrap_result(**overrides: object) -> BootstrapComparisonResult:
+    base: dict[str, object] = dict(
+        championSampleSize=30,
+        challengerSampleSize=30,
+        championMeanR=0.2,
+        challengerMeanR=0.3,
+        meanDifferenceEstimate=0.1,
+        differenceCiLow=0.02,
+        differenceCiHigh=0.18,
+        confidenceLevelPct=95.0,
+        probabilityChallengerBetterPct=97.0,
+        method="iid_percentile_bootstrap",
+        resamples=2000,
+        evidenceState="sufficient_evidence",
+        limitationNote="x",
+    )
+    base.update(overrides)
+    return BootstrapComparisonResult(**base)  # type: ignore[arg-type]
+
+
+class TestClassifyStatisticalEconomicEvidence:
+    """CEO directive "TradeTown — Statistical Validation + Research
+    Failure Taxonomy," Part 1 — the real, disclosed 2x2-plus-escape-hatch
+    combination rule."""
+
+    def test_insufficient_bootstrap_evidence_always_reads_insufficient_sample(self) -> None:
+        result = _bootstrap_result(evidenceState="insufficient_evidence", differenceCiLow=None, differenceCiHigh=None, probabilityChallengerBetterPct=None)
+        classification = _classify_statistical_economic_evidence(verdict="challenger_recommended", statistical_comparison=result)
+        assert classification == "insufficient_sample"
+
+    def test_both_statistically_supported_and_economically_meaningful_reads_both(self) -> None:
+        result = _bootstrap_result(differenceCiLow=0.05)
+        classification = _classify_statistical_economic_evidence(verdict="challenger_recommended", statistical_comparison=result)
+        assert classification == "both"
+
+    def test_statistically_supported_but_economically_retained_reads_statistically_supported_only(self) -> None:
+        result = _bootstrap_result(differenceCiLow=0.05)
+        classification = _classify_statistical_economic_evidence(verdict="champion_retained", statistical_comparison=result)
+        assert classification == "statistically_supported_only"
+
+    def test_economically_meaningful_but_ci_spans_zero_reads_economically_meaningful_only(self) -> None:
+        result = _bootstrap_result(differenceCiLow=-0.05, differenceCiHigh=0.15)
+        classification = _classify_statistical_economic_evidence(verdict="challenger_recommended", statistical_comparison=result)
+        assert classification == "economically_meaningful_only"
+
+    def test_neither_statistically_supported_nor_economically_meaningful_reads_neither(self) -> None:
+        result = _bootstrap_result(differenceCiLow=-0.1, differenceCiHigh=0.1)
+        classification = _classify_statistical_economic_evidence(verdict="champion_retained", statistical_comparison=result)
+        assert classification == "neither"
+
+    def test_a_negative_ci_excluding_zero_is_not_statistically_supported_for_the_challenger(self) -> None:
+        # The challenger is statistically WORSE (CI entirely negative) -- never "supported".
+        result = _bootstrap_result(differenceCiLow=-0.3, differenceCiHigh=-0.1)
+        classification = _classify_statistical_economic_evidence(verdict="champion_retained", statistical_comparison=result)
+        assert classification == "neither"
+
+
+class TestCompareChampionChallengerStatisticalWiring:
+    """Real end-to-end wiring of the new statistical/multiple-testing/
+    tuning-exposure fields through compare_champion_challenger()."""
+
+    def test_a_real_comparison_carries_a_real_statistical_comparison_and_classification(self) -> None:
+        champion_definition = compile_strategy_text(name="Stat Wire Champion", source_text=_CHAMPION_TEXT)
+        challenger_definition = compile_strategy_text(name="Stat Wire Challenger", source_text=_CHALLENGER_TEXT)
+        comparison = compare_champion_challenger(
+            champion_definition,
+            challenger_definition,
+            strategy_family="Stat Wire Family",
+            hypothesis="h",
+            proposed_by="quant",
+            comparison_id="cmp-stat-1",
+            generated_at="2024-01-01T00:00:00+00:00",
+            symbols=["AAPL"],
+        )
+        assert comparison.statistical_comparison is not None
+        assert comparison.classification in ("both", "statistically_supported_only", "economically_meaningful_only", "neither", "insufficient_sample")
+
+    def test_no_research_archive_supplied_leaves_the_family_count_honestly_none(self) -> None:
+        champion_definition = compile_strategy_text(name="Stat Wire Champion 2", source_text=_CHAMPION_TEXT)
+        challenger_definition = compile_strategy_text(name="Stat Wire Challenger 2", source_text=_CHALLENGER_TEXT)
+        comparison = compare_champion_challenger(
+            champion_definition,
+            challenger_definition,
+            strategy_family="Stat Wire Family 2",
+            hypothesis="h",
+            proposed_by="quant",
+            comparison_id="cmp-stat-2",
+            generated_at="2024-01-01T00:00:00+00:00",
+            symbols=["AAPL"],
+        )
+        assert comparison.research_family_experiment_count is None
+        assert comparison.multiple_testing_risk is False
+
+    def test_an_overtested_family_archive_flags_multiple_testing_risk(self) -> None:
+        champion_definition = compile_strategy_text(name="Stat Wire Champion 3", source_text=_CHAMPION_TEXT)
+        challenger_definition = compile_strategy_text(name="Stat Wire Challenger 3", source_text=_CHALLENGER_TEXT)
+        record = run_research_experiment(challenger_definition, symbols=["AAPL"])
+        existing = []
+        for i in range(OVERTESTED_FAMILY_THRESHOLD):
+            experiment = file_quant_research_experiment(
+                record, experiment_id=f"exp-{i}", hypothesis=f"h{i}", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00", existing=existing
+            )
+            existing.append(experiment)
+        comparison = compare_champion_challenger(
+            champion_definition,
+            challenger_definition,
+            strategy_family="Stat Wire Family 3",
+            hypothesis="h",
+            proposed_by="quant",
+            comparison_id="cmp-stat-3",
+            generated_at="2024-01-01T00:00:00+00:00",
+            symbols=["AAPL"],
+            quant_research_experiments=existing,
+        )
+        assert comparison.research_family_experiment_count == OVERTESTED_FAMILY_THRESHOLD
+        assert comparison.multiple_testing_risk is True
+
+    def test_a_low_version_challenger_reads_no_high_tuning_exposure(self) -> None:
+        champion_definition = compile_strategy_text(name="Stat Wire Champion 4", source_text=_CHAMPION_TEXT)
+        challenger_definition = compile_strategy_text(name="Stat Wire Challenger 4", source_text=_CHALLENGER_TEXT)
+        assert challenger_definition.version == 1
+        comparison = compare_champion_challenger(
+            champion_definition,
+            challenger_definition,
+            strategy_family="Stat Wire Family 4",
+            hypothesis="h",
+            proposed_by="quant",
+            comparison_id="cmp-stat-4",
+            generated_at="2024-01-01T00:00:00+00:00",
+            symbols=["AAPL"],
+        )
+        assert comparison.challenger_tuning_version == 1
+        assert comparison.high_tuning_exposure is False
+
+    def test_a_heavily_revised_challenger_reads_high_tuning_exposure(self) -> None:
+        champion_definition = compile_strategy_text(name="Stat Wire Champion 5", source_text=_CHAMPION_TEXT)
+        challenger_definition = compile_strategy_text(name="Stat Wire Challenger 5", source_text=_CHALLENGER_TEXT, previous_version=HIGH_TUNING_VERSION_THRESHOLD)
+        assert challenger_definition.version == HIGH_TUNING_VERSION_THRESHOLD + 1
+        comparison = compare_champion_challenger(
+            champion_definition,
+            challenger_definition,
+            strategy_family="Stat Wire Family 5",
+            hypothesis="h",
+            proposed_by="quant",
+            comparison_id="cmp-stat-5",
+            generated_at="2024-01-01T00:00:00+00:00",
+            symbols=["AAPL"],
+        )
+        assert comparison.challenger_tuning_version == HIGH_TUNING_VERSION_THRESHOLD + 1
+        assert comparison.high_tuning_exposure is True

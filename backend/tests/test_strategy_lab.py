@@ -622,6 +622,62 @@ class TestGenerateStrategyRetirementOutcome:
         assert failed_entry is not None
         assert not any("Meridian/CIO" in item for item in failed_entry.what_failed)
 
+    def test_a_hall_of_fame_induction_carries_no_failure_codes(self) -> None:
+        strategy = _strategy(stage="approved", stage_history=[StrategyStageEvent(id="stage-0", stage="idea", detail="Created.", simDay=1, createdAt=_now_iso())])
+        results = [
+            _result(win_rate=HALL_OF_FAME_MIN_WIN_RATE + 5.0, profit_factor=HALL_OF_FAME_MIN_PROFIT_FACTOR + 0.5, max_drawdown_pct=5.0, trade_count=HALL_OF_FAME_MIN_TRADE_COUNT).model_copy(
+                update={"id": f"result-{i}"}
+            )
+            for i in range(3)
+        ]
+        review = generate_strategy_review(strategy, results, [], 0, sim_day=10)
+        monte_carlo = run_strategy_monte_carlo(strategy, results, sim_day=10)
+        exec_review = generate_strategy_executive_review(strategy, review, [], [], monte_carlo, None, default_market_intelligence_state(), 0, sim_day=10)
+        founder_approval = generate_strategy_founder_approval(strategy, exec_review, sim_day=10).model_copy(update={"verdict": "approved"})
+        hof_entry, failed_entry = generate_strategy_retirement_outcome(strategy, results, review, exec_review, founder_approval, "Retired at its peak.", sim_day=20)
+        assert hof_entry is not None
+        assert failed_entry is None
+
+    def test_a_weak_track_record_carries_real_structured_failure_codes(self) -> None:
+        """CEO directive "TradeTown — Statistical Validation + Research
+        Failure Taxonomy," Part 2 — the same real weak track record above
+        also produces real, structured, machine-readable failure codes
+        alongside the existing free text."""
+        strategy = _strategy(stage="limited_live_capital")
+        bad_result = _result(win_rate=20.0, max_drawdown_pct=45.0, avg_win_pct=1.0, avg_loss_pct=-8.0, profit_factor=0.3, total_return_pct=-30.0)
+        review = generate_strategy_review(strategy, [bad_result], [], 0, sim_day=10)
+        _, failed_entry = generate_strategy_retirement_outcome(strategy, [bad_result], review, None, None, "Never earned real trust.", sim_day=20)
+        assert failed_entry is not None
+        codes = {c.code for c in failed_entry.failure_codes}
+        assert "insufficient_sample" in codes  # 10 real trades, below the real 30-trade bar
+        assert "negative_net_return" in codes  # a real -30% average return
+        assert "excessive_drawdown" in codes  # a real 45% average drawdown, past the real 20% bar
+        for entry in failed_entry.failure_codes:
+            assert entry.evidence  # every real code carries real, specific evidence text
+
+    def test_a_rejected_model_validation_adds_a_real_statistical_uncertainty_code(self) -> None:
+        strategy = _strategy(stage="limited_live_capital")
+        bad_result = _result(win_rate=20.0, max_drawdown_pct=45.0, avg_win_pct=1.0, avg_loss_pct=-8.0, profit_factor=0.3, total_return_pct=-30.0)
+        review = generate_strategy_review(strategy, [bad_result], [], 0, sim_day=10)
+        validation = _model_validation_report(verdict="rejected")
+        _, failed_entry = generate_strategy_retirement_outcome(
+            strategy, [bad_result], review, None, None, "Failed independent validation.", sim_day=20, latest_model_validation=validation
+        )
+        assert failed_entry is not None
+        assert any(c.code == "statistical_uncertainty" for c in failed_entry.failure_codes)
+
+    def test_a_strategy_with_enough_trades_and_return_but_a_low_win_rate_reads_inconsistent_returns(self) -> None:
+        strategy = _strategy(stage="limited_live_capital")
+        result = _result(win_rate=30.0, max_drawdown_pct=5.0, profit_factor=HALL_OF_FAME_MIN_PROFIT_FACTOR + 1.0, total_return_pct=10.0, trade_count=HALL_OF_FAME_MIN_TRADE_COUNT)
+        review = generate_strategy_review(strategy, [result], [], 0, sim_day=10)
+        _, failed_entry = generate_strategy_retirement_outcome(strategy, [result], review, None, None, "Win rate never cleared the bar.", sim_day=20)
+        assert failed_entry is not None
+        codes = {c.code for c in failed_entry.failure_codes}
+        assert "inconsistent_returns" in codes
+        assert "insufficient_sample" not in codes
+        assert "negative_net_return" not in codes
+        assert "excessive_drawdown" not in codes
+
 
 class TestComputeStrategyExecutiveDashboard:
     def test_counts_every_strategy_into_exactly_one_stage_bucket(self) -> None:

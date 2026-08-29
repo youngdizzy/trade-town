@@ -5537,6 +5537,66 @@ class SubmitQuantResearchExperimentResult(CamelModel):
 # already-real `CompiledStrategyDefinition`.
 ChallengerVerdict = Literal["challenger_recommended", "champion_retained", "insufficient_evidence"]
 
+# CEO directive "TradeTown — Statistical Validation + Research Failure
+# Taxonomy," Part 1 — the real evidence-sufficiency state for a
+# bootstrap comparison, the same two-state convention every other real
+# evidence-floor field in this codebase already uses (never a forced
+# call below the real minimum sample).
+BootstrapEvidenceState = Literal["sufficient_evidence", "insufficient_evidence"]
+
+
+class BootstrapComparisonResult(CamelModel):
+    """CEO directive "TradeTown — Statistical Validation + Research
+    Failure Taxonomy," Part 1 — a real, disclosed IID percentile
+    bootstrap comparison of the difference in mean per-trade R-multiple
+    between two real, already-closed trade samples. See
+    app/statistical_comparison.py's own module docstring for the exact
+    real methodology, the disclosed IID (not block-bootstrap)
+    limitation, and why this is deliberately NEVER framed as a
+    classical p-value. `championMeanR`/`challengerMeanR`/
+    `meanDifferenceEstimate` are real point estimates computed directly
+    from each side's own real trade sample (never a bootstrap average
+    substituted for the real sample statistic) — the bootstrap
+    resampling below is used ONLY to quantify uncertainty around that
+    real estimate."""
+
+    champion_sample_size: int = Field(alias="championSampleSize")
+    challenger_sample_size: int = Field(alias="challengerSampleSize")
+    champion_mean_r: float | None = Field(default=None, alias="championMeanR")
+    challenger_mean_r: float | None = Field(default=None, alias="challengerMeanR")
+    mean_difference_estimate: float | None = Field(default=None, alias="meanDifferenceEstimate")
+    difference_ci_low: float | None = Field(default=None, alias="differenceCiLow")
+    difference_ci_high: float | None = Field(default=None, alias="differenceCiHigh")
+    confidence_level_pct: float = Field(alias="confidenceLevelPct")
+    # A real, empirical estimate — the fraction of real bootstrap
+    # resamples where the challenger's resampled mean exceeded the
+    # champion's — NEVER a classical p-value or a claim of frequentist
+    # hypothesis-test validity. `None` below the real evidence floor.
+    probability_challenger_better_pct: float | None = Field(default=None, alias="probabilityChallengerBetterPct")
+    method: str
+    resamples: int
+    evidence_state: BootstrapEvidenceState = Field(alias="evidenceState")
+    limitation_note: str = Field(alias="limitationNote")
+
+
+# CEO directive "TradeTown — Statistical Validation + Research Failure
+# Taxonomy," Part 1 — "The system should explicitly distinguish:
+# STATISTICALLY SUPPORTED / ECONOMICALLY MEANINGFUL / BOTH / NEITHER /
+# INSUFFICIENT SAMPLE." Real, disclosed 2x2-plus-escape-hatch mapping:
+# "statistical support" = the real bootstrap CI for (challenger -
+# champion) mean R excludes zero on the positive side (see
+# app/champion_challenger.py's own classification logic for the exact
+# real combination rule); "economic meaning" = the existing real
+# `_decide_verdict()` economic tradeoff rule already reads
+# "challenger_recommended". Never collapsed into one black-box number.
+StatisticalEconomicClassification = Literal[
+    "both",
+    "statistically_supported_only",
+    "economically_meaningful_only",
+    "neither",
+    "insufficient_sample",
+]
+
 
 class ChallengerComparison(CamelModel):
     """A real, permanent, never-deleted head-to-head comparison record
@@ -5576,6 +5636,29 @@ class ChallengerComparison(CamelModel):
     challenger_conclusion: str = Field(alias="challengerConclusion")
     verdict: ChallengerVerdict
     reasoning: str
+    # CEO directive "TradeTown — Statistical Validation + Research
+    # Failure Taxonomy," Part 1 — an ADDITIONAL real evidence layer,
+    # never a replacement for the economic/risk gates `verdict` above
+    # already enforces (see app/champion_challenger.py's own module
+    # docstring: statistical evidence can never bypass a hard gate).
+    statistical_comparison: BootstrapComparisonResult = Field(alias="statisticalComparison")
+    classification: StatisticalEconomicClassification
+    # Real multiple-testing/research-selection-bias visibility, reusing
+    # app/quant_research_lab.py's own already-real
+    # count_experiments_for_family()/OVERTESTED_FAMILY_THRESHOLD — the
+    # exact same real signal QuantResearchExperiment.researchIntegrityFlag
+    # already surfaces, joined here on the challenger's own real
+    # compiled-definition name. `None` when no quant_research_experiments
+    # archive was supplied (never fabricated as zero).
+    research_family_experiment_count: int | None = Field(default=None, alias="researchFamilyExperimentCount")
+    multiple_testing_risk: bool = Field(default=False, alias="multipleTestingRisk")
+    # A real, already-available tuning-exposure proxy: the challenger's
+    # own real CompiledStrategyDefinition.version (how many times this
+    # exact strategy name has already been revised) — no new tracking
+    # invented. See HIGH_TUNING_VERSION_THRESHOLD in
+    # app/champion_challenger.py.
+    challenger_tuning_version: int = Field(alias="challengerTuningVersion")
+    high_tuning_exposure: bool = Field(alias="highTuningExposure")
     generated_at: str = Field(alias="generatedAt")
 
 
@@ -5917,13 +6000,120 @@ class StrategyHallOfFameEntry(CamelModel):
     inducted_at: str = Field(alias="inductedAt")
 
 
+# CEO directive "TradeTown — Statistical Validation + Research Failure
+# Taxonomy," Part 2 — the directive's own exact requested taxonomy,
+# organized by category. See app/failure_taxonomy.py's own module
+# docstring for exactly which of these this codebase can honestly
+# DERIVE from real, already-computed retirement evidence today (a real,
+# disclosed subset) vs. which are real, valid vocabulary defined for
+# forward compatibility only (this codebase has no real cost-sensitivity/
+# walk-forward/look-ahead evidence wired into a Strategy's own
+# retirement decision yet — see that module's own docstring for the
+# exact honest boundary).
+FailureCategory = Literal[
+    "data_failure",
+    "statistical_failure",
+    "risk_failure",
+    "performance_failure",
+    "robustness_failure",
+    "execution_failure",
+    "research_failure",
+]
+
+FailureCode = Literal[
+    # DATA_FAILURE
+    "insufficient_data",
+    "missing_data",
+    "stale_data",
+    "survivorship_risk",
+    "lookahead_detected",
+    "data_leakage",
+    # STATISTICAL_FAILURE
+    "insufficient_sample",
+    "weak_expectancy",
+    "unstable_distribution",
+    "statistical_uncertainty",
+    "multiple_testing_risk",
+    "selection_bias",
+    # RISK_FAILURE
+    "excessive_drawdown",
+    "unacceptable_risk_of_ruin",
+    "excessive_volatility",
+    "concentration_risk",
+    "poor_recovery",
+    # PERFORMANCE_FAILURE
+    "negative_net_return",
+    "low_profit_factor",
+    "negative_expectancy",
+    "benchmark_underperformance",
+    "inconsistent_returns",
+    # ROBUSTNESS_FAILURE
+    "walk_forward_failure",
+    "out_of_sample_failure",
+    "regime_failure",
+    "parameter_sensitivity",
+    "cost_sensitivity",
+    "slippage_sensitivity",
+    "fragile_edge",
+    # EXECUTION_FAILURE
+    "excessive_turnover",
+    "unrealistic_fill_assumption",
+    "excessive_slippage",
+    "poor_liquidity",
+    "adverse_selection",
+    # RESEARCH_FAILURE
+    "hypothesis_invalidated",
+    "overfit",
+    "excessive_tuning",
+    "duplicate_strategy",
+    "redundant_strategy",
+    "failed_challenger",
+    "champion_not_beaten",
+]
+
+# CEO directive "TradeTown — Statistical Validation + Research Failure
+# Taxonomy," Part 2 — "do not invent severity arbitrarily; document the
+# rationale for the initial classification." See
+# app/failure_taxonomy.py's own FAILURE_CODE_METADATA for the real,
+# disclosed per-code rationale (data-integrity violations that would
+# make an entire result meaningless are CRITICAL; sample-size/risk/
+# robustness gaps that undermine confidence but don't invalidate real
+# evidence are HIGH; real but survivable performance/execution
+# shortfalls are MEDIUM; cosmetic/informational findings are LOW).
+FailureSeverity = Literal["critical", "high", "medium", "low"]
+
+
+class FailureCodeEntry(CamelModel):
+    """CEO directive "TradeTown — Statistical Validation + Research
+    Failure Taxonomy," Part 2 — one real, machine-readable failure code
+    alongside the existing free-text `whatFailed`/`lessonsLearned` on
+    `FailedStrategyArchiveEntry` below (never a replacement for that
+    human-readable explanation — the directive's own words: "preserve
+    the existing human-readable explanation"). `evidence` is a real,
+    specific string citing the actual real number(s) that triggered
+    this code, never a generic restatement of the code itself."""
+
+    code: FailureCode
+    category: FailureCategory
+    severity: FailureSeverity
+    evidence: str
+
+
 class FailedStrategyArchiveEntry(CamelModel):
     """v0.7 Feature 52 (Part 2) — every strategy retirement that did not
     clear the real Hall of Fame bar (see app/strategy_lab.py's
     generate_strategy_retirement_outcome()) — never deleted, always kept
     as a real, citable lesson. 'What failed'/'lessons learned' are pulled
     from that strategy's own real StrategyReview verdicts and
-    StrategyExecutiveReview concerns, never invented after the fact."""
+    StrategyExecutiveReview concerns, never invented after the fact.
+
+    CEO directive "TradeTown — Statistical Validation + Research
+    Failure Taxonomy," Part 2 — `failure_codes` adds a real, structured,
+    machine-readable taxonomy ALONGSIDE the free text above (see
+    app/failure_taxonomy.py's own module docstring for exactly which
+    codes this codebase can honestly derive today). `default_factory=list`
+    — an entry filed before this field existed reads an honestly empty
+    list, never a fabricated code."""
 
     id: str
     strategy_id: str = Field(alias="strategyId")
@@ -5932,9 +6122,25 @@ class FailedStrategyArchiveEntry(CamelModel):
     failed_at_stage: StrategyStage = Field(alias="failedAtStage")
     what_failed: list[str] = Field(default_factory=list, alias="whatFailed")
     lessons_learned: list[str] = Field(default_factory=list, alias="lessonsLearned")
+    failure_codes: list[FailureCodeEntry] = Field(default_factory=list, alias="failureCodes")
     retired_reason: str = Field(alias="retiredReason")
     sim_day: int = Field(alias="simDay")
     created_at: str = Field(alias="createdAt")
+
+
+# CEO directive "TradeTown — Statistical Validation + Research Failure
+# Taxonomy," Part 2 (Failure Clustering) — "identify recurring failure
+# patterns... TOP REPEATED FAILURE MODES." A real, computed-fresh
+# aggregation over `GameSaveState.strategy_failed_archive`'s own real
+# `failureCodes` — see app/failure_taxonomy.py's
+# compute_top_failure_modes(). Never a fabricated pattern: a code with
+# zero real occurrences never appears here at all.
+class FailureModeCount(CamelModel):
+    code: FailureCode
+    category: FailureCategory
+    severity: FailureSeverity
+    occurrence_count: int = Field(alias="occurrenceCount")
+    example_strategy_names: list[str] = Field(alias="exampleStrategyNames")
 
 
 class StrategyExecutiveDashboardEntry(CamelModel):

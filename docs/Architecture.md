@@ -14386,6 +14386,67 @@ than approving on a technicality. The new UI tab was confirmed
 rendering and functioning end-to-end via a temporary Playwright spec
 (removed after verification).
 
+**Follow-up — "TradeTown — Statistical Validation + Research Failure
+Taxonomy."** Closes the two gaps the Champion/Challenger pass above
+explicitly disclosed as scope cuts, by extending those same real
+systems in place rather than building anything new alongside them.
+**Part 1 — statistical comparison.** New
+`app/statistical_comparison.py::bootstrap_compare_samples()` draws
+2000 independent with-replacement resamples from each side's own real
+closed-trade R-multiple sequence and takes the 2.5th/97.5th percentiles
+of the resampled mean-difference distribution for a real 95% CI —
+`probabilityChallengerBetterPct` is a real empirical fraction of
+resamples, deliberately never called a p-value. Below 20 real closed
+trades on either side it honestly returns `insufficient_evidence` with
+no CI, per the directive's own "if a valid statistical estimate cannot
+be produced: return INSUFFICIENT_EVIDENCE" rule; every result discloses
+a real, un-fixed limitation (IID bootstrap, not a block bootstrap, so
+serial trade-to-trade dependence isn't modeled). `compare_champion_challenger()`
+now also derives a purely additive `classification`
+(`both`/`statistically_supported_only`/`economically_meaningful_only`/
+`neither`/`insufficient_sample`) from this CI plus the pre-existing
+real economic `verdict` — `verdict` itself, and therefore
+`promote_challenger()`'s own refusal logic, is unchanged; statistical
+evidence can never bypass the hard economic gate. `ChallengerComparison`
+also gained `researchFamilyExperimentCount`/`multipleTestingRisk`
+(reusing the already-real overtested-family threshold from the prior
+Multiple-Testing Penalty pass) and `challengerTuningVersion`/
+`highTuningExposure`, both informational only. New
+`ChampionChallengerView.tsx` "Statistical Evidence" card surfaces all
+of it, including the honest empty state when evidence is insufficient.
+**Part 2 — failure taxonomy.** New `app/failure_taxonomy.py` defines
+the directive's full 35-code, 7-category vocabulary with a disclosed
+severity for every code — but `derive_failure_codes()` only actually
+computes 6 of them from `generate_strategy_retirement_outcome()`
+(`insufficient_sample`/`negative_net_return`/`low_profit_factor`/
+`excessive_drawdown`/`inconsistent_returns`/`statistical_uncertainty`),
+since that sandbox pipeline has no real walk-forward/cost-sensitivity/
+look-ahead-audit/benchmark evidence wired to it — that evidence lives on
+the separate `ResearchExperimentRecord`/`CompiledStrategyDefinition`
+pipeline; wiring the two together to derive the rest honestly is real,
+disclosed future work, not attempted here. Threshold values are passed
+into `derive_failure_codes()` as explicit parameters rather than
+importing `HALL_OF_FAME_MIN_*` from `strategy_lab.py`, avoiding a real
+circular import (`strategy_lab.py` imports FROM `failure_taxonomy.py`).
+New `compute_top_failure_modes()` aggregates real occurrence counts
+across every archived entry's own `failureCodes`; new
+`GET /api/sandbox/failure-modes` endpoint.
+`FailedStrategyArchiveEntry.failureCodes` defaults to empty for
+entries filed before this taxonomy existed. `StrategyFailedArchiveView.tsx`
+gained a "Top Repeated Failure Modes" card and a per-entry
+"Failure Codes" pill row, alongside the existing free-text sections.
+15 new tests (`test_statistical_comparison.py`), 11 new tests in
+`test_champion_challenger.py` (now 31 total), 20 new tests
+(`test_failure_taxonomy.py`), 4 new tests in `test_strategy_lab.py`
+(now 68 total). Full backend suite green (3229 tests), mypy/ruff
+clean; frontend tsc/lint/build clean. Live-verified against the real
+running dev stack: the statistical-comparison endpoint returned a
+complete real `statisticalComparison` object (a bootstrap CI spanning
+zero correctly read as `classification: "neither"`); the failure-modes
+endpoint correctly returned an empty list against the current dev
+save's genuinely empty archive. Both new UI cards confirmed rendering
+live via a temporary Playwright spec (removed after verification).
+
 **Increment 6 — Phase 15, Knowledge Graph integration.** The research
 audit found `build_knowledge_graph()` had no awareness of
 `QuantResearchExperiment`/`ResearchExperimentRecord` at all — the
