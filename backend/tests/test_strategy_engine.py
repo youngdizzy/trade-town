@@ -442,3 +442,156 @@ class TestRsiMacdStochasticAreNowSupported:
         assert definition.status == "compiled"
         result = run_compiled_strategy_backtest(definition, symbols=["AAPL", "MSFT", "SPY", "QQQ", "GLD", "XLF"], candles_per_symbol=6000)
         assert result.overall.trade_count > 0
+
+    def test_real_backtest_finds_no_occurrences_of_the_strict_same_bar_sweep_fvg_combo(self) -> None:
+        # CEO directive "AHL-Inspired Systematic Trend & Momentum
+        # Research Engine," Phase 9 — real, disclosed evidence, not a
+        # bug: two independently-computed event-pulse detectors (a real
+        # liquidity sweep, a real 3-candle FVG) essentially never land
+        # on the EXACT same bar across this codebase's own real (mock)
+        # data. This is checked against the full real 14-symbol
+        # universe so a future change to either detector's own dynamics
+        # that makes the combo start firing is caught here, not silently
+        # assumed to still be zero.
+        text = "Buy when a bullish liquidity sweep and a bullish fair value gap both occur, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        definition = compile_strategy_text(name="Sweep+FVG combo", source_text=text)
+        assert definition.status == "compiled"
+        result = run_compiled_strategy_backtest(
+            definition,
+            symbols=["AAPL", "MSFT", "SPY", "QQQ", "GLD", "XLF", "BTC-USD", "AMZN", "GOOGL", "TSLA", "NVDA", "SLV", "USO", "DXY"],
+            candles_per_symbol=6000,
+        )
+        assert result.overall.trade_count == 0
+
+
+class TestComboDirectionAt:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine," Phase 9 — unit-level proof that the real AND-combination
+    mechanism (_combo_direction_at()) correctly requires every real
+    condition to independently cross in agreement on the SAME bar, since
+    real (mock) market data essentially never exercises this path (see
+    the real-backtest finding above) — the mechanism itself is proven
+    here via directly-constructed series, not left unverified."""
+
+    def _series(self, sweep: list[float], fvg: list[float]):
+        from app.strategy_engine import _SeriesCache
+
+        return _SeriesCache(
+            ema={}, sma={}, rsi={}, macd=[], stochastic={}, multi_horizon_trend_score=[],
+            liquidity_sweep_signal=sweep, structure_break_signal=[], choch_signal=[], fvg_signal=fvg, fibonacci_618_level=[],
+        )
+
+    def _candles(self, n: int) -> list[Candle]:
+        return [Candle(symbol="TEST", timeframe="1h", timestamp=f"2026-01-01T{i:02d}:00:00+00:00", open=100.0, high=100.5, low=99.5, close=100.0, volume=1000.0, data_status="simulated") for i in range(n)]
+
+    def _all_of(self) -> list[StrategyCondition]:
+        return [
+            StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="liquidity_sweep_signal"), operator="crosses_above", rightValue=0.0, detail="x"),
+            StrategyCondition(id="c2", left=StrategyIndicatorRef(indicator="fvg_signal"), operator="crosses_above", rightValue=0.0, detail="x"),
+        ]
+
+    def test_both_conditions_crossing_bullish_on_the_same_bar_returns_long(self) -> None:
+        from app.strategy_engine import _combo_direction_at
+
+        candles = self._candles(5)
+        series = self._series(sweep=[0.0, 0.0, 1.0, 1.0, 1.0], fvg=[0.0, 0.0, 1.0, 1.0, 1.0])
+        assert _combo_direction_at(self._all_of(), candles, series, 2) == "long"
+
+    def test_conditions_crossing_on_different_bars_returns_none(self) -> None:
+        from app.strategy_engine import _combo_direction_at
+
+        candles = self._candles(5)
+        # Sweep crosses at index 2, FVG crosses at index 3 -- never the
+        # same bar, so this is real, disclosed NOT a combo trigger.
+        series = self._series(sweep=[0.0, 0.0, 1.0, 1.0, 1.0], fvg=[0.0, 0.0, 0.0, 1.0, 1.0])
+        assert _combo_direction_at(self._all_of(), candles, series, 2) is None
+        assert _combo_direction_at(self._all_of(), candles, series, 3) is None
+
+    def test_agreeing_direction_required_disagreeing_signals_return_none(self) -> None:
+        from app.strategy_engine import _combo_direction_at
+
+        candles = self._candles(5)
+        all_of = [
+            StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="liquidity_sweep_signal"), operator="crosses_above", rightValue=0.0, detail="x"),
+            StrategyCondition(id="c2", left=StrategyIndicatorRef(indicator="fvg_signal"), operator="crosses_below", rightValue=0.0, detail="x"),
+        ]
+        series = self._series(sweep=[0.0, 0.0, 1.0, 1.0, 1.0], fvg=[0.0, 0.0, -1.0, -1.0, -1.0])
+        assert _combo_direction_at(all_of, candles, series, 2) is None
+
+    def test_no_crossing_at_all_returns_none(self) -> None:
+        from app.strategy_engine import _combo_direction_at
+
+        candles = self._candles(5)
+        series = self._series(sweep=[0.0] * 5, fvg=[0.0] * 5)
+        assert _combo_direction_at(self._all_of(), candles, series, 2) is None
+
+
+class TestDetectGenericSetupsWithComboTrigger:
+    def _definition(self) -> "CompiledStrategyDefinition":
+        return CompiledStrategyDefinition(
+            id="combo-x", name="combo-x", sourceText="x", version=1, createdBy="quant", createdAt="2024-01-01T00:00:00+00:00", timeframe="1h",
+            sequence=[
+                StrategySequenceStep(
+                    id="s1",
+                    stepType="trigger",
+                    allOf=[
+                        StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="liquidity_sweep_signal"), operator="crosses_above", rightValue=0.0, detail="x"),
+                        StrategyCondition(id="c2", left=StrategyIndicatorRef(indicator="fvg_signal"), operator="crosses_above", rightValue=0.0, detail="x"),
+                    ],
+                    detail="combo trigger",
+                ),
+                StrategySequenceStep(
+                    id="s2",
+                    stepType="entry",
+                    condition=StrategyCondition(id="c3", left=StrategyIndicatorRef(indicator="price_close"), operator="gt", rightValue=0.0, detail="x"),
+                    detail="entry",
+                ),
+            ],
+            stop=StrategyStopSpec(method="fixed_percent", atrPeriod=None, atrMultiplier=None, percent=2.0),
+            target=StrategyTargetSpec(method="fixed_percent", value=4.0),
+            ambiguities=[], status="compiled", detail="x",
+        )
+
+    def test_combo_trigger_with_no_real_condition_returns_no_setups_by_itself(self) -> None:
+        # A step carrying neither a real `condition` nor a real `all_of`
+        # list must never crash or fabricate a setup.
+        definition = CompiledStrategyDefinition(
+            id="empty-x", name="empty-x", sourceText="x", version=1, createdBy="quant", createdAt="2024-01-01T00:00:00+00:00", timeframe="1h",
+            sequence=[
+                StrategySequenceStep(id="s1", stepType="trigger", detail="x"),
+                StrategySequenceStep(id="s2", stepType="entry", condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="price_close"), operator="gt", rightValue=0.0, detail="x"), detail="x"),
+            ],
+            stop=StrategyStopSpec(method="fixed_percent", atrPeriod=None, atrMultiplier=None, percent=2.0),
+            target=StrategyTargetSpec(method="fixed_percent", value=4.0),
+            ambiguities=[], status="compiled", detail="x",
+        )
+        from app.strategy_engine import _SeriesCache
+
+        series = _SeriesCache(ema={}, sma={}, rsi={}, macd=[], stochastic={}, multi_horizon_trend_score=[], liquidity_sweep_signal=[], structure_break_signal=[], choch_signal=[], fvg_signal=[], fibonacci_618_level=[])
+        candles = [Candle(symbol="TEST", timeframe="1h", timestamp=f"2026-01-01T{i:02d}:00:00+00:00", open=100.0, high=100.5, low=99.5, close=100.0, volume=1000.0, data_status="simulated") for i in range(5)]
+        assert _detect_generic_setups(candles, definition, series) == []
+
+    def test_combo_trigger_firing_produces_a_real_long_setup(self) -> None:
+        from app.strategy_engine import _SeriesCache
+
+        n = 20
+        candles = [
+            Candle(symbol="TEST", timeframe="1h", timestamp=f"2026-01-01T{i:02d}:00:00+00:00", open=100.0 + i, high=101.0 + i, low=99.0 + i, close=100.5 + i, volume=1000.0, data_status="simulated")
+            for i in range(n)
+        ]
+        sweep = [0.0] * n
+        fvg = [0.0] * n
+        sweep[5] = 1.0
+        fvg[5] = 1.0
+        # Real prices keep climbing every bar (a strictly rising real
+        # close series), so the entry step's own real "price_close > 0"
+        # condition is trivially satisfied on the very next real bar.
+        series = _SeriesCache(ema={}, sma={}, rsi={}, macd=[], stochastic={}, multi_horizon_trend_score=[], liquidity_sweep_signal=sweep, structure_break_signal=[], choch_signal=[], fvg_signal=fvg, fibonacci_618_level=[])
+        setups = _detect_generic_setups(candles, self._definition(), series)
+        assert len(setups) >= 1
+        assert setups[0].direction == "long"
+        # The combo fires at index 5 (both signals cross bullish there);
+        # confirmation_level is that trigger candle's own real high
+        # (106.0); the very next bar's real close (index 6, 106.5)
+        # already breaks it, so the real entry lands the bar after that.
+        assert setups[0].entry_index == 7

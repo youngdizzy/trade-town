@@ -47,7 +47,7 @@ from app.schemas import (
     WisdomState,
 )
 from app.signal_calibration import MAX_LEVEL as SIGNAL_MAX_LEVEL
-from app.watchlist import SEED_SYMBOLS, default_watchlist
+from app.watchlist import EXTRA_SYMBOL_POOL, SEED_SYMBOLS, default_watchlist
 
 _ALL_ROLES: tuple[ExecutiveDepartmentRole, ...] = ("research", "quant", "risk", "simulation", "decision_intelligence", "coach", "founders", "devils_advocate")
 
@@ -598,7 +598,10 @@ class TestOverallAndTier:
             hall_of_fame=[HallOfFameEntry(id=f"h{i}", category="best_research", title="x", description="x", value=1.0, achievedAt="2026-01-01T00:00:00+00:00") for i in range(30)],
             signal_calibration=SignalCalibrationState(unlockedLevel=SIGNAL_MAX_LEVEL),
             education=EducationProgress(completedLessonIds=[lesson.id for lesson in all_lessons()]),
-            watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s in ["AMZN", "GOOGL", "TSLA", "NVDA", "SLV", "USO"])],
+            # Every real EXTRA_SYMBOL_POOL symbol added (not a hardcoded
+            # subset) -- so a real _market_coverage() of exactly 100% is
+            # reached regardless of how many symbols that pool holds.
+            watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s, _name, _category in EXTRA_SYMBOL_POOL)],
             portfolio=default_portfolio().model_copy(update={"total_pnl_pct": 40.0, "trade_history": _strong_trade_history()}),
             debates=[_all_supportive_debate()],
             **_strong_executive_overrides(),
@@ -628,7 +631,10 @@ class TestWeakAreas:
             hall_of_fame=[HallOfFameEntry(id=f"h{i}", category="best_research", title="x", description="x", value=1.0, achievedAt="2026-01-01T00:00:00+00:00") for i in range(30)],
             signal_calibration=SignalCalibrationState(unlockedLevel=SIGNAL_MAX_LEVEL),
             education=EducationProgress(completedLessonIds=[lesson.id for lesson in all_lessons()]),
-            watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s in ["AMZN", "GOOGL", "TSLA", "NVDA", "SLV", "USO"])],
+            # Every real EXTRA_SYMBOL_POOL symbol added (not a hardcoded
+            # subset) -- so a real _market_coverage() of exactly 100% is
+            # reached regardless of how many symbols that pool holds.
+            watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s, _name, _category in EXTRA_SYMBOL_POOL)],
             portfolio=default_portfolio().model_copy(update={"total_pnl_pct": 40.0, "trade_history": _strong_trade_history()}),
             debates=[_all_supportive_debate()],
             **_strong_executive_overrides(),
@@ -652,7 +658,10 @@ class TestWeakAreas:
             hall_of_fame=[HallOfFameEntry(id=f"h{i}", category="best_research", title="x", description="x", value=1.0, achievedAt="2026-01-01T00:00:00+00:00") for i in range(30)],
             signal_calibration=SignalCalibrationState(unlockedLevel=SIGNAL_MAX_LEVEL),
             education=EducationProgress(completedLessonIds=[lesson.id for lesson in all_lessons()]),
-            watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s in ["AMZN", "GOOGL", "TSLA", "NVDA", "SLV", "USO"])],
+            # Every real EXTRA_SYMBOL_POOL symbol added (not a hardcoded
+            # subset) -- so a real _market_coverage() of exactly 100% is
+            # reached regardless of how many symbols that pool holds.
+            watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s, _name, _category in EXTRA_SYMBOL_POOL)],
             portfolio=default_portfolio().model_copy(update={"total_pnl_pct": 40.0, "trade_history": _strong_trade_history()}),
             debates=[_all_supportive_debate()],
             **_strong_executive_overrides(),

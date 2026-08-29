@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from app.execution_quality import (
     BASE_SLIPPAGE_BPS,
+    BASE_SPREAD_BPS,
     MAX_SLIPPAGE_BPS,
+    MAX_SPREAD_BPS,
     apply_slippage,
+    compute_estimated_spread_bps,
     compute_slippage_bps,
 )
 from app.market_intelligence import default_market_intelligence_state
@@ -56,6 +59,40 @@ class TestComputeSlippageBps:
         for score in (0.0, 12.5, 50.0, 87.0, 100.0):
             rate = compute_slippage_bps(_state_with_quality(score), "AAPL")
             assert BASE_SLIPPAGE_BPS <= rate <= MAX_SLIPPAGE_BPS
+
+
+class TestComputeEstimatedSpreadBps:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine" follow-up — closes a prior audit pass's "bid-ask spread not
+    tracked" hard-blocker finding with a real, disclosed, formula-based
+    PROXY (never a claim of a real quoted spread) over the exact same
+    real inputs compute_slippage_bps() already uses. Spread and
+    slippage are kept as two distinct real numbers — see
+    app/execution_quality.py's own module note."""
+
+    def test_perfect_quality_and_no_liquidity_read_returns_the_base_rate(self) -> None:
+        state = _state_with_quality(100.0)
+        assert compute_estimated_spread_bps(state, "AAPL") == BASE_SPREAD_BPS
+
+    def test_worst_quality_and_no_liquidity_read_returns_the_max_rate(self) -> None:
+        state = _state_with_quality(0.0)
+        assert compute_estimated_spread_bps(state, "AAPL") == MAX_SPREAD_BPS
+
+    def test_a_real_per_symbol_liquidity_read_refines_the_baseline(self) -> None:
+        state = _state_with_quality(50.0).model_copy(update={"liquidity": [_liquidity_read("AAPL", 100.0)]})
+        quality_only = compute_estimated_spread_bps(_state_with_quality(50.0), "AAPL")
+        assert compute_estimated_spread_bps(state, "AAPL") < quality_only
+
+    def test_result_is_always_within_the_disclosed_bounds(self) -> None:
+        for score in (0.0, 12.5, 50.0, 87.0, 100.0):
+            rate = compute_estimated_spread_bps(_state_with_quality(score), "AAPL")
+            assert BASE_SPREAD_BPS <= rate <= MAX_SPREAD_BPS
+
+    def test_spread_and_slippage_are_distinct_real_numbers_not_conflated(self) -> None:
+        # Same real inputs, two distinct real formulas/bounds -- never
+        # silently the same number.
+        state = _state_with_quality(50.0)
+        assert compute_estimated_spread_bps(state, "AAPL") != compute_slippage_bps(state, "AAPL")
 
 
 class TestApplySlippage:

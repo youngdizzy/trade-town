@@ -15,6 +15,8 @@ from app.volume_analysis import (
     DEFAULT_VOLUME_MA_PERIOD,
     classify_volume_state,
     compute_volume_confirmation,
+    dollar_volume,
+    dollar_volume_sma,
     relative_volume,
     relative_volume_series,
     volume_sma,
@@ -50,6 +52,25 @@ class TestVolumeSmaSeries:
         candles = _candles([1.0] * 4, [10.0, 20.0, 30.0, 40.0])
         series = volume_sma_series(candles, period=2)
         assert series == [round((10.0 + 20.0) / 2, 2), round((20.0 + 30.0) / 2, 2), round((30.0 + 40.0) / 2, 2)]
+
+
+class TestDollarVolume:
+    def test_none_with_no_candles(self) -> None:
+        assert dollar_volume([]) is None
+
+    def test_real_last_candle_volume_times_close(self) -> None:
+        candles = _candles([10.0, 20.0], [100.0, 200.0])
+        assert dollar_volume(candles) == round(20.0 * 200.0, 2)
+
+
+class TestDollarVolumeSma:
+    def test_none_with_insufficient_candles(self) -> None:
+        assert dollar_volume_sma(_candles([1.0, 2.0], [100.0, 200.0]), period=5) is None
+
+    def test_real_average_of_the_last_period_dollar_volumes(self) -> None:
+        candles = _candles([10.0, 10.0, 10.0], [10.0, 20.0, 30.0])
+        # dollar volume per bar: 100, 200, 300 -- average of the last 2: 250
+        assert dollar_volume_sma(candles, period=2) == round((200.0 + 300.0) / 2, 2)
 
 
 class TestRelativeVolume:
@@ -116,6 +137,19 @@ class TestComputeVolumeConfirmation:
         assert read.confirmation_state == "confirmed_move"
         assert read.relative_volume > 1.5
         assert read.price_move_atr > 0
+
+    def test_carries_real_dollar_volume_and_dollar_volume_sma(self) -> None:
+        # CEO directive "AHL-Inspired Systematic Trend & Momentum
+        # Research Engine" follow-up — closes the "dollar-volume not
+        # tracked" gap a prior audit pass flagged; re-audited and found
+        # trivial (volume * close, from data already tracked per candle).
+        closes = [100.0] * 20 + [130.0]
+        volumes = [100.0] * 20 + [250.0]
+        candles = _candles(closes, volumes)
+        read = compute_volume_confirmation(candles, "TEST", period=20, atr_period=14)
+        assert read is not None
+        assert read.dollar_volume == round(250.0 * 130.0, 2)
+        assert read.dollar_volume_sma == dollar_volume_sma(candles, period=20)
 
     def test_unconfirmed_move_when_big_price_move_has_weak_volume(self) -> None:
         closes = [100.0] * 20 + [70.0]

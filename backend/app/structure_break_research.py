@@ -15,16 +15,18 @@ existing read into an actually-testable hypothesis via the exact same
 `StrategyIndicatorName` mechanism `liquidity_sweep_signal` already
 established — zero new structure-detection logic.
 
-HARD BLOCKER, DOCUMENTED NOT FABRICATED: the directive's own Phase 10
-also asks for Change of Character (CHoCH) as a distinct researchable
-event. A repo-wide grep confirms CHoCH does not exist anywhere in this
-codebase — only named once, in a comment in
-`app/agent_trading_status.py`, never actually computed. Inventing a
-CHoCH definition here (there is no single universally-agreed one; real
-price-action practice differs on whether it requires a *counter-trend*
-swing break or specifically the *first* break after a trend's most
-recent extreme) would be exactly the kind of fabricated threshold this
-project's own conventions forbid. Not built this pass.
+CHANGE OF CHARACTER (CHoCH), CLOSED IN A LATER PASS: the directive's own
+Phase 10 also asks for CHoCH as a distinct researchable event. This
+module originally refused to invent a definition ("there is no single
+universally-agreed one"). A later re-audit found `compute_market_
+structure()` already computes both halves of one real, specific,
+defensible definition — the latest real BOS, but only when it disagrees
+with the real net trend over the sample — and now exposes it as
+`MarketStructureRead.change_of_character`, disclosed explicitly as ONE
+real choice, never claimed as the only valid one (see that field's own
+docstring in app/schemas.py). `change_of_character_signal_series()`
+below reuses the exact same bounded-window scanning pattern as
+`structure_break_signal_series()` — zero new detection logic.
 
 POINT-IN-TIME CORRECTNESS: `structure_break_signal_series()` calls
 `compute_market_structure()` on a bounded trailing window ending at
@@ -65,5 +67,27 @@ def structure_break_signal_series(candles: list[Candle], symbol: str) -> list[fl
         if read.last_break_of_structure == "bullish":
             series[i] = 1.0
         elif read.last_break_of_structure == "bearish":
+            series[i] = -1.0
+    return series
+
+
+def change_of_character_signal_series(candles: list[Candle], symbol: str) -> list[float]:
+    """The real, full Change of Character signal series, index-aligned
+    one-to-one with `candles` — `+1.0` where the real, most recent
+    confirmed CHoCH (within the trailing window) is bullish, `-1.0`
+    where it's bearish, `0.0` where none or not enough history yet.
+    Reuses `compute_market_structure()`'s own real
+    `change_of_character` field (see its docstring for the exact,
+    disclosed definition) over the same bounded trailing window
+    `structure_break_signal_series()` above already uses — zero new
+    detection logic."""
+    n = len(candles)
+    series = [0.0] * n
+    for i in range(n):
+        start = max(0, i + 1 - STRUCTURE_SCAN_WINDOW)
+        read = compute_market_structure(symbol, candles[start : i + 1])
+        if read.change_of_character == "bullish":
+            series[i] = 1.0
+        elif read.change_of_character == "bearish":
             series[i] = -1.0
     return series

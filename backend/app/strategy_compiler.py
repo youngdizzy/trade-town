@@ -196,6 +196,56 @@ _LIQUIDITY_SWEEP_PATTERN = re.compile(r"a\s+(bullish|bearish)\s+liquidity\s+swee
 # liquidity-sweep pattern above.
 _STRUCTURE_BREAK_PATTERN = re.compile(r"a\s+(bullish|bearish)\s+break\s+of\s+structure\s+occurs", re.IGNORECASE)
 
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine," Phase 10 — the one new real phrasing this compiler
+# recognizes for app/structure_break_research.py's real
+# change_of_character_signal_series() indicator (see
+# StrategyIndicatorName's own "choch_signal" docstring in
+# app/schemas.py, and MarketStructureRead.change_of_character's own
+# docstring for the exact, disclosed CHoCH definition used). "A
+# bullish/bearish change of character occurs" -> signal crosses
+# above/below 0, same convention as the structure-break pattern above.
+_CHOCH_PATTERN = re.compile(r"a\s+(bullish|bearish)\s+change\s+of\s+character\s+occurs", re.IGNORECASE)
+
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine," Phase 10 — the one new real phrasing this compiler
+# recognizes for app/fvg_research.py's real event-pulse indicator (see
+# StrategyIndicatorName's own "fvg_signal" docstring in app/schemas.py).
+# "A bullish/bearish fair value gap forms" -> signal crosses above/below
+# 0, same convention as every other event-pulse pattern above.
+_FVG_PATTERN = re.compile(r"a\s+(bullish|bearish)\s+fair\s+value\s+gap\s+forms", re.IGNORECASE)
+
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine," Phase 10 — the one new real phrasing this compiler
+# recognizes for app/fibonacci_research.py's real price-valued
+# indicator (see StrategyIndicatorName's own "fibonacci_618_level"
+# docstring in app/schemas.py, and that module's own docstring for why
+# only the 61.8% ratio is wired). "Price closes above/below the 61.8%
+# Fibonacci retracement level" -> real price_close crosses_above/below
+# the real fibonacci_618_level series, reusing the exact same two-
+# indicator crossing mechanism the MACD line/signal-line pattern above
+# already established, never a new comparison primitive.
+_FIBONACCI_618_PATTERN = re.compile(r"price\s+closes\s+(above|below)\s+the\s+(?:61\.8%?|0\.618)\s+Fibonacci\s+(?:retracement\s+)?level", re.IGNORECASE)
+
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine," Phase 9 — the sweep+FVG combo hypothesis (no real
+# "displacement" detector exists anywhere in this codebase to include
+# as a third leg — see app/strategy_engine.py's own
+# `_combo_direction_at()` docstring for the same disclosure). "A
+# bullish/bearish liquidity sweep AND a [same] bullish/bearish fair
+# value gap both occur" -> a real StrategySequenceStep.all_of list of
+# TWO conditions (see that field's own docstring in app/schemas.py) —
+# the one new real phrasing recognizing app/strategy_engine.py's own
+# real AND-combination support, never a claim every possible N-way
+# combination is recognized. The `\1` backreference requires BOTH
+# halves to state the SAME real direction — "a bullish sweep and a
+# bearish FVG" is a real, self-contradictory request this pattern
+# deliberately does not match (falls through to "no recognizable
+# trigger" rather than silently picking one side).
+_SWEEP_FVG_COMBO_PATTERN = re.compile(
+    r"a\s+(bullish|bearish)\s+liquidity\s+sweep\s+and\s+a\s+\1\s+fair\s+value\s+gap\s+both\s+occur", re.IGNORECASE
+)
+
 # Real requirement phrasing: "at least N bullish/bearish candles".
 _REQUIREMENT_PATTERN = re.compile(
     r"at\s+least\s+(\w+)\s+(bullish|bearish)\s+(?:opposite\s+)?candles?", re.IGNORECASE
@@ -292,14 +342,69 @@ def compile_strategy_text(
     trend_score_match = (
         _TREND_SCORE_THRESHOLD_PATTERN.search(source_text) if not trigger_match and not rsi_match and not stochastic_match and not macd_match else None
     )
+    # Checked BEFORE the individual sweep/FVG patterns below — "a
+    # bullish liquidity sweep and a bullish fair value gap both occur"
+    # would otherwise have its own leading "a bullish liquidity sweep"
+    # clause greedily matched by _LIQUIDITY_SWEEP_PATTERN first, never
+    # giving the combo pattern a chance.
+    combo_match = (
+        _SWEEP_FVG_COMBO_PATTERN.search(source_text)
+        if not trigger_match and not rsi_match and not stochastic_match and not macd_match and not trend_score_match
+        else None
+    )
     sweep_match = (
         _LIQUIDITY_SWEEP_PATTERN.search(source_text)
-        if not trigger_match and not rsi_match and not stochastic_match and not macd_match and not trend_score_match
+        if not trigger_match and not rsi_match and not stochastic_match and not macd_match and not trend_score_match and not combo_match
         else None
     )
     structure_match = (
         _STRUCTURE_BREAK_PATTERN.search(source_text)
-        if not trigger_match and not rsi_match and not stochastic_match and not macd_match and not trend_score_match and not sweep_match
+        if not trigger_match
+        and not rsi_match
+        and not stochastic_match
+        and not macd_match
+        and not trend_score_match
+        and not combo_match
+        and not sweep_match
+        else None
+    )
+    choch_match = (
+        _CHOCH_PATTERN.search(source_text)
+        if not trigger_match
+        and not rsi_match
+        and not stochastic_match
+        and not macd_match
+        and not trend_score_match
+        and not combo_match
+        and not sweep_match
+        and not structure_match
+        else None
+    )
+    fvg_match = (
+        _FVG_PATTERN.search(source_text)
+        if not trigger_match
+        and not rsi_match
+        and not stochastic_match
+        and not macd_match
+        and not trend_score_match
+        and not combo_match
+        and not sweep_match
+        and not structure_match
+        and not choch_match
+        else None
+    )
+    fibonacci_match = (
+        _FIBONACCI_618_PATTERN.search(source_text)
+        if not trigger_match
+        and not rsi_match
+        and not stochastic_match
+        and not macd_match
+        and not trend_score_match
+        and not combo_match
+        and not sweep_match
+        and not structure_match
+        and not choch_match
+        and not fvg_match
         else None
     )
 
@@ -400,6 +505,36 @@ def compile_strategy_text(
                 detail=f"Trigger: real Multi-Horizon Trend Score {side.lower()} {threshold_str}.",
             )
         )
+    elif combo_match:
+        (side,) = combo_match.groups()
+        direction = "long" if side.lower() == "bullish" else "short"
+        operator = "crosses_above" if direction == "long" else "crosses_below"
+        sweep_condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition-sweep",
+            left=StrategyIndicatorRef(indicator="liquidity_sweep_signal"),
+            operator=operator,  # type: ignore[arg-type]
+            rightValue=0.0,
+            detail=f"Real {side.lower()} liquidity sweep (app/liquidity_sweep_research.py) — combo leg 1 of 2.",
+        )
+        fvg_condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition-fvg",
+            left=StrategyIndicatorRef(indicator="fvg_signal"),
+            operator=operator,  # type: ignore[arg-type]
+            rightValue=0.0,
+            detail=f"Real {side.lower()} Fair Value Gap (app/fvg_research.py) — combo leg 2 of 2.",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                allOf=[sweep_condition, fvg_condition],
+                detail=(
+                    f"Trigger: real {side.lower()} liquidity sweep AND real {side.lower()} Fair Value Gap both confirmed on the SAME bar "
+                    "(a real, strict same-bar simultaneity requirement — see app/strategy_engine.py's own _combo_direction_at() docstring). "
+                    'No real "displacement" leg is included — no such detector exists anywhere in this codebase.'
+                ),
+            )
+        )
     elif sweep_match:
         (side,) = sweep_match.groups()
         direction = "long" if side.lower() == "bullish" else "short"
@@ -447,6 +582,69 @@ def compile_strategy_text(
                 stepType="trigger",
                 condition=condition,
                 detail=f"Trigger: real {side.lower()} Break of Structure detected.",
+            )
+        )
+    elif choch_match:
+        (side,) = choch_match.groups()
+        direction = "long" if side.lower() == "bullish" else "short"
+        # crosses_above/crosses_below — same real reason as the
+        # structure-break pattern above: a real CHoCH state can persist
+        # unchanged across many bars.
+        operator = "crosses_above" if direction == "long" else "crosses_below"
+        condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition",
+            left=StrategyIndicatorRef(indicator="choch_signal"),
+            operator=operator,  # type: ignore[arg-type]
+            rightValue=0.0,
+            detail=f"Real {side.lower()} Change of Character (app/market_intelligence.py's own swing-structure detector, wrapped by app/structure_break_research.py) just occurred.",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                condition=condition,
+                detail=f"Trigger: real {side.lower()} Change of Character detected.",
+            )
+        )
+    elif fvg_match:
+        (side,) = fvg_match.groups()
+        direction = "long" if side.lower() == "bullish" else "short"
+        # crosses_above/crosses_below — same real reason as every other
+        # event-pulse pattern above: a real FVG can stay visible across
+        # several consecutive bars while it remains inside the trailing
+        # scan window.
+        operator = "crosses_above" if direction == "long" else "crosses_below"
+        condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition",
+            left=StrategyIndicatorRef(indicator="fvg_signal"),
+            operator=operator,  # type: ignore[arg-type]
+            rightValue=0.0,
+            detail=f"Real {side.lower()} Fair Value Gap (app/technical_patterns.py's own standard 3-candle detector, wrapped by app/fvg_research.py) just formed.",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                condition=condition,
+                detail=f"Trigger: real {side.lower()} Fair Value Gap detected.",
+            )
+        )
+    elif fibonacci_match:
+        (side,) = fibonacci_match.groups()
+        direction = "long" if side.lower() == "above" else "short"
+        condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition",
+            left=StrategyIndicatorRef(indicator="price_close"),
+            operator="crosses_above" if direction == "long" else "crosses_below",
+            rightIndicator=StrategyIndicatorRef(indicator="fibonacci_618_level"),
+            detail=f"Real price closes {side.lower()} its own real 61.8% Fibonacci retracement level (app/technical_patterns.py's own real swing-based calculation, wrapped by app/fibonacci_research.py).",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                condition=condition,
+                detail=f"Trigger: real price close crosses {side.lower()} the 61.8% Fibonacci retracement level.",
             )
         )
 

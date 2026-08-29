@@ -99,6 +99,59 @@ class TestComputeMarketStructure:
         assert structure.structure_state == "consolidation"
         assert structure.last_break_of_structure == "none"
 
+    def test_bullish_bos_that_agrees_with_the_net_trend_is_not_a_choch(self) -> None:
+        # The rising-swing-highs fixture above nets UP overall (100 ->
+        # ~117), so its real bullish BOS agrees with the real net trend
+        # — structure_state is "trend_continuation", not a reversal, and
+        # change_of_character must stay "none".
+        candles = []
+        for i in range(6):
+            candles.append(_candle(i, open_=100 + i, high=101 + i, low=99 + i, close=100 + i))
+        candles.append(_candle(6, open_=106, high=112, low=105, close=111))
+        for i in range(7, 13):
+            candles.append(_candle(i, open_=110 - (i - 7), high=111 - (i - 7), low=108 - (i - 7), close=109 - (i - 7)))
+        candles.append(_candle(13, open_=104, high=105, low=95, close=96))
+        for i in range(14, 20):
+            candles.append(_candle(i, open_=96 + (i - 14) * 3, high=98 + (i - 14) * 3, low=95 + (i - 14) * 3, close=97 + (i - 14) * 3))
+        candles.append(_candle(20, open_=114, high=125, low=113, close=124))
+        for i in range(21, 27):
+            candles.append(_candle(i, open_=123 - (i - 21), high=124 - (i - 21), low=121 - (i - 21), close=122 - (i - 21)))
+        structure = compute_market_structure("NEXA", candles)
+        assert structure.last_break_of_structure == "bullish"
+        assert structure.structure_state == "trend_continuation"
+        assert structure.change_of_character == "none"
+
+    def test_bullish_bos_against_a_negative_net_trend_is_a_real_choch(self) -> None:
+        # CEO directive "AHL-Inspired Systematic Trend & Momentum
+        # Research Engine," Phase 10 — one real, specific, disclosed
+        # CHoCH definition: the latest confirmed BOS, but only when it
+        # disagrees with the real net trend over the sample. A steep
+        # decline from 300 down to ~100 sets a strongly NEGATIVE net
+        # trend over the full window; the same real rising-swing-highs
+        # wiggle from the fixture above is then appended, still forming
+        # a real bullish BOS locally — the two disagree, so this must
+        # read as a real bullish CHoCH.
+        candles = []
+        for i in range(10):
+            price = 300 - i * 20
+            candles.append(_candle(i, open_=price + 2, high=price + 3, low=price - 3, close=price))
+        base_i = 10
+        for i in range(6):
+            candles.append(_candle(base_i + i, open_=100 + i, high=101 + i, low=99 + i, close=100 + i))
+        candles.append(_candle(base_i + 6, open_=106, high=112, low=105, close=111))
+        for i in range(7, 13):
+            candles.append(_candle(base_i + i, open_=110 - (i - 7), high=111 - (i - 7), low=108 - (i - 7), close=109 - (i - 7)))
+        candles.append(_candle(base_i + 13, open_=104, high=105, low=95, close=96))
+        for i in range(14, 20):
+            candles.append(_candle(base_i + i, open_=96 + (i - 14) * 3, high=98 + (i - 14) * 3, low=95 + (i - 14) * 3, close=97 + (i - 14) * 3))
+        candles.append(_candle(base_i + 20, open_=114, high=125, low=113, close=124))
+        for i in range(21, 27):
+            candles.append(_candle(base_i + i, open_=123 - (i - 21), high=124 - (i - 21), low=121 - (i - 21), close=122 - (i - 21)))
+        structure = compute_market_structure("NEXA", candles)
+        assert structure.last_break_of_structure == "bullish"
+        assert structure.structure_state == "trend_reversal"
+        assert structure.change_of_character == "bullish"
+
 
 class TestComputeLiquidity:
     def test_not_enough_history_is_an_honest_default(self) -> None:

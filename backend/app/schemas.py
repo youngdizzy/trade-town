@@ -146,8 +146,22 @@ NewsCategory = Literal["company", "discovery", "market"]
 # exist because a research item can be about a specific ticker (stock) or
 # about the company behind it (company) — kept distinct since the brief
 # lists them separately, even though in practice most seed items use "stock".
+#
+# "futures"/"fx"/"treasury" (CEO directive "AHL-Inspired Systematic Trend
+# & Momentum Research Engine" follow-up) — a prior audit pass labeled
+# these asset classes a hard blocker ("no data feeds exist"); re-audited
+# and found the opposite: every symbol here already trades on
+# app/market_data.py's own fully synthetic (mock) process, so no real
+# feed was ever needed for ANY category. See
+# app/watchlist.py::EXTRA_SYMBOL_POOL's own comment for the specific new
+# symbols and app/market_data.py's own `_SEED_PRICE_OVERRIDE` for the
+# one real, disclosed simplification this closes (a realistic starting
+# PRICE LEVEL per instrument) and the one real, disclosed gap it does
+# NOT close (per-asset-class volatility calibration — these symbols
+# still run through the exact same generic regime-switching model every
+# other symbol does).
 ResearchCategory = Literal[
-    "stock", "etf", "index", "economy", "gold", "bitcoin", "company", "sector"
+    "stock", "etf", "index", "economy", "gold", "bitcoin", "company", "sector", "futures", "fx", "treasury"
 ]
 ResearchStatus = Literal["queued", "in_progress", "completed"]
 MemoryCategory = Literal[
@@ -3420,6 +3434,21 @@ class MarketStructureRead(CamelModel):
         "expansion",
         "compression",
     ] = Field(alias="structureState")
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" Phase 10 — Change of Character. A prior pass explicitly
+    # refused to invent a CHoCH definition since "there is no single
+    # universally-agreed one" (see app/structure_break_research.py's own
+    # historical docstring note). This is ONE real, specific, disclosed
+    # definition — never claimed as the only valid one — reusing exactly
+    # the two real reads this function already computes: the most recent
+    # confirmed `last_break_of_structure` direction, but ONLY when it
+    # disagrees with the real net trend over the sample (the exact same
+    # condition `structure_state == "trend_reversal"` already flags).
+    # "none" whenever the latest break still agrees with (or there is no
+    # real net) trend.
+    change_of_character: Literal["bullish", "bearish", "none"] = Field(
+        default="none", alias="changeOfCharacter"
+    )
     detail: str
 
 
@@ -3456,6 +3485,14 @@ class VolumeConfirmationRead(CamelModel):
     volume_state: VolumeState = Field(alias="volumeState")
     price_move_atr: float = Field(alias="priceMoveAtr")
     confirmation_state: VolumeConfirmationState = Field(alias="confirmationState")
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" follow-up — a prior audit pass labeled "dollar-volume...
+    # not tracked anywhere" a hard blocker; re-audited and found trivial
+    # (volume * close, from data this codebase already tracks per real
+    # candle). `dollar_volume_sma` is `None` below its own real minimum
+    # history, same honesty convention as every other SMA-style read.
+    dollar_volume: float = Field(default=0.0, alias="dollarVolume")
+    dollar_volume_sma: float | None = Field(default=None, alias="dollarVolumeSma")
     detail: str
 
 
@@ -4404,6 +4441,31 @@ StrategyIndicatorName = Literal[
     # +1.0 on a real bullish BOS, -1.0 on a real bearish BOS, 0.0
     # otherwise.
     "structure_break_signal",
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine," Phase 10 — Change of Character, the real event-signal
+    # pattern above wrapping compute_market_structure()'s own real
+    # change_of_character field (see MarketStructureRead's own docstring
+    # for the exact, disclosed CHoCH definition — one specific real
+    # choice, never claimed as the only valid one) via
+    # app/structure_break_research.py::change_of_character_signal_series().
+    # +1.0 on a real bullish CHoCH, -1.0 on a real bearish CHoCH, 0.0
+    # otherwise.
+    "choch_signal",
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine," Phase 10 — the same real event-signal pattern above,
+    # wrapping app/technical_patterns.py::detect_fair_value_gaps()'s own
+    # real, standard 3-candle FVG detector via
+    # app/fvg_research.py::fvg_signal_series(). +1.0 on a real bullish
+    # FVG, -1.0 on a real bearish FVG, 0.0 otherwise.
+    "fvg_signal",
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine," Phase 10 — a real PRICE-VALUED series (not an event
+    # pulse like the four above), wrapping app/technical_patterns.py::
+    # compute_fibonacci_levels()'s own real 61.8% retracement price via
+    # app/fibonacci_research.py::fibonacci_618_level_series(). One real,
+    # disclosed ratio wired this pass, not all seven that function
+    # already computes — see that module's own docstring for why.
+    "fibonacci_618_level",
 ]
 
 
@@ -4454,6 +4516,21 @@ class StrategySequenceStep(CamelModel):
     id: str
     step_type: StrategySequenceStepType = Field(alias="stepType")
     condition: StrategyCondition | None = None
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine," Phase 9 — a real AND-combination of two or more real
+    # event-pulse conditions on a `trigger` step (e.g. "a real bullish
+    # liquidity sweep AND a real bullish Fair Value Gap both occur"),
+    # never a claim that `condition` above supports N conditions. Set
+    # ONLY on `trigger` steps, and mutually exclusive with `condition`
+    # (a step has either one `condition` or one real `all_of` list,
+    # never both) — see app/strategy_engine.py's own
+    # `_detect_generic_setups()` docstring for the exact real
+    # simultaneity requirement (every condition must independently
+    # register its own real crossing event on the SAME bar) and the
+    # one real, disclosed simplification this does NOT attempt
+    # (invalidation tracking after the trigger fires still watches only
+    # the FIRST condition in the list, not all of them).
+    all_of: list[StrategyCondition] | None = Field(default=None, alias="allOf")
     min_consecutive_bars: int | None = Field(default=None, alias="minConsecutiveBars")
     candle_direction: CandleDirection | None = Field(default=None, alias="candleDirection")
     detail: str

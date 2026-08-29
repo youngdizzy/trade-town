@@ -197,6 +197,38 @@ _NEUTRAL_REGIME_WEIGHTS: dict[InternalRegime, float] = {"trend_up": 0.25, "trend
 # sequence.
 RECENT_REGIME_BIAS_WINDOW = 20
 
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine" follow-up — `_seed_price()`'s own generic hash-derived
+# "$20-$500" range is calibrated for stock-like prices; a futures/FX/
+# Treasury symbol landing in that same range would misrepresent what a
+# real instrument of that type actually looks like (e.g. EURUSD trading
+# at "$312" is not a real FX quote). This is a small, explicit,
+# per-symbol override table — not a generic "category -> range" formula
+# — because app/watchlist.py's own SYMBOL_CATEGORY lookup lives in a
+# module that already imports FROM this one (importing it back here
+# would create a circular import), and because real instrument price
+# levels vary too much within one asset class for one generic formula
+# to be honest (a single "futures range" would be meaningless across an
+# E-mini contract at ~$4,500-$5,500 and a crude oil contract at
+# ~$60-$90). Every symbol here is one of app/watchlist.py's own
+# EXTRA_SYMBOL_POOL entries — see that pool's own comment. Real,
+# disclosed starting levels only; per-asset-class VOLATILITY
+# calibration is NOT attempted here — these symbols still run through
+# the exact same generic regime-switching model every other symbol
+# does, a separate, disclosed, unattempted lift. Covers both
+# app/watchlist.py's own EXTRA_SYMBOL_POOL additions and
+# app/asset_discovery.py's own DISCOVERY_SYMBOL_POOL additions.
+_SEED_PRICE_OVERRIDE: dict[str, float] = {
+    "ES=F": 5000.0,
+    "CL=F": 75.0,
+    "ZN=F": 110.0,
+    "EURUSD=X": 1.08,
+    "GBPUSD=X": 1.27,
+    "NQ=F": 19000.0,
+    "ZB=F": 118.0,
+    "USDJPY=X": 150.0,
+}
+
 # GARCH(1,1)-style volatility clustering: variance_t = omega + alpha *
 # shock_{t-1}^2 + beta * variance_{t-1}. Game-flavor constants (alpha +
 # beta < 1 for stationarity), not fit to any real historical series —
@@ -308,6 +340,9 @@ class MockMarketDataProvider(MarketDataProvider):
 
     @staticmethod
     def _seed_price(symbol: str) -> float:
+        override = _SEED_PRICE_OVERRIDE.get(symbol)
+        if override is not None:
+            return override
         digest = hashlib.sha256(symbol.encode()).hexdigest()
         return 20 + (int(digest[:8], 16) % 48000) / 100  # roughly $20-$500
 

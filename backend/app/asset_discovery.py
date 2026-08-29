@@ -36,11 +36,14 @@ primitives, reused rather than duplicated:
      logic invented.
 
 DISCOVERY_SYMBOL_POOL is the real asset-class taxonomy extension: more
-real-world tickers across every one of the 8 existing ResearchCategory
+real-world tickers across every one of the 11 existing ResearchCategory
 values (not a second, competing taxonomy — the same real field every
 other symbol pool in this codebase already carries), so discovery
 genuinely broadens asset-class coverage rather than only adding more of
-one kind.
+one kind. Includes futures/FX/Treasury entries (CEO directive "AHL-
+Inspired Systematic Trend & Momentum Research Engine" follow-up — see
+app/watchlist.py::EXTRA_SYMBOL_POOL's own comment for why these asset
+classes were previously, incorrectly, labeled a hard blocker).
 
 HONEST SCOPE CUT: this is a real, Research-Desk-only read — "never an
 automatic trade selection," the exact same disclosed boundary
@@ -79,6 +82,9 @@ DISCOVERY_SYMBOL_POOL: list[tuple[str, str, str]] = [
     ("ETH-USD", "Ethereum", "bitcoin"),
     ("XLE", "Energy Select Sector SPDR Fund", "sector"),
     ("XLK", "Technology Select Sector SPDR Fund", "sector"),
+    ("NQ=F", "Nasdaq-100 E-mini Futures", "futures"),
+    ("ZB=F", "30-Year T-Bond Futures", "treasury"),
+    ("USDJPY=X", "US Dollar / Japanese Yen", "fx"),
 ]
 
 DEFAULT_DISCOVERY_TOP_N = 10

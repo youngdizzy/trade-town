@@ -274,3 +274,44 @@ class TestNoObviouslySyntheticPatterns:
         candles = provider.get_candles("PATTERNTEST", "1h", 200)
         magnitudes = [abs(c.close - c.open) for c in candles]
         assert max(magnitudes) > min(m for m in magnitudes if m > 0) * 5
+
+
+class TestFuturesFxTreasurySeedPrices:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine" follow-up — a prior audit pass labeled futures/FX/Treasury a
+    hard blocker ("no data feeds exist"); re-audited and found the
+    opposite. `_SEED_PRICE_OVERRIDE` gives each of these real, disclosed
+    symbols a realistic real starting PRICE LEVEL instead of the generic
+    stock-calibrated "$20-$500" hash range every other symbol uses."""
+
+    @pytest.mark.parametrize(
+        "symbol,low,high",
+        [
+            ("ES=F", 1000.0, 20000.0),
+            ("CL=F", 20.0, 200.0),
+            ("ZN=F", 50.0, 200.0),
+            ("EURUSD=X", 0.5, 2.0),
+            ("GBPUSD=X", 0.5, 2.0),
+            ("NQ=F", 1000.0, 40000.0),
+            ("ZB=F", 50.0, 200.0),
+            ("USDJPY=X", 50.0, 300.0),
+        ],
+    )
+    def test_real_starting_price_lands_in_a_realistic_range_for_the_instrument(self, symbol, low, high):
+        # Never the generic $20-$500 stock-calibrated range these
+        # specific instruments would otherwise fall into — a real,
+        # explicit override for each one instead.
+        seed = MockMarketDataProvider._seed_price(symbol)
+        assert low <= seed <= high
+
+    def test_get_quote_and_get_candles_work_normally_for_a_futures_symbol(self):
+        provider = MockMarketDataProvider()
+        quote = provider.get_quote("ES=F")
+        assert quote.price > 0
+        candles = provider.get_candles("ES=F", "1h", 30)
+        assert len(candles) == 30
+        assert all(c.close > 0 for c in candles)
+
+    def test_a_symbol_with_no_override_still_uses_the_generic_hash_range(self):
+        seed = MockMarketDataProvider._seed_price("SOME-UNKNOWN-SYMBOL")
+        assert 20.0 <= seed <= 500.0

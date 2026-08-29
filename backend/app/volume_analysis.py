@@ -122,6 +122,28 @@ def relative_volume_series(candles: list[Candle], period: int = DEFAULT_VOLUME_M
     return series
 
 
+def dollar_volume(candles: list[Candle]) -> float | None:
+    """The last real candle's own dollar volume (`volume * close`) — a
+    real, trivial derived read from data this codebase already tracks
+    per-candle (see `Candle.volume` in app/market_data.py), never a
+    claim of real order-flow or notional turnover beyond that. `None`
+    (never a fabricated 0.0) with no real candle history at all."""
+    if not candles:
+        return None
+    last = candles[-1]
+    return round(last.volume * last.close, 2)
+
+
+def dollar_volume_sma(candles: list[Candle], period: int = DEFAULT_VOLUME_MA_PERIOD) -> float | None:
+    """Simple moving average of real per-candle dollar volume over the
+    last `period` candles — the dollar-volume equivalent of
+    `volume_sma()` above, same `None`-below-minimum-history convention."""
+    if period < 1 or len(candles) < period:
+        return None
+    window = candles[-period:]
+    return round(sum(c.volume * c.close for c in window) / period, 2)
+
+
 def classify_volume_state(rvol: float) -> VolumeState:
     if rvol >= VOLUME_CLIMAX_THRESHOLD:
         return "climax"
@@ -194,5 +216,7 @@ def compute_volume_confirmation(
         volumeState=volume_state,
         priceMoveAtr=price_move_atr,
         confirmationState=confirmation_state,
+        dollarVolume=dollar_volume(candles) or 0.0,
+        dollarVolumeSma=dollar_volume_sma(candles, period),
         detail=detail,
     )

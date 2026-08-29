@@ -41,6 +41,23 @@ EXTRA_SYMBOL_POOL: list[tuple[str, str, str]] = [
     ("NVDA", "NVIDIA Corp.", "company"),
     ("SLV", "iShares Silver Trust", "gold"),
     ("USO", "United States Oil Fund", "sector"),
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" follow-up — a prior audit pass labeled futures/FX/Treasury
+    # asset classes a hard blocker ("no data feeds exist"); re-audited
+    # and found the opposite — every symbol on this pool already trades
+    # on app/market_data.py's own fully synthetic (mock) process, so no
+    # real feed was ever required for ANY category here. Yahoo-style
+    # naming convention ("=F" futures, "=X" FX) so app/market_data.py's
+    # own `_SEED_PRICE_OVERRIDE` can give each a realistic real starting
+    # PRICE LEVEL (see that dict's own docstring) without needing a
+    # category lookup (which would create a circular import back into
+    # this module). Per-asset-class VOLATILITY calibration is NOT
+    # attempted — a real, disclosed, separate lift.
+    ("ES=F", "E-mini S&P 500 Futures", "futures"),
+    ("CL=F", "Crude Oil Futures", "futures"),
+    ("ZN=F", "10-Year T-Note Futures", "treasury"),
+    ("EURUSD=X", "Euro / US Dollar", "fx"),
+    ("GBPUSD=X", "British Pound / US Dollar", "fx"),
 ]
 
 # Every symbol this codebase knows a category for, seed tier plus extra

@@ -266,3 +266,130 @@ class TestStructureBreakTrigger:
         assert trigger.condition.left.indicator == "structure_break_signal"
         assert trigger.condition.operator == "crosses_below"
         assert trigger.condition.right_value == 0.0
+
+
+class TestChangeOfCharacterTrigger:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine," Phase 10 — the real choch_signal indicator's own compiler
+    pattern, closing a prior pass's explicit hard-blocker (see
+    app/structure_break_research.py's own historical docstring note on
+    why CHoCH was originally refused)."""
+
+    def test_bullish_choch_compiles_to_a_real_long_crossing_trigger(self) -> None:
+        text = "Buy when a bullish change of character occurs, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "choch_signal"
+        assert trigger.condition.operator == "crosses_above"
+        assert trigger.condition.right_value == 0.0
+
+    def test_bearish_choch_compiles_to_a_real_short_crossing_trigger(self) -> None:
+        text = "Sell when a bearish change of character occurs, then enter when price closes below the previous swing low. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "choch_signal"
+        assert trigger.condition.operator == "crosses_below"
+        assert trigger.condition.right_value == 0.0
+
+
+class TestFvgTrigger:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine," Phase 10 — the real fvg_signal indicator's own compiler
+    pattern."""
+
+    def test_bullish_fvg_compiles_to_a_real_long_crossing_trigger(self) -> None:
+        text = "Buy when a bullish fair value gap forms, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "fvg_signal"
+        assert trigger.condition.operator == "crosses_above"
+        assert trigger.condition.right_value == 0.0
+
+    def test_bearish_fvg_compiles_to_a_real_short_crossing_trigger(self) -> None:
+        text = "Sell when a bearish fair value gap forms, then enter when price closes below the previous swing low. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "fvg_signal"
+        assert trigger.condition.operator == "crosses_below"
+        assert trigger.condition.right_value == 0.0
+
+
+class TestFibonacci618Trigger:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine," Phase 10 — the real fibonacci_618_level indicator's own
+    compiler pattern. Unlike every other new trigger this directive
+    added, this one compares two real indicators (price_close vs the
+    real Fibonacci level), reusing the exact same crossing mechanism the
+    MACD line/signal-line pattern already established."""
+
+    def test_price_above_fib_level_compiles_to_a_real_long_crossing_trigger(self) -> None:
+        text = "Buy when price closes above the 61.8% Fibonacci retracement level, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "price_close"
+        assert trigger.condition.operator == "crosses_above"
+        assert trigger.condition.right_indicator is not None
+        assert trigger.condition.right_indicator.indicator == "fibonacci_618_level"
+
+    def test_price_below_fib_level_compiles_to_a_real_short_crossing_trigger(self) -> None:
+        text = "Sell when price closes below the 61.8% Fibonacci retracement level, then enter when price closes below the previous swing low. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "price_close"
+        assert trigger.condition.operator == "crosses_below"
+        assert trigger.condition.right_indicator is not None
+        assert trigger.condition.right_indicator.indicator == "fibonacci_618_level"
+
+
+class TestSweepFvgComboTrigger:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine," Phase 9 — the sweep+FVG combo hypothesis, closing a prior
+    audit pass's finding that "combining sweep+displacement+FVG as one
+    simultaneous multi-condition trigger... needs a moderate schema
+    extension." No real "displacement" leg is included — no such
+    detector exists anywhere in this codebase (a real, disclosed scope
+    cut, not a fabricated third condition)."""
+
+    def test_bullish_combo_compiles_to_a_real_two_condition_all_of_trigger(self) -> None:
+        text = "Buy when a bullish liquidity sweep and a bullish fair value gap both occur, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is None
+        assert trigger.all_of is not None
+        assert len(trigger.all_of) == 2
+        indicators = {c.left.indicator for c in trigger.all_of}
+        assert indicators == {"liquidity_sweep_signal", "fvg_signal"}
+        assert all(c.operator == "crosses_above" for c in trigger.all_of)
+        assert all(c.right_value == 0.0 for c in trigger.all_of)
+
+    def test_bearish_combo_compiles_to_a_real_two_condition_all_of_trigger(self) -> None:
+        text = "Sell when a bearish liquidity sweep and a bearish fair value gap both occur, then enter when price closes below the previous swing low. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is None
+        assert trigger.all_of is not None
+        assert len(trigger.all_of) == 2
+        assert all(c.operator == "crosses_below" for c in trigger.all_of)
+
+    def test_mismatched_direction_does_not_compile_as_a_combo(self) -> None:
+        # A real, self-contradictory request ("bullish sweep and bearish
+        # FVG") — the \1 backreference deliberately does not match this,
+        # so it falls through to "no recognizable trigger" rather than
+        # silently picking one side.
+        text = "Buy when a bullish liquidity sweep and a bearish fair value gap both occur, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status != "compiled"

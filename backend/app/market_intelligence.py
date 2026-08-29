@@ -467,6 +467,15 @@ def compute_market_structure(symbol: str, candles: list[Candle]) -> MarketStruct
     else:
         state = "trend_continuation"
 
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" Phase 10 — one real, specific, disclosed Change of
+    # Character definition (see MarketStructureRead.change_of_character's
+    # own docstring for why this exact one, not a claim of the only
+    # valid one): the latest real BOS, but only when it disagrees with
+    # the real net trend already computed above — the exact same
+    # condition that already produces state == "trend_reversal".
+    change_of_character: Literal["bullish", "bearish", "none"] = bos if state == "trend_reversal" else "none"
+
     detail = f"{len(swing_highs)} swing high(s), {len(swing_lows)} swing low(s) over the last {len(candles)} {CANDLE_TIMEFRAME} candles; {trend:+.2f}% net move."
     return MarketStructureRead(
         symbol=symbol,
@@ -474,6 +483,7 @@ def compute_market_structure(symbol: str, candles: list[Candle]) -> MarketStruct
         swingLows=[round(p, 2) for p in swing_lows[-5:]],
         lastBreakOfStructure=bos,
         structureState=state,
+        changeOfCharacter=change_of_character,
         detail=detail,
     )
 

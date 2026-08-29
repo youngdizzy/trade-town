@@ -8,7 +8,7 @@ never look ahead of the index it's reporting at.
 from __future__ import annotations
 
 from app.market_data import Candle
-from app.structure_break_research import STRUCTURE_SCAN_WINDOW, structure_break_signal_series
+from app.structure_break_research import STRUCTURE_SCAN_WINDOW, change_of_character_signal_series, structure_break_signal_series
 
 
 def _candle(i: int, *, open_: float, high: float, low: float, close: float, volume: float = 200_000.0, symbol: str = "NEXA") -> Candle:
@@ -41,6 +41,33 @@ def _bullish_bos_candles() -> list[Candle]:
     return candles
 
 
+def _bullish_choch_candles() -> list[Candle]:
+    """A steep decline from 300 down to ~100 sets a strongly NEGATIVE
+    real net trend over the full sample; the same real rising-swing-
+    highs wiggle _bullish_bos_candles() uses is then appended, still
+    forming a real bullish BOS locally — the two disagree, so this must
+    read as a real bullish Change of Character (see
+    MarketStructureRead.change_of_character's own docstring for the
+    exact, disclosed definition)."""
+    candles = []
+    for i in range(10):
+        price = 300 - i * 20
+        candles.append(_candle(i, open_=price + 2, high=price + 3, low=price - 3, close=price))
+    base_i = 10
+    for i in range(6):
+        candles.append(_candle(base_i + i, open_=100 + i, high=101 + i, low=99 + i, close=100 + i))
+    candles.append(_candle(base_i + 6, open_=106, high=112, low=105, close=111))
+    for i in range(7, 13):
+        candles.append(_candle(base_i + i, open_=110 - (i - 7), high=111 - (i - 7), low=108 - (i - 7), close=109 - (i - 7)))
+    candles.append(_candle(base_i + 13, open_=104, high=105, low=95, close=96))
+    for i in range(14, 20):
+        candles.append(_candle(base_i + i, open_=96 + (i - 14) * 3, high=98 + (i - 14) * 3, low=95 + (i - 14) * 3, close=97 + (i - 14) * 3))
+    candles.append(_candle(base_i + 20, open_=114, high=125, low=113, close=124))
+    for i in range(21, 27):
+        candles.append(_candle(base_i + i, open_=123 - (i - 21), high=124 - (i - 21), low=121 - (i - 21), close=122 - (i - 21)))
+    return candles
+
+
 class TestStructureBreakSignalSeries:
     def test_index_aligned_one_to_one_with_candles(self) -> None:
         candles = _flat_candles(30)
@@ -68,4 +95,33 @@ class TestStructureBreakSignalSeries:
     def test_bounded_window_does_not_crash_on_a_long_series(self) -> None:
         candles = _flat_candles(STRUCTURE_SCAN_WINDOW * 5)
         series = structure_break_signal_series(candles, "NEXA")
+        assert len(series) == len(candles)
+
+
+class TestChangeOfCharacterSignalSeries:
+    def test_index_aligned_one_to_one_with_candles(self) -> None:
+        candles = _flat_candles(30)
+        series = change_of_character_signal_series(candles, "NEXA")
+        assert len(series) == len(candles)
+
+    def test_flat_series_never_signals(self) -> None:
+        candles = _flat_candles(40)
+        series = change_of_character_signal_series(candles, "NEXA")
+        assert all(v == 0.0 for v in series)
+
+    def test_a_bullish_bos_agreeing_with_the_net_trend_never_signals_choch(self) -> None:
+        # _bullish_bos_candles() nets UP overall, so its real bullish
+        # BOS agrees with the real net trend — never a real CHoCH.
+        candles = _bullish_bos_candles()
+        series = change_of_character_signal_series(candles, "NEXA")
+        assert all(v == 0.0 for v in series)
+
+    def test_reports_a_real_bullish_change_of_character(self) -> None:
+        candles = _bullish_choch_candles()
+        series = change_of_character_signal_series(candles, "NEXA")
+        assert any(v == 1.0 for v in series)
+
+    def test_bounded_window_does_not_crash_on_a_long_series(self) -> None:
+        candles = _flat_candles(STRUCTURE_SCAN_WINDOW * 5)
+        series = change_of_character_signal_series(candles, "NEXA")
         assert len(series) == len(candles)

@@ -59,13 +59,16 @@ from app.schemas import (
     ModelValidationReport,
     SimulationResult,
     Strategy,
+    StrategyCondition,
     StrategyIndicatorRef,
     StrategyMonteCarloResult,
 )
 from app.strategy_lab import run_strategy_monte_carlo
 from app.technical_indicators import atr_series, ema_series, macd_series, rsi_series, sma_series, stochastic_series
+from app.fibonacci_research import fibonacci_618_level_series
+from app.fvg_research import fvg_signal_series
 from app.liquidity_sweep_research import liquidity_sweep_signal_series
-from app.structure_break_research import structure_break_signal_series
+from app.structure_break_research import change_of_character_signal_series, structure_break_signal_series
 from app.trend_engine import DEFAULT_HORIZONS, multi_horizon_trend_score_series
 from app.watchlist import SEED_SYMBOLS
 
@@ -97,6 +100,9 @@ SUPPORTED_INDICATORS = frozenset(
         "multi_horizon_trend_score",
         "liquidity_sweep_signal",
         "structure_break_signal",
+        "choch_signal",
+        "fvg_signal",
+        "fibonacci_618_level",
     }
 )
 
@@ -142,11 +148,17 @@ EXTENDED_BREAKOUT_RANGE_RATIO = 2.0
 def _unsupported_indicators(definition: CompiledStrategyDefinition) -> set[str]:
     found: set[str] = set()
     for step in definition.sequence:
-        if step.condition is None:
-            continue
-        for ref in (step.condition.left, step.condition.right_indicator):
-            if ref is not None and ref.indicator not in SUPPORTED_INDICATORS:
-                found.add(ref.indicator)
+        # CEO directive "AHL-Inspired Systematic Trend & Momentum
+        # Research Engine," Phase 9 — a combo trigger's own real
+        # `all_of` list needs the same real coverage check every single
+        # `condition` already gets, so a future combo referencing an
+        # indicator this engine can't resolve is refused up front too,
+        # never silently run with a partially-broken interpretation.
+        conditions = step.all_of if step.all_of else [step.condition] if step.condition is not None else []
+        for condition in conditions:
+            for ref in (condition.left, condition.right_indicator):
+                if ref is not None and ref.indicator not in SUPPORTED_INDICATORS:
+                    found.add(ref.indicator)
     return found
 
 
@@ -160,6 +172,9 @@ class _SeriesCache:
     multi_horizon_trend_score: list[float]
     liquidity_sweep_signal: list[float]
     structure_break_signal: list[float]
+    choch_signal: list[float]
+    fvg_signal: list[float]
+    fibonacci_618_level: list[float | None]
 
 
 def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefinition, symbol: str = "") -> _SeriesCache:
@@ -171,6 +186,9 @@ def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefin
     needs_trend_score = False
     needs_sweep_signal = False
     needs_structure_signal = False
+    needs_choch_signal = False
+    needs_fvg_signal = False
+    needs_fibonacci_618 = False
     for step in definition.sequence:
         if step.condition is None:
             continue
@@ -193,6 +211,12 @@ def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefin
                 needs_sweep_signal = True
             elif ref.indicator == "structure_break_signal":
                 needs_structure_signal = True
+            elif ref.indicator == "choch_signal":
+                needs_choch_signal = True
+            elif ref.indicator == "fvg_signal":
+                needs_fvg_signal = True
+            elif ref.indicator == "fibonacci_618_level":
+                needs_fibonacci_618 = True
     # A chandelier stop's own ATR series is a real volatility read, not
     # an EMA/SMA period — computed separately in the caller, not cached
     # here.
@@ -220,6 +244,23 @@ def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefin
         # read — CEO directive "AHL-Inspired Systematic Trend & Momentum
         # Research Engine," Phase 10.
         structure_break_signal=structure_break_signal_series(candles, symbol) if needs_structure_signal else [],
+        # app/structure_break_research.py's own real, non-duplicating
+        # wrapper around compute_market_structure()'s already-real
+        # change_of_character field — CEO directive "AHL-Inspired
+        # Systematic Trend & Momentum Research Engine," Phase 10.
+        choch_signal=change_of_character_signal_series(candles, symbol) if needs_choch_signal else [],
+        # app/fvg_research.py's own real, non-duplicating wrapper around
+        # app/technical_patterns.py::detect_fair_value_gaps()'s already-
+        # real 3-candle FVG detector — CEO directive "AHL-Inspired
+        # Systematic Trend & Momentum Research Engine," Phase 10.
+        fvg_signal=fvg_signal_series(candles, symbol) if needs_fvg_signal else [],
+        # app/fibonacci_research.py's own real, non-duplicating wrapper
+        # around app/technical_patterns.py::compute_fibonacci_levels()'s
+        # already-real 61.8% retracement price — CEO directive "AHL-
+        # Inspired Systematic Trend & Momentum Research Engine," Phase
+        # 10. A price-valued series (float | None), unlike the four
+        # event-pulse series above.
+        fibonacci_618_level=fibonacci_618_level_series(candles, symbol) if needs_fibonacci_618 else [],
     )
 
 
@@ -284,6 +325,16 @@ def _resolve(ref: StrategyIndicatorRef, candles: list[Candle], series: _SeriesCa
         return series.liquidity_sweep_signal[index] if 0 <= index < len(series.liquidity_sweep_signal) else None
     if ref.indicator == "structure_break_signal":
         return series.structure_break_signal[index] if 0 <= index < len(series.structure_break_signal) else None
+    if ref.indicator == "choch_signal":
+        return series.choch_signal[index] if 0 <= index < len(series.choch_signal) else None
+    if ref.indicator == "fvg_signal":
+        return series.fvg_signal[index] if 0 <= index < len(series.fvg_signal) else None
+    if ref.indicator == "fibonacci_618_level":
+        # Already index-aligned one-to-one with `candles`, same
+        # convention as the event-pulse series above — but its own real
+        # values (and lookup result) can legitimately be `None` before
+        # enough swing history exists, never a fabricated 0.0 price.
+        return series.fibonacci_618_level[index] if 0 <= index < len(series.fibonacci_618_level) else None
     return None
 
 
@@ -317,6 +368,48 @@ class _GenericSetup:
     pullback_high: float | None
 
 
+def _combo_direction_at(all_of: list[StrategyCondition], candles: list[Candle], series: _SeriesCache, index: int) -> str | None:
+    """Real AND-combination check for a `trigger` step's `all_of` list —
+    CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine," Phase 9 (the sweep+FVG combo hypothesis; no real
+    "displacement" detector exists anywhere in this codebase to include
+    as a third leg — a repo-wide grep confirms it, an honest scope cut,
+    not a fabricated third condition). Returns `"long"`/`"short"` only
+    when EVERY condition in the list independently registers its own
+    real `crosses_above`/`crosses_below` event on THIS SAME bar, all
+    agreeing on the same direction — a real, disclosed, strict same-bar
+    simultaneity requirement, never a fuzzy "within N bars" window.
+    `None` if any condition doesn't cross here, disagrees on direction,
+    or uses an operator this real v1 combo vocabulary doesn't support
+    (only the crossing operators app/strategy_compiler.py's own combo
+    pattern below ever produces)."""
+    if index == 0:
+        return None
+    direction: str | None = None
+    for condition in all_of:
+        left_now = _resolve(condition.left, candles, series, index)
+        left_prev = _resolve(condition.left, candles, series, index - 1)
+        right_now = _resolve_right(condition.right_indicator, condition.right_value, candles, series, index)
+        right_prev = _resolve_right(condition.right_indicator, condition.right_value, candles, series, index - 1)
+        if left_now is None or left_prev is None or right_now is None or right_prev is None:
+            return None
+        if condition.operator == "crosses_above":
+            crossed = left_prev <= right_prev and left_now > right_now
+            this_direction = "long"
+        elif condition.operator == "crosses_below":
+            crossed = left_prev >= right_prev and left_now < right_now
+            this_direction = "short"
+        else:
+            return None
+        if not crossed:
+            return None
+        if direction is None:
+            direction = this_direction
+        elif direction != this_direction:
+            return None
+    return direction
+
+
 def _detect_generic_setups(candles: list[Candle], definition: CompiledStrategyDefinition, series: _SeriesCache) -> list[_GenericSetup]:
     """Real, generic interpretation of the exact trigger -> optional
     requirement -> entry shape app/strategy_compiler.py's current
@@ -325,10 +418,21 @@ def _detect_generic_setups(candles: list[Candle], definition: CompiledStrategyDe
     trigger_step = next((s for s in definition.sequence if s.step_type == "trigger"), None)
     requirement_step = next((s for s in definition.sequence if s.step_type == "requirement"), None)
     entry_step = next((s for s in definition.sequence if s.step_type == "entry"), None)
-    if trigger_step is None or trigger_step.condition is None or entry_step is None:
+    if trigger_step is None or entry_step is None:
+        return []
+    combo_conditions = trigger_step.all_of
+    condition = trigger_step.condition
+    if not combo_conditions and condition is None:
         return []
 
-    condition = trigger_step.condition
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine," Phase 9 — post-trigger invalidation tracking below
+    # watches only the FIRST real condition in a combo trigger's
+    # `all_of` list, a real, disclosed simplification (see
+    # StrategySequenceStep.all_of's own docstring in app/schemas.py).
+    invalidation_condition = combo_conditions[0] if combo_conditions else condition
+    assert invalidation_condition is not None
+
     setups: list[_GenericSetup] = []
     phase = "idle"  # idle -> pullback_wait -> in_pullback -> awaiting_breakout
     direction = ""
@@ -337,49 +441,73 @@ def _detect_generic_setups(candles: list[Candle], definition: CompiledStrategyDe
     pullback_high = 0.0
     confirmation_level = 0.0
     pullback_count = 0
-    min_start = max((ref.period or 0) for ref in (condition.left, condition.right_indicator) if ref is not None) if any(r is not None for r in (condition.left, condition.right_indicator)) else 0
+    active_conditions = combo_conditions if combo_conditions else [condition] if condition is not None else []
+    condition_refs = [ref for cond in active_conditions for ref in (cond.left, cond.right_indicator) if ref is not None]
+    min_start = max((ref.period or 0) for ref in condition_refs) if condition_refs else 0
 
     for i in range(min_start, len(candles)):
         if i == 0:
             continue
-        left_now = _resolve(condition.left, candles, series, i)
-        left_prev = _resolve(condition.left, candles, series, i - 1)
-        right_now = _resolve_right(condition.right_indicator, condition.right_value, candles, series, i)
-        right_prev = _resolve_right(condition.right_indicator, condition.right_value, candles, series, i - 1)
-        if left_now is None or left_prev is None or right_now is None or right_prev is None:
-            continue
 
         if phase == "idle":
-            if condition.operator in ("crosses_above", "crosses_below"):
-                crossed_up = left_prev <= right_prev and left_now > right_now
-                crossed_down = left_prev >= right_prev and left_now < right_now
-                wants_up = condition.operator == "crosses_above"
-                triggered = crossed_up if wants_up else crossed_down
-            elif condition.operator in ("gt", "gte", "lt", "lte"):
-                # A real, direct threshold trigger (e.g. a future compiler
-                # vocabulary addition like "RSI above 70") — fires the
-                # instant the comparison is true, no crossing/continuity
-                # semantics needed since there is no "sustained side" to
-                # define for a bare threshold.
-                wants_up = condition.operator in ("gt", "gte")
-                triggered = _compare(left_now, condition.operator, right_now)
+            if combo_conditions:
+                combo_direction = _combo_direction_at(combo_conditions, candles, series, i)
+                triggered = combo_direction is not None
+                wants_up = combo_direction == "long"
             else:
-                triggered = False
-                wants_up = True
+                assert condition is not None
+                left_now = _resolve(condition.left, candles, series, i)
+                left_prev = _resolve(condition.left, candles, series, i - 1)
+                right_now = _resolve_right(condition.right_indicator, condition.right_value, candles, series, i)
+                right_prev = _resolve_right(condition.right_indicator, condition.right_value, candles, series, i - 1)
+                if left_now is None or left_prev is None or right_now is None or right_prev is None:
+                    continue
+                if condition.operator in ("crosses_above", "crosses_below"):
+                    crossed_up = left_prev <= right_prev and left_now > right_now
+                    crossed_down = left_prev >= right_prev and left_now < right_now
+                    wants_up = condition.operator == "crosses_above"
+                    triggered = crossed_up if wants_up else crossed_down
+                elif condition.operator in ("gt", "gte", "lt", "lte"):
+                    # A real, direct threshold trigger (e.g. a future
+                    # compiler vocabulary addition like "RSI above 70")
+                    # — fires the instant the comparison is true, no
+                    # crossing/continuity semantics needed since there
+                    # is no "sustained side" to define for a bare
+                    # threshold.
+                    wants_up = condition.operator in ("gt", "gte")
+                    triggered = _compare(left_now, condition.operator, right_now)
+                else:
+                    triggered = False
+                    wants_up = True
+
             if triggered:
-                prior_run = 0
-                j = i - 1
-                while j >= 0:
-                    left_j = _resolve(condition.left, candles, series, j)
-                    right_j = _resolve_right(condition.right_indicator, condition.right_value, candles, series, j)
-                    if left_j is None or right_j is None:
-                        break
-                    on_side = (left_j < right_j) if wants_up else (left_j > right_j)
-                    if not on_side:
-                        break
-                    prior_run += 1
-                    j -= 1
-                if prior_run >= MIN_BARS_ON_SIDE_BEFORE_CROSS:
+                if combo_conditions:
+                    # A real, disclosed simplification: a combo of
+                    # independent event-pulse signals doesn't carry the
+                    # same "sustained on one side before crossing"
+                    # semantic a single continuous indicator's own
+                    # MIN_BARS_ON_SIDE_BEFORE_CROSS confirmation checks
+                    # for below — each condition in the combo is
+                    # already its own confirmed real crossing event, so
+                    # no additional prior-run confirmation is applied
+                    # here.
+                    confirmed = True
+                else:
+                    assert condition is not None
+                    prior_run = 0
+                    j = i - 1
+                    while j >= 0:
+                        left_j = _resolve(condition.left, candles, series, j)
+                        right_j = _resolve_right(condition.right_indicator, condition.right_value, candles, series, j)
+                        if left_j is None or right_j is None:
+                            break
+                        on_side = (left_j < right_j) if wants_up else (left_j > right_j)
+                        if not on_side:
+                            break
+                        prior_run += 1
+                        j -= 1
+                    confirmed = prior_run >= MIN_BARS_ON_SIDE_BEFORE_CROSS
+                if confirmed:
                     direction = "long" if wants_up else "short"
                     c = candles[i]
                     leg_extreme = c.high if direction == "long" else c.low
@@ -391,8 +519,8 @@ def _detect_generic_setups(candles: list[Candle], definition: CompiledStrategyDe
             continue
 
         c = candles[i]
-        left_now_check = _resolve(condition.left, candles, series, i)
-        right_now_check = _resolve_right(condition.right_indicator, condition.right_value, candles, series, i)
+        left_now_check = _resolve(invalidation_condition.left, candles, series, i)
+        right_now_check = _resolve_right(invalidation_condition.right_indicator, invalidation_condition.right_value, candles, series, i)
         if left_now_check is not None and right_now_check is not None:
             invalidated = (left_now_check < right_now_check) if direction == "long" else (left_now_check > right_now_check)
             if invalidated:
