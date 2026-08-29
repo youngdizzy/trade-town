@@ -2854,6 +2854,22 @@ export interface EvidenceConfluenceRead {
   detail: string;
 }
 
+// CEO directive "TradeTown — 11/10 Market Intelligence + Quant Research
+// Engine," Phase 7 — explicit supporting/conflicting/neutral/missing
+// taxonomy for the 6 directional evidence families, reclassified against
+// a proposal's own direction. A pure reclassification of an already-
+// computed EvidenceConfluenceRead; "levels" is never classified (it's
+// not directional). See backend/app/evidence_confluence.py::classify_confluence.
+export interface ConfluenceClassification {
+  symbol: string;
+  targetDirection: "bullish" | "bearish";
+  supporting: EvidenceFamily[];
+  conflicting: EvidenceFamily[];
+  neutral: EvidenceFamily[];
+  missing: EvidenceFamily[];
+  detail: string;
+}
+
 // Same directive, Phases 1-3 — real technical indicator/pattern reads.
 // Every nullable field is `null` (never fabricated) below that
 // concept's own real minimum bar count — see
@@ -4698,6 +4714,13 @@ export interface WarRoomSession {
    * evidenceConfluenceScore. Null only when this symbol's own real
    * candle history was unavailable for this tick. */
   evidenceConfluence: EvidenceConfluenceRead | null;
+  /** CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+   * Research Engine," Phase 7 — the explicit supporting/conflicting/
+   * neutral/missing reclassification of evidenceConfluence against this
+   * proposal's own direction. Null for "wait" recommendations (no
+   * direction to classify against) and whenever evidenceConfluence
+   * itself is null. */
+  confluenceClassification: ConfluenceClassification | null;
   /** CEO directive "Portfolio Construction, Capital Allocation &
    * Execution Realism," Phase 9 — the real, statistical Pearson-
    * correlation count (distinct from decisionScore.portfolioCompatibilityScore's

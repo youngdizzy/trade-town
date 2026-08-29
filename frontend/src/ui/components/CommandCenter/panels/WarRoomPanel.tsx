@@ -194,6 +194,31 @@ function SessionDetail({ session }: { session: WarRoomSession }) {
         </Glass>
       )}
 
+      {session.confluenceClassification && (
+        <Glass className="p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Confluence Classification — {session.confluenceClassification.targetDirection}</TerminalLabel>
+            <span className="text-[9px] text-cmd-textDim">Evidence families vs. this trade's own direction</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+            {(
+              [
+                ["Supporting", session.confluenceClassification.supporting, "text-cmd-green"],
+                ["Conflicting", session.confluenceClassification.conflicting, "text-cmd-red"],
+                ["Neutral", session.confluenceClassification.neutral, "text-cmd-textDim"],
+                ["Missing", session.confluenceClassification.missing, "text-cmd-amber"],
+              ] as const
+            ).map(([label, families, tone]) => (
+              <div key={label} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                <div className={tone}>{label} ({families.length})</div>
+                <div className="mt-0.5 text-cmd-textDim">{families.length > 0 ? families.map((f) => f.replace(/_/g, " ")).join(", ") : "—"}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[8px] italic text-cmd-textDim">{session.confluenceClassification.detail}</p>
+        </Glass>
+      )}
+
       <Glass className="p-3">
         <TerminalLabel>Expected Value — real read over the 12 real simulated scenarios</TerminalLabel>
         <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-3">
