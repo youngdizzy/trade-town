@@ -10049,6 +10049,32 @@ momentum readings can never masquerade as five independent
 confirmations. New `GET /api/market/evidence-confluence` endpoint;
 surfaced in `MarketIntelPanel.tsx` alongside Technical Analysis.
 
+**"TradeTown — 11/10 Market Intelligence + Quant Research Engine" Phase
+7 addendum: explicit supporting/conflicting/neutral/missing
+classification.** `assess_evidence_confluence()` above already computes
+every family's own `netDirection`, but never reclassified those
+directions against a specific TRADE's own direction — a reader had to
+mentally cross-reference `majorityDirection` against each family
+themselves. `app/evidence_confluence.py::classify_confluence(confluence,
+target_direction)` is a pure reclassification (zero new signal
+computation) over the same six directional families
+(`_DIRECTIONAL_FAMILIES`; `levels` is never classified, it isn't
+directional): a family whose `netDirection` agrees with
+`target_direction` is `supporting`; disagrees is `conflicting`; reads
+`neutral` (real internal disagreement) stays `neutral`; and a family
+with zero real signals this tick — the CEO directive's own distinction
+between "no evidence" and "evidence found and it was neutral" — is
+`missing`, never silently folded into `neutral`. New
+`ConfluenceClassification` schema. Wired into
+`war_room.py::build_war_room_session()`, computed against the
+proposal's own `overall_recommendation` (`buy`→`bullish`,
+`sell`→`bearish`, `null` for `wait` — no direction to classify against)
+as the new `WarRoomSession.confluenceClassification` field, immediately
+alongside the existing `evidenceConfluence` field it reclassifies.
+Surfaced as a new "Confluence Classification" card in `WarRoomPanel.tsx`
+directly below the existing Evidence Confluence card, rendering the four
+buckets with family names.
+
 ### Phase E: symbol_robustness
 
 `_symbol_robustness_check()` (`app/model_validation.py`) groups a

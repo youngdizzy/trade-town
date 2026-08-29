@@ -127,7 +127,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.decision_vault import compute_evidence_score, find_similar_vault_entries, summarize_similarity
-from app.evidence_confluence import assess_evidence_confluence
+from app.evidence_confluence import assess_evidence_confluence, classify_confluence
 from app.executive_intelligence import compute_executive_recommendation, generate_department_opinions
 from app.schemas import (
     AnalystChoice,
@@ -361,6 +361,19 @@ def build_war_room_session(
     # candles fetch came back empty (see the caller's `except ValueError`
     # fallback).
     evidence_confluence = assess_evidence_confluence(proposal.symbol, candles) if candles else None
+    # CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+    # Research Engine," Phase 7 — the explicit supporting/conflicting/
+    # neutral/missing breakdown, against this proposal's OWN real
+    # direction (never assess_evidence_confluence()'s own internal
+    # majority_direction — same real convention _evidence_confluence_
+    # score() above already uses). "wait" has no real directional thesis
+    # to classify against, so this stays None for it (never a fabricated
+    # arbitrary side).
+    confluence_classification = (
+        classify_confluence(evidence_confluence, "bullish" if proposal.overall_recommendation == "buy" else "bearish")
+        if evidence_confluence is not None and proposal.overall_recommendation in ("buy", "sell")
+        else None
+    )
     decision_score = build_decision_score(
         proposal,
         risk_warnings=risk_warnings,
@@ -394,6 +407,7 @@ def build_war_room_session(
         contingencyPlan=contingency_plan,
         confidenceValidated=evidence_never_exceeds_confidence(proposal),
         evidenceConfluence=evidence_confluence,
+        confluenceClassification=confluence_classification,
         outcomeComparison=None,
         createdAt=_now_iso(),
     )

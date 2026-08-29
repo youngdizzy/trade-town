@@ -158,6 +158,41 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — 11/10 Market Intelligence + Quant Research Engine" Phase 7: explicit
+  supporting/conflicting/neutral/missing Confluence Classification.** The directive's own Confluence
+  Engine spec explicitly rejects naive "N indicators bullish → buy" scoring in favor of a named
+  4-bucket taxonomy against a trade's own direction. A repo audit found `app/evidence_confluence.py`'s
+  existing `assess_evidence_confluence()` already computed everything needed — six real evidence
+  families, each with its own honest `netDirection` (`bullish`/`bearish`/`neutral`, `neutral` only
+  when that family's own signals genuinely disagree) — but never reclassified those against a specific
+  trade's own direction; a reader had to mentally cross-reference `majorityDirection` against each
+  family. Solved with a small, pure, additive function rather than rebuilding signal computation.
+  - New `app/evidence_confluence.py::classify_confluence(confluence, target_direction)`: zero new
+    signal computation, a pure reclassification of an already-computed `EvidenceConfluenceRead`. Each
+    of the six real directional families (`levels` excluded — informational only, never directional)
+    lands in exactly one of four buckets: `supporting` (family's `netDirection` agrees with
+    `target_direction`), `conflicting` (disagrees), `neutral` (family has real signals but they
+    genuinely disagree with each other), or `missing` (the family has zero real signals this tick — a
+    genuinely different state from "checked and found neutral," never silently folded together).
+  - New `ConfluenceClassification` schema (`app/schemas.py`); wired into
+    `war_room.py::build_war_room_session()`, computed against the proposal's own
+    `overall_recommendation` (`buy`→`bullish`, `sell`→`bearish`, `null` for `wait` — nothing to
+    classify against) as the new `WarRoomSession.confluenceClassification` field, immediately
+    alongside the `evidenceConfluence` field it reclassifies.
+  - New "Confluence Classification" card in `WarRoomPanel.tsx`, directly below the existing Evidence
+    Confluence card, rendering the four buckets (Supporting/Conflicting/Neutral/Missing) with real
+    family names, color-coded (green/red/dim/amber) — discovered as the natural place to surface this,
+    not a new panel.
+  - New `ConfluenceClassification` type + `confluenceClassification` field on `WarRoomSession` in
+    `types.ts`, mirroring the backend schema exactly.
+  - Verified: 6 new tests in `TestClassifyConfluence` (`test_evidence_confluence.py`) — families that
+    agree with the target land in `supporting`; the SAME families reclassified against the opposite
+    direction land in `conflicting`, proving the function is a pure reclassification, not a duplicate
+    signal read; families with zero real signals land in `missing`, never silently in `neutral`;
+    `levels` is never classified; every one of the six families lands in exactly one bucket, no
+    double-counting or drops; the empty-candles case reports all six as `missing`. Full backend suite
+    (2986 tests), `mypy`, `ruff` clean. Frontend `tsc`/lint/build clean.
+
 - **"AHL-Inspired Systematic Trend & Momentum Research Engine" — re-audit of the four items an earlier
   pass had labeled hard-blocked, and closure of all four.** A user request to "continue till finished with
   everything deferred" prompted a fresh, rigorous re-audit (file/line citations, not impressions) of the

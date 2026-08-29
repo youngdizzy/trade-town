@@ -93,11 +93,19 @@ number.
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from app.market_data import Candle
 from app.market_intelligence import compute_liquidity, compute_market_structure
-from app.schemas import EvidenceConfluenceRead, EvidenceDirection, EvidenceFamily, EvidenceFamilyRead, EvidenceSignal
+from app.schemas import ConfluenceClassification, EvidenceConfluenceRead, EvidenceDirection, EvidenceFamily, EvidenceFamilyRead, EvidenceSignal
 from app.technical_indicators import ema, macd, parabolic_sar, rsi, sma, stochastic, supertrend, vwap
 from app.technical_patterns import detect_candlestick_patterns, detect_fair_value_gaps, detect_order_block
+
+# The six real DIRECTIONAL families (never "levels" — Fibonacci is
+# informational only, see this module's own docstring) —
+# app/war_room.py's own TOTAL_DIRECTIONAL_EVIDENCE_FAMILIES already
+# uses this same real count (6), reused here rather than re-derived.
+_DIRECTIONAL_FAMILIES: tuple[EvidenceFamily, ...] = ("trend", "momentum", "volume", "liquidity", "price_structure", "pattern")
 
 RSI_BULLISH_THRESHOLD = 55.0
 RSI_BEARISH_THRESHOLD = 45.0
@@ -262,5 +270,56 @@ def assess_evidence_confluence(symbol: str, candles: list[Candle]) -> EvidenceCo
         independentFamilyCount=independent_family_count,
         majorityDirection=majority,
         agreeingFamilies=agreeing,
+        detail=detail,
+    )
+
+
+def classify_confluence(confluence: EvidenceConfluenceRead, target_direction: Literal["bullish", "bearish"]) -> ConfluenceClassification:
+    """CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+    Research Engine," Phase 7 — a pure reclassification of an already-
+    computed `EvidenceConfluenceRead` against ONE target direction (a
+    specific proposal's own chosen side, the same real convention
+    `app/war_room.py::_evidence_confluence_score()` already uses — never
+    this module's own internal `majority_direction`, since a real
+    proposal can legitimately go against the raw indicators' own
+    majority). Zero new signal computation: every real family read here
+    was already produced by `assess_evidence_confluence()`.
+
+    Each of the six real DIRECTIONAL families lands in exactly one
+    bucket: SUPPORTING (that family's own net direction agrees with
+    `target_direction`), CONFLICTING (it disagrees), NEUTRAL (the family
+    has real signals but they net out neutral — see EvidenceFamilyRead's
+    own docstring for genuine disagreement-within-a-family vs. no real
+    signal at all), or MISSING (no real signal existed for this family
+    on this symbol at all this tick — a real distinction
+    `EvidenceConfluenceRead.families` alone could not make, since it
+    only ever lists families that had at least one real signal)."""
+    present = {f.family: f for f in confluence.families}
+    supporting: list[EvidenceFamily] = []
+    conflicting: list[EvidenceFamily] = []
+    neutral: list[EvidenceFamily] = []
+    missing: list[EvidenceFamily] = []
+    for family in _DIRECTIONAL_FAMILIES:
+        read = present.get(family)
+        if read is None:
+            missing.append(family)
+        elif read.net_direction == "neutral":
+            neutral.append(family)
+        elif read.net_direction == target_direction:
+            supporting.append(family)
+        else:
+            conflicting.append(family)
+
+    detail = (
+        f"For a real {target_direction} thesis on {confluence.symbol}: {len(supporting)} supporting, {len(conflicting)} conflicting, "
+        f"{len(neutral)} neutral, {len(missing)} missing evidence famil(y/ies) (out of {len(_DIRECTIONAL_FAMILIES)} real directional families)."
+    )
+    return ConfluenceClassification(
+        symbol=confluence.symbol,
+        targetDirection=target_direction,
+        supporting=supporting,
+        conflicting=conflicting,
+        neutral=neutral,
+        missing=missing,
         detail=detail,
     )

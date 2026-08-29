@@ -7,7 +7,7 @@ checks that divergence is computed honestly, never a bare signal count.
 """
 from __future__ import annotations
 
-from app.evidence_confluence import assess_evidence_confluence
+from app.evidence_confluence import assess_evidence_confluence, classify_confluence
 from app.market_data import Candle
 
 
@@ -82,3 +82,58 @@ class TestDetailDisclosesTheGap:
     def test_detail_confirms_full_independence_when_no_gap_exists(self) -> None:
         result = assess_evidence_confluence("TEST", [])
         assert "No real directional signals" in result.detail
+
+
+class TestClassifyConfluence:
+    """CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+    Research Engine," Phase 7 — the explicit supporting/conflicting/
+    neutral/missing taxonomy, a pure reclassification of an already-
+    computed EvidenceConfluenceRead against one target direction. Zero
+    new signal computation — every case here checks the reclassification
+    logic only."""
+
+    def test_families_that_agree_with_the_target_direction_are_supporting(self) -> None:
+        candles = _uptrend_candles(60)
+        confluence = assess_evidence_confluence("TEST", candles)
+        result = classify_confluence(confluence, "bullish")
+        assert set(result.supporting) == {"trend", "momentum", "volume"}
+        assert result.conflicting == []
+
+    def test_the_same_families_read_as_conflicting_against_the_opposite_direction(self) -> None:
+        candles = _uptrend_candles(60)
+        confluence = assess_evidence_confluence("TEST", candles)
+        result = classify_confluence(confluence, "bearish")
+        assert set(result.conflicting) == {"trend", "momentum", "volume"}
+        assert result.supporting == []
+
+    def test_a_family_with_zero_real_signals_is_missing_not_silently_neutral(self) -> None:
+        # A smooth uptrend never produces a real liquidity sweep, price-
+        # structure break, or candlestick pattern -- those three real
+        # families genuinely have no signal at all this tick, a distinct
+        # state from "checked and found neutral."
+        candles = _uptrend_candles(60)
+        confluence = assess_evidence_confluence("TEST", candles)
+        result = classify_confluence(confluence, "bullish")
+        assert set(result.missing) == {"liquidity", "price_structure", "pattern"}
+        assert not (set(result.missing) & set(result.neutral))
+
+    def test_levels_family_is_never_classified_at_all(self) -> None:
+        candles = _uptrend_candles(60)
+        confluence = assess_evidence_confluence("TEST", candles)
+        result = classify_confluence(confluence, "bullish")
+        all_classified = set(result.supporting) | set(result.conflicting) | set(result.neutral) | set(result.missing)
+        assert "levels" not in all_classified
+
+    def test_every_directional_family_lands_in_exactly_one_bucket(self) -> None:
+        candles = _uptrend_candles(60)
+        confluence = assess_evidence_confluence("TEST", candles)
+        result = classify_confluence(confluence, "bullish")
+        buckets = [result.supporting, result.conflicting, result.neutral, result.missing]
+        total = sum(len(b) for b in buckets)
+        assert total == 6  # the six real directional families, no double-counting, none dropped
+
+    def test_no_real_data_reports_every_directional_family_as_missing(self) -> None:
+        confluence = assess_evidence_confluence("TEST", [])
+        result = classify_confluence(confluence, "bullish")
+        assert len(result.missing) == 6
+        assert result.supporting == [] and result.conflicting == [] and result.neutral == []

@@ -3792,6 +3792,31 @@ class EvidenceConfluenceRead(CamelModel):
     detail: str
 
 
+# CEO directive "TradeTown — 11/10 Market Intelligence + Quant Research
+# Engine," Phase 7 — the Confluence Engine's own explicit ask: "The
+# Confluence Engine should determine: supporting evidence, conflicting
+# evidence, neutral evidence, missing evidence." `EvidenceConfluenceRead`
+# above already computes everything needed (see
+# app/evidence_confluence.py's own `classify_confluence()`, a pure
+# reclassification of that read's own real family data against ONE
+# target direction — never a second signal computation). The distinction
+# this closes: `EvidenceConfluenceRead.families` only ever lists
+# families that had at least one real signal — a family with zero real
+# signals for this symbol (e.g. no real candlestick pattern this tick)
+# never appeared anywhere before this, silently indistinguishable from
+# "checked and found neutral." Excludes the `levels` (Fibonacci) family
+# — informational only, never a directional claim, the same exclusion
+# `EvidenceConfluenceRead.agreeing_families` already makes.
+class ConfluenceClassification(CamelModel):
+    symbol: str
+    target_direction: Literal["bullish", "bearish"] = Field(alias="targetDirection")
+    supporting: list[EvidenceFamily] = Field(default_factory=list)
+    conflicting: list[EvidenceFamily] = Field(default_factory=list)
+    neutral: list[EvidenceFamily] = Field(default_factory=list)
+    missing: list[EvidenceFamily] = Field(default_factory=list)
+    detail: str
+
+
 class TechnicalIndicatorsRead(CamelModel):
     """Real SMA/EMA/RSI/MACD/Stochastic/ATR/VWAP values computed fresh
     over a symbol's own real (mock) candle history
@@ -7831,6 +7856,15 @@ class WarRoomSession(CamelModel):
     # only when this symbol's own real candle history was unavailable
     # for this tick (see app/war_room.py's build_war_room_session()).
     evidence_confluence: EvidenceConfluenceRead | None = Field(default=None, alias="evidenceConfluence")
+    # CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+    # Research Engine," Phase 7 — the same real evidence-family data
+    # above, reclassified against THIS proposal's own chosen direction
+    # into the directive's own explicit supporting/conflicting/neutral/
+    # missing taxonomy (see ConfluenceClassification's own docstring).
+    # `None` under the same honesty convention as `evidence_confluence`
+    # above, plus for a real "wait" recommendation (no directional
+    # thesis to classify against).
+    confluence_classification: ConfluenceClassification | None = Field(default=None, alias="confluenceClassification")
     # CEO directive "Portfolio Construction, Capital Allocation &
     # Execution Realism," Phase 4 — the real, statistical Pearson-
     # correlation count (app/portfolio_intelligence.py's
