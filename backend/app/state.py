@@ -97,7 +97,7 @@ from app.economic_intelligence import compute_economic_intelligence
 from app.memory import record
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
-from app.market_intelligence import compute_market_intelligence_state
+from app.market_intelligence import compute_market_intelligence_state, compute_strategy_match
 from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
 from app.portfolio import default_portfolio, sim_minutes
 from app.portfolio_intelligence import compute_portfolio_intelligence
@@ -2199,6 +2199,22 @@ class GameState:
                 position_id = f"pos-{proposal.id}"
                 positions = [p.model_copy(update={"strategy_id": strategy_id}) if p.id == position_id else p for p in portfolio.positions]
                 portfolio = portfolio.model_copy(update={"positions": positions})
+
+                # CEO directive "TradeTown — 11/10 Market Intelligence +
+                # Quant Research Engine" — a real, non-blocking regime-
+                # gated strategy warning. Recomputed fresh here, the same
+                # on-demand pattern app/trade_pipeline_health.py's
+                # diagnose_strategy_trading_pipeline() already uses (no
+                # precomputed StrategyMatch lives on the live, per-tick
+                # MarketIntelligenceState — only on the once-daily
+                # MarketIntelligenceReport, which can be stale by the
+                # time a real decision happens). Never blocks this trade,
+                # never overrides the CEO, purely disclosed on the
+                # permanent record for later review (Discipline/Decision
+                # Vault).
+                regime_match = compute_strategy_match(self.data.market_intelligence.regime, self.data.strategies, self.data.strategy_reports)
+                if strategy_id in regime_match.avoided_strategy_ids:
+                    ceo_record = ceo_record.model_copy(update={"regime_strategy_warning": regime_match.detail})
 
             memory = list(self.data.memory)
             record_ceo_decision(memory, decision)

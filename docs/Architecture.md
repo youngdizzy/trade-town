@@ -10135,6 +10135,26 @@ confirmed both cards render with real live values, and confirmed the
 liquidity/structure sub-fields correctly stay absent (never fabricated)
 when that symbol has no real read available at that moment.
 
+**Same directive, regime-gated strategy warning addendum.** The
+directive asks for strategy eligibility gated by regime; an earlier
+Phase 0 audit this session found the full version architecturally
+non-trivial — `TradeProposal` carries no `strategy_id` at generation
+time (`PaperPosition.strategy_id` is only set AFTER a trade opens, via
+the CEO's own optional manual pick in `submit_ceo_decision()`), so there
+is no proposal-generation-time hook to gate against without either
+fabricating a causal link or a much larger architectural change. Ships
+the honestly-scoped version instead: new `CeoDecisionRecord.
+regimeStrategyWarning: string | null`, set only when the CEO explicitly
+attributes a real strategy `compute_strategy_match()`'s
+`avoided_strategy_ids` flags for TODAY'S specific regime (this
+company's own real closed-trade evidence, never a forecast). Recomputed
+fresh in `submit_ceo_decision()`, the same on-demand pattern
+`trade_pipeline_health.py::diagnose_strategy_trading_pipeline()` already
+established (no precomputed `StrategyMatch` lives on the live, per-tick
+`MarketIntelligenceState`, only on the once-daily, possibly-stale
+`MarketIntelligenceReport`). Never blocks the trade, never overrides the
+CEO — purely one more disclosed field on the permanent record.
+
 ### Phase E: symbol_robustness
 
 `_symbol_robustness_check()` (`app/model_validation.py`) groups a

@@ -6252,6 +6252,25 @@ class CeoDecisionRecord(CamelModel):
     # strategy was picked at all.
     strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
     strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
+    # CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+    # Research Engine" — a real, honestly-scoped regime-gated strategy
+    # warning. A repo audit found the natural, non-fabricated version of
+    # this ask: app/market_intelligence.py's compute_strategy_match()
+    # already computes StrategyMatch.avoided_strategy_ids (strategies
+    # this company's OWN real closed-trade history shows losing money
+    # under today's specific regime), already live at
+    # MarketIntelligenceState.strategy_match. A full auto-reject was
+    # explicitly NOT attempted — TradeProposal carries no strategy_id at
+    # generation time (only set here, by the CEO's own optional pick),
+    # so there is no proposal-generation-time hook to gate against; this
+    # is instead a real, non-blocking, disclosed warning recorded on the
+    # decision itself the moment the CEO attributes a strategy this
+    # company's own evidence flags for today's regime. Never blocks the
+    # trade, never overrides the CEO — see app/state.py's
+    # submit_ceo_decision(). `None` whenever no strategy was selected,
+    # the selected strategy isn't in avoided_strategy_ids, or the
+    # decision predates this field.
+    regime_strategy_warning: str | None = Field(default=None, alias="regimeStrategyWarning")
     # CEO directive "Complete Trade Provenance," Part 8 — Decision-Time
     # Snapshot. Research confirmed no field anywhere in this codebase
     # captured market/session/regime context AT THE MOMENT a decision

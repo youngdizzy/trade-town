@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, SettingsState, SimulationResult, Strategy, TierAllocationLimits, TradeProposal
+from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, SettingsState, SimulationResult, Strategy, StrategyReport, TierAllocationLimits, TradeProposal
 from app.strategy_lab import MIN_RETIREMENT_TRADE_COUNT
 from app.strategy_registry import _ema_pullback_source_text
 from app.state import MAX_DIALOGUE_HISTORY, GameState
@@ -790,6 +790,69 @@ class TestSubmitCeoDecisionStrategyProvenance:
         assert error is None
         assert len(saved.paper_portfolio.positions) == 1
         assert saved.paper_portfolio.positions[0].strategy_id is None
+
+
+class TestSubmitCeoDecisionRegimeStrategyWarning:
+    """CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+    Research Engine" — a real, non-blocking regime-gated strategy
+    warning. compute_strategy_match()'s avoided_strategy_ids is real,
+    evidence-backed (a StrategyReport whose own bestMarketEnvironment
+    says a strategy lost money under today's regime); this only checks
+    that selecting such a strategy records the warning and never blocks
+    the trade."""
+
+    def _state_with_pending_proposal(self) -> GameState:
+        state = GameState()
+        state.data = state.data.model_copy(update={"trade_proposals": [_pending_proposal()]})
+        return state
+
+    def _avoided_report(self, strategy_id: str) -> StrategyReport:
+        # Default fresh-GameState regime is "weak_uptrend" -> keyword
+        # "bull" (see app/market_intelligence.py's
+        # _REGIME_TO_SCENARIO_KEYWORD) -- "Not yet Bull" both starts
+        # with "not yet" and contains "bull", satisfying
+        # compute_strategy_match()'s real avoided-strategy condition.
+        return StrategyReport(
+            id=f"report-{strategy_id}",
+            strategyId=strategy_id,  # type: ignore[call-arg]
+            strategyName="test strategy",  # type: ignore[call-arg]
+            sourceResultId="result-1",  # type: ignore[call-arg]
+            scenario="bull",  # type: ignore[arg-type]
+            executiveSummary="d",  # type: ignore[call-arg]
+            strengths=[],
+            weaknesses=[],
+            failureConditions=[],  # type: ignore[call-arg]
+            bestMarketEnvironment="Not yet Bull — this run lost money under this scenario.",  # type: ignore[call-arg]
+            recommendedImprovements=[],  # type: ignore[call-arg]
+            simDay=1,  # type: ignore[call-arg]
+            createdAt="2026-01-01T00:00:00+00:00",  # type: ignore[call-arg]
+        )
+
+    def test_a_strategy_the_company_avoided_under_todays_regime_records_a_real_warning(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        state.data = state.data.model_copy(update={"strategy_reports": [self._avoided_report(real_strategy_id)]})
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id=real_strategy_id))
+        assert error is None
+        # Never blocked -- the trade still executed.
+        assert len(saved.paper_portfolio.positions) == 1
+        assert saved.ceo_decisions[-1].regime_strategy_warning is not None
+        assert "bull" in saved.ceo_decisions[-1].regime_strategy_warning.lower()
+
+    def test_a_strategy_with_no_avoided_evidence_leaves_the_warning_none(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id=real_strategy_id))
+        assert error is None
+        assert saved.ceo_decisions[-1].regime_strategy_warning is None
+
+    def test_no_strategy_selected_leaves_the_warning_none_even_with_avoided_evidence_on_file(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        state.data = state.data.model_copy(update={"strategy_reports": [self._avoided_report(real_strategy_id)]})
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert saved.ceo_decisions[-1].regime_strategy_warning is None
 
 
 class TestSubmitCeoDecisionStrategyRuleSnapshot:

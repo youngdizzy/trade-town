@@ -193,6 +193,32 @@ development milestones, not semver releases.
     double-counting or drops; the empty-candles case reports all six as `missing`. Full backend suite
     (2986 tests), `mypy`, `ruff` clean. Frontend `tsc`/lint/build clean.
 
+- **"TradeTown — 11/10 Market Intelligence + Quant Research Engine" — a real, honestly-scoped
+  regime-gated strategy warning.** The directive asks for strategy eligibility gated by regime; a Phase
+  0 audit earlier this session found the natural full version architecturally non-trivial —
+  `TradeProposal` carries no `strategy_id` at generation time (`PaperPosition.strategy_id` is only set
+  AFTER a trade opens, via the CEO's own optional manual pick in `submit_ceo_decision()`), so there is
+  no proposal-generation-time hook to gate against without either fabricating a causal link or a much
+  larger architectural change. This ships the honestly-scoped version instead: a real, non-blocking
+  warning recorded on the decision itself, never a fabricated auto-reject.
+  - New `CeoDecisionRecord.regimeStrategyWarning: string | null` field. Set only when the CEO
+    explicitly attributes a real strategy that `app/market_intelligence.py::compute_strategy_match()`'s
+    `avoided_strategy_ids` flags for TODAY'S specific regime — this company's own real closed-trade
+    evidence (a `StrategyReport` whose `bestMarketEnvironment` says the strategy lost money under a
+    matching scenario), never a forecast or a fabricated risk score. Recomputed fresh at decision time
+    in `app/state.py::submit_ceo_decision()` (the same on-demand pattern
+    `trade_pipeline_health.py::diagnose_strategy_trading_pipeline()` already established — no
+    precomputed `StrategyMatch` lives on the live, per-tick `MarketIntelligenceState`, only on the
+    once-daily `MarketIntelligenceReport`, which can be stale by decision time).
+  - **Never blocks the trade, never overrides the CEO** — the trade executes identically either way;
+    this only adds one more disclosed field to the permanent record for later review (Discipline Review,
+    Decision Vault).
+  - Verified: 3 new tests in `TestSubmitCeoDecisionRegimeStrategyWarning`
+    (`tests/test_state.py`) — a strategy with real avoided-regime evidence records the warning AND the
+    trade still executes; a strategy with no such evidence leaves the field `None`; no strategy selected
+    leaves it `None` even when avoided evidence exists on file for that symbol's strategy. Full backend
+    suite, `mypy`/`ruff` clean.
+
 - **"TradeTown — 11/10 Market Intelligence + Quant Research Engine" Trade Inspection Panel: real
   volume/liquidity/structure/confluence reads in `DecisionDetail.tsx`.** A repo-wide grep confirmed
   `VolumeConfirmationRead`/`getVolumeConfirmation` had zero consumers anywhere in the frontend, and
