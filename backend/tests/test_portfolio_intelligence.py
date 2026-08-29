@@ -9,6 +9,7 @@ from __future__ import annotations
 from app.market_data import Candle, MarketDataProvider, Quote
 from app.portfolio_intelligence import (
     CORRELATION_CLUSTER_THRESHOLD,
+    _agent_exposure,
     _capital_efficiency,
     _category_exposure,
     _correlated_clusters,
@@ -667,6 +668,69 @@ class TestStrategyExposure:
 
     def test_empty_portfolio_produces_no_reads(self) -> None:
         assert _strategy_exposure(_portfolio(positions=[]), equity=100000.0) == []
+
+
+class TestAgentExposure:
+    """CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+    11/10 Professional Quant Implementation," Phase 8/21 — the AGENT
+    level of the exposure hierarchy, mirroring TestStrategyExposure
+    exactly since _agent_exposure() mirrors _strategy_exposure()."""
+
+    def test_groups_open_positions_by_real_agent(self) -> None:
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, opened_by="scout"),
+            _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=100.0, opened_by="scout"),
+            _position(position_id="p3", symbol="GLD", quantity=1.0, current_price=100.0, opened_by="quant"),
+        ]
+        portfolio = _portfolio(positions=positions)
+        reads = _agent_exposure(portfolio, equity=100000.0)
+        by_id = {r.agent_id: r for r in reads}
+        assert by_id["scout"].position_count == 2
+        assert by_id["scout"].value == 1500.0
+        assert by_id["quant"].position_count == 1
+
+    def test_agent_is_never_a_null_bucket_since_opened_by_is_required(self) -> None:
+        # Unlike strategy_id (optional, real "unattributed" bucket),
+        # every real PaperPosition always has a real opened_by — no
+        # null/None bucket is possible or expected here.
+        positions = [_position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, opened_by="pulse")]
+        portfolio = _portfolio(positions=positions)
+        reads = _agent_exposure(portfolio, equity=100000.0)
+        assert all(r.agent_id is not None for r in reads)
+
+    def test_long_and_short_value_are_tracked_separately_within_an_agent(self) -> None:
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, side="buy", opened_by="scout"),
+            _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=100.0, side="sell", opened_by="scout"),
+        ]
+        portfolio = _portfolio(positions=positions)
+        reads = _agent_exposure(portfolio, equity=100000.0)
+        read = next(r for r in reads if r.agent_id == "scout")
+        assert read.long_value == 1000.0
+        assert read.short_value == 500.0
+        assert read.value == 1500.0
+
+    def test_empty_portfolio_produces_no_reads(self) -> None:
+        assert _agent_exposure(_portfolio(positions=[]), equity=100000.0) == []
+
+    def test_multiple_agents_independently_entering_the_same_symbol_is_real_measured_concentration(self) -> None:
+        # This directive's own Phase 21 example: Scout LONG SPY, Quant
+        # LONG QQQ, Momentum LONG NVDA are not automatically penalized
+        # for agreeing — but if the SAME agent enters multiple real
+        # positions, that agent's own real exposure share correctly
+        # grows, which is what a downstream concentration read would
+        # act on (never fabricated here, just correctly measured).
+        positions = [
+            _position(position_id="p1", symbol="SPY", quantity=10.0, current_price=100.0, opened_by="scout"),
+            _position(position_id="p2", symbol="QQQ", quantity=10.0, current_price=100.0, opened_by="scout"),
+            _position(position_id="p3", symbol="NVDA", quantity=10.0, current_price=100.0, opened_by="pulse"),
+        ]
+        portfolio = _portfolio(positions=positions)
+        reads = _agent_exposure(portfolio, equity=100000.0)
+        by_id = {r.agent_id: r for r in reads}
+        assert by_id["scout"].value == 2000.0
+        assert by_id["scout"].pct_of_equity == 2.0
+        assert by_id["pulse"].value == 1000.0
 
     def test_reads_sorted_by_value_descending(self) -> None:
         positions = [

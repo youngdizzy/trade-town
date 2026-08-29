@@ -8071,6 +8071,28 @@ class StrategyExposureRead(CamelModel):
     short_value: float = Field(alias="shortValue")
 
 
+# CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+# 11/10 Professional Quant Implementation," Phase 8/21 — the one
+# genuinely missing level of the FIRM -> ASSET CLASS -> STRATEGY ->
+# AGENT -> POSITION exposure hierarchy this directive asks for; a repo
+# audit confirmed asset-class (CategoryExposure) and strategy
+# (StrategyExposureRead above) groupings already exist, but nothing
+# grouped open exposure by which real agent (PaperPosition.openedBy)
+# actually opened each position — the exact real evidence needed to
+# answer "are Scout/Quant/Momentum/etc. independently betting on the
+# same real exposure" (this directive's own Phase 21 example). Mirrors
+# StrategyExposureRead's exact shape; `agentId` is never null —
+# PaperPosition.openedBy is a required field, unlike the optional
+# strategyId.
+class AgentExposureRead(CamelModel):
+    agent_id: AgentId = Field(alias="agentId")
+    position_count: int = Field(alias="positionCount")
+    value: float
+    pct_of_equity: float = Field(alias="pctOfEquity")
+    long_value: float = Field(alias="longValue")
+    short_value: float = Field(alias="shortValue")
+
+
 class PortfolioIntelligence(CamelModel):
     equity: float
     cash_balance: float = Field(alias="cashBalance")
@@ -8089,6 +8111,9 @@ class PortfolioIntelligence(CamelModel):
     exposure: ExposureSummary
     strategy_exposure: list[StrategyExposureRead] = Field(
         default_factory=list, alias="strategyExposure"
+    )
+    agent_exposure: list[AgentExposureRead] = Field(
+        default_factory=list, alias="agentExposure"
     )
     capital_efficiency: CapitalEfficiency = Field(alias="capitalEfficiency")
     # A real, specific "what's the alternative" read — never generic

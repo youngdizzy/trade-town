@@ -16514,6 +16514,20 @@ before — `AnalystVote` structurally requires all six roles); a
 CEO-configurable "target portfolio volatility" knob (cross-portfolio
 inverse-vol sizing narrows exposure but has no target-vol setting).
 
+### Follow-up: Agent Exposure — the missing hierarchy level
+
+Phase 8/21 asks for a real FIRM → ASSET CLASS → STRATEGY → AGENT →
+POSITION exposure hierarchy. A repo audit found asset-class
+(`CategoryExposure`) and strategy (`StrategyExposureRead`) groupings
+already real; nothing grouped open exposure by which real agent
+(`PaperPosition.openedBy`) opened each position — the real evidence
+Phase 21's own "are multiple agents independently betting on the same
+exposure" example needs. New `AgentExposureRead` schema +
+`_agent_exposure()`, mirroring `_strategy_exposure()` exactly (`agentId`
+is never null, since `openedBy` is required, unlike the optional
+`strategyId`). New "Agent Exposure" card in `PortfolioIntelPanel.tsx`
+beside the existing Strategy Exposure card.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

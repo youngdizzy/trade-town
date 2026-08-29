@@ -77,6 +77,7 @@ from app.ema_pullback_research import CHANDELIER_ATR_MULTIPLIER, CHANDELIER_ATR_
 from app.market_data import MarketDataProvider
 from app.risk_engine import portfolio_equity
 from app.schemas import (
+    AgentExposureRead,
     AgentId,
     CapitalEfficiency,
     CategoryExposure,
@@ -435,6 +436,44 @@ def _strategy_exposure(portfolio: PaperPortfolio, equity: float) -> list[Strateg
     return reads
 
 
+def _agent_exposure(portfolio: PaperPortfolio, equity: float) -> list[AgentExposureRead]:
+    """CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+    11/10 Professional Quant Implementation," Phase 8/21 — the AGENT
+    level of the FIRM -> ASSET CLASS -> STRATEGY -> AGENT -> POSITION
+    exposure hierarchy; mirrors `_strategy_exposure()` above exactly.
+    Groups currently-OPEN positions by the real agent
+    (`PaperPosition.openedBy`) that actually opened each one — never
+    null, since that field is required (unlike the optional
+    `strategyId`). The real evidence behind "are multiple agents
+    independently betting on the same real exposure" (this directive's
+    own Phase 21 SPY/QQQ/XLK/NVDA example) — never punishes agents for
+    agreeing, only measures the real resulting concentration."""
+    groups: dict[AgentId, list[float]] = {}
+    long_by_group: dict[AgentId, float] = {}
+    short_by_group: dict[AgentId, float] = {}
+    for pos in portfolio.positions:
+        value = pos.quantity * pos.current_price
+        groups.setdefault(pos.opened_by, []).append(value)
+        if pos.side == "buy":
+            long_by_group[pos.opened_by] = long_by_group.get(pos.opened_by, 0.0) + value
+        else:
+            short_by_group[pos.opened_by] = short_by_group.get(pos.opened_by, 0.0) + value
+
+    reads = [
+        AgentExposureRead(
+            agentId=agent_id,
+            positionCount=len(values),
+            value=round(sum(values), 2),
+            pctOfEquity=round(sum(values) / equity * 100, 1) if equity > 0 else 0.0,
+            longValue=round(long_by_group.get(agent_id, 0.0), 2),
+            shortValue=round(short_by_group.get(agent_id, 0.0), 2),
+        )
+        for agent_id, values in groups.items()
+    ]
+    reads.sort(key=lambda r: r.value, reverse=True)
+    return reads
+
+
 def _capital_efficiency(portfolio: PaperPortfolio) -> CapitalEfficiency:
     trades = portfolio.trade_history
     if not trades:
@@ -480,6 +519,7 @@ def compute_portfolio_intelligence(portfolio: PaperPortfolio, provider: MarketDa
     heat = _heat(portfolio, equity, category_exposure, provider)
     exposure = _exposure_summary(portfolio, equity)
     strategy_exposure = _strategy_exposure(portfolio, equity)
+    agent_exposure = _agent_exposure(portfolio, equity)
     capital_efficiency = _capital_efficiency(portfolio)
     cash_pct = round(portfolio.cash_balance / equity * 100, 1) if equity > 0 else 0.0
     deployed_pct = round(100.0 - cash_pct, 1) if equity > 0 else 0.0
@@ -495,6 +535,7 @@ def compute_portfolio_intelligence(portfolio: PaperPortfolio, provider: MarketDa
         heat=heat,
         exposure=exposure,
         strategyExposure=strategy_exposure,
+        agentExposure=agent_exposure,
         capitalEfficiency=capital_efficiency,
         opportunityCost=_opportunity_cost(cash_pct, pending_proposal_count),
         updatedAt=_now_iso(),

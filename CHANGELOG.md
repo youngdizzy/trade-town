@@ -7,6 +7,27 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **"TradeTown — Next Major Build: Portfolio Risk Engine + Firm-Wide Risk Governance" follow-up:
+  Agent Exposure — the one genuinely missing level of the exposure hierarchy.** A repo audit for
+  the FIRM → ASSET CLASS → STRATEGY → AGENT → POSITION hierarchy Phase 8/21 asks for found
+  asset-class (`CategoryExposure`) and strategy (`StrategyExposureRead`) groupings already real and
+  working — but nothing grouped currently-open exposure by which real agent
+  (`PaperPosition.openedBy`) actually opened each position, the exact real evidence this directive's
+  own Phase 21 example needs ("are Scout/Quant/Momentum independently betting on the same real
+  exposure").
+  - New `AgentExposureRead` schema and `app/portfolio_intelligence.py::_agent_exposure()`, mirroring
+    the existing `_strategy_exposure()` exactly (same real notional-value grouping, same long/short
+    split) — `agentId` is never null, since `PaperPosition.openedBy` is a required field (unlike the
+    optional `strategyId`). New `PortfolioIntelligence.agentExposure` field.
+  - New "Agent Exposure" card in `PortfolioIntelPanel.tsx`, directly beside the existing Strategy
+    Exposure card, reusing `AGENT_PROFILES` for display names — never a new abstraction, a direct
+    mirror of the already-established strategy-exposure card. Verified live in the browser against
+    the real running dev stack.
+  - 5 new tests in `TestAgentExposure` (`test_portfolio_intelligence.py`), including a direct test of
+    this directive's own Phase 21 example (two independently-agreeing agents produce real, correctly
+    measured, non-punitive exposure concentration).
+  - Verified: full backend suite (3033 tests), `mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+
 - **"TradeTown — Next Major Build: Portfolio Risk Engine + Firm-Wide Risk Governance, 11/10
   Professional Quant Implementation."** A thorough Phase 0 audit (this codebase's own CHANGELOG
   record, `app/portfolio_risk.py`, `app/portfolio_monte_carlo.py`, `app/black_swan.py`,
