@@ -16661,6 +16661,72 @@ on the same models. `PortfolioIntelPanel.tsx`'s three exposure cards
 each gained a `· risk X%` figure alongside the existing position-count/
 notional-% summary line. 5 new tests in `test_portfolio_intelligence.py`.
 
+### Follow-up: "Cross-Trade Capital Allocation" — the real Marginal Risk Test
+
+A fresh directive's own explicit SIGNAL STRENGTH vs. PORTFOLIO CAPACITY
+distinction ("a perfect signal can still receive ZERO allocation if the
+portfolio cannot safely absorb the risk") named a real, confirmed gap a
+Phase 0 audit found underneath an otherwise already-substantial risk
+stack (Sentinel's ordered daily/weekly/monthly-loss/drawdown/position-
+size/open-position waterfall, real Pearson correlation clusters and
+per-position capital-at-risk, the stress-test ladder, historical-
+bootstrap Monte Carlo VaR, layered kill switches): every existing check
+evaluates a candidate trade in ISOLATION — nothing actually simulates
+adding it to the book and compares the portfolio's own state before vs.
+after.
+
+New `app/portfolio_risk.py::evaluate_marginal_portfolio_risk()` builds
+a real synthetic portfolio (candidate appended, cash reduced by its
+notional — a disclosed cash-secured simplification, since this
+codebase has no true margin/short-borrowing model) and runs it through
+the exact same `compute_portfolio_intelligence()` every other real
+portfolio read already uses, never a second, independently-derived
+correlation/exposure computation. Composes (never duplicates) the
+existing `evaluate_pretrade_risk_decision()` — a halted/rejected
+individual decision always vetoes the marginal one too, before any
+portfolio-level simulation runs.
+
+**A real reduction, not just a gate.** When the candidate's own
+correlated cluster would cross `_RESTRICTED_CLUSTER_PCT` (40%, the
+same threshold `compute_portfolio_risk_snapshot()` already treats as a
+real concentration concern), a real 8-iteration binary search re-runs
+the real intelligence computation at shrinking candidate sizes to find
+the largest value that stays under it — `allowedValue` comes back
+genuinely smaller than `requestedValue`
+(`decision="approved_reduced"`), never a fabricated number. Deliberately
+scoped to the candidate's OWN cluster (`_symbol_cluster_pct()`), never
+a portfolio-wide maximum a completely unrelated cluster could drive —
+a dedicated test proves a candidate uncorrelated with an already-over-
+concentrated cluster elsewhere in the book is never punished for it.
+
+New explicit vocabulary: `MarginalRiskVerdict`
+(approved/approved_reduced/vetoed/data_blocked), `RiskImpactLevel`
+(low/medium/high, for both correlation and single-symbol concentration
+impact — concentration reuses the EXISTING `RiskLimits.max_sector_
+concentration_pct` Guardian already enforces, never a new invented
+threshold), `LiquidityStatus` (`data_unavailable` whenever there isn't
+enough real volume history for `relative_volume()`), and
+`CorrelationRegimeState` (normal/elevated/extreme — the real average
+|pairwise correlation| across every held pair, reusing
+`portfolio_intelligence.py`'s own public `pearson_correlation()`/
+`returns()` rather than its threshold-filtered `correlation_pairs`
+field, which would bias an average upward).
+
+**Disclosed boundary**: `leverageBefore`/`leverageAfter` are reported
+as real, computed evidence only — no CEO-configurable leverage limit
+exists to enforce against in this cash-secured paper-trading model, and
+the directive's own Phase 36 forbids fabricating one just to look
+sophisticated.
+
+New `GET /api/risk-limits/marginal-decision` endpoint (mirrors the
+existing `/pretrade-decision` endpoint exactly). New
+`PortfolioMarginalRiskDecision`-family types kept in sync in
+`types.ts`/`api.ts` at the same "typed, real endpoint, no dedicated UI
+consumer yet" stage the existing (and likewise frontend-unconsumed)
+`PretradeRiskDecision` has been at since the original directive — a
+full "Trade Approval View" is a separate, larger UI lift, not attempted
+this pass. 14 new tests in `test_portfolio_risk.py`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

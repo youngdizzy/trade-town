@@ -12,9 +12,18 @@ from app.market_data import market_data_provider
 from app.persistence import persist_modules
 from app.portfolio_intelligence import compute_portfolio_intelligence
 from app.portfolio_monte_carlo import compute_portfolio_monte_carlo
-from app.portfolio_risk import compute_portfolio_risk_snapshot, evaluate_pretrade_risk_decision
+from app.portfolio_risk import compute_portfolio_risk_snapshot, evaluate_marginal_portfolio_risk, evaluate_pretrade_risk_decision
 from app.risk_engine import daily_realized_pnl_pct, portfolio_equity, project_loss_after_n_losses
-from app.schemas import PortfolioMonteCarloResult, PortfolioRiskSnapshot, PretradeRiskDecision, ProjectedLossPath, RecoveryFactorRead, RiskLimits, TierAllocationLimits
+from app.schemas import (
+    PortfolioMarginalRiskDecision,
+    PortfolioMonteCarloResult,
+    PortfolioRiskSnapshot,
+    PretradeRiskDecision,
+    ProjectedLossPath,
+    RecoveryFactorRead,
+    RiskLimits,
+    TierAllocationLimits,
+)
 from app.state import game_state
 
 router = APIRouter(prefix="/api/risk-limits", tags=["risk"])
@@ -158,6 +167,29 @@ async def pretrade_risk_decision(
 # for the real historical-bootstrap methodology. Computed fresh (CAGS),
 # never persisted; None below MIN_TRADES_FOR_PORTFOLIO_MONTE_CARLO real
 # closed trades, never a bootstrap from too thin a real sample.
+# CEO directive "Portfolio Risk Engine + Cross-Trade Capital Allocation"
+# — the real Marginal Risk Test (Phase 17): portfolio state computed
+# once WITHOUT the candidate and once WITH it, via a real synthetic-
+# portfolio recomputation. See app/portfolio_risk.py's own
+# `evaluate_marginal_portfolio_risk()` and `PortfolioMarginalRiskDecision`
+# docstrings for the full methodology and disclosed simplifications.
+@router.get("/marginal-decision", response_model=PortfolioMarginalRiskDecision)
+async def marginal_portfolio_risk_decision(
+    symbol: str = Query(..., min_length=1, max_length=16),
+    proposed_value: float = Query(..., gt=0),
+) -> PortfolioMarginalRiskDecision:
+    state = await game_state.snapshot()
+    return evaluate_marginal_portfolio_risk(
+        state.risk_limits,
+        state.paper_portfolio,
+        market_data_provider,
+        symbol=symbol.upper(),
+        proposed_value=proposed_value,
+        sim_day=state.time.day,
+        emergency_stop_active=state.emergency_stop.active,
+    )
+
+
 @router.get("/portfolio-monte-carlo", response_model=PortfolioMonteCarloResult | None)
 async def portfolio_monte_carlo() -> PortfolioMonteCarloResult | None:
     state = await game_state.snapshot()

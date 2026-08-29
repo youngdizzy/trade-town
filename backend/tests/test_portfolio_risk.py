@@ -8,7 +8,7 @@ test_risk_engine.py / test_portfolio_intelligence.py).
 from __future__ import annotations
 
 from app.portfolio_intelligence import compute_portfolio_intelligence
-from app.portfolio_risk import compute_portfolio_risk_snapshot, evaluate_pretrade_risk_decision
+from app.portfolio_risk import compute_portfolio_risk_snapshot, evaluate_marginal_portfolio_risk, evaluate_pretrade_risk_decision
 from app.schemas import PaperPortfolio, PaperPosition, PaperTrade, RiskLimits
 from tests.test_portfolio_intelligence import _FakeProvider
 
@@ -196,6 +196,233 @@ class TestEvaluatePretradeRiskDecision:
         assert len(decision.reasons) >= 2
         assert "risk_max_open_positions" in decision.reason_codes
         assert "risk_position_size_limit" in decision.reason_codes
+
+
+class TestEvaluateMarginalPortfolioRisk:
+    """CEO directive "Portfolio Risk Engine + Cross-Trade Capital
+    Allocation," Phase 17 — the real Marginal Risk Test: portfolio
+    state computed once WITHOUT the candidate, once WITH it, via a real
+    synthetic-portfolio recomputation through the exact same
+    compute_portfolio_intelligence() every other real portfolio read
+    already uses."""
+
+    def test_no_existing_positions_is_approved_at_full_requested_value(self) -> None:
+        portfolio = _portfolio()
+        provider = _FakeProvider({"AAPL": [100.0 + i for i in range(30)]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="AAPL", proposed_value=5_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.decision == "approved"
+        assert decision.allowed_value == 5_000.0
+        assert decision.reduction_factor == 1.0
+        assert decision.correlation_impact == "low"
+        assert decision.veto_reasons == []
+
+    def test_no_real_candle_history_is_data_blocked(self) -> None:
+        portfolio = _portfolio()
+        provider = _FakeProvider({})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="ZZZZ", proposed_value=5_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.decision == "data_blocked"
+        assert decision.allowed_value == 0.0
+        assert decision.individual_risk_usd is None
+        assert decision.veto_reasons
+
+    def test_emergency_stop_vetoes_regardless_of_correlation(self) -> None:
+        portfolio = _portfolio()
+        provider = _FakeProvider({"AAPL": [100.0 + i for i in range(30)]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="AAPL", proposed_value=5_000.0, sim_day=0, emergency_stop_active=True
+        )
+        assert decision.decision == "vetoed"
+        assert decision.allowed_value == 0.0
+        assert any("emergency stop" in r.lower() for r in decision.veto_reasons)
+
+    def test_critical_sentinel_violation_vetoes_the_marginal_decision_too(self) -> None:
+        limits = RiskLimits(maxDrawdownPct=20.0)
+        portfolio = _portfolio(trades=[_trade(pnl=-25_000.0)], cash=75_000.0)
+        provider = _FakeProvider({"AAPL": [100.0 + i for i in range(30)]})
+        decision = evaluate_marginal_portfolio_risk(
+            limits, portfolio, provider, symbol="AAPL", proposed_value=1_000.0, sim_day=5, emergency_stop_active=False
+        )
+        assert decision.decision == "vetoed"
+        assert decision.allowed_value == 0.0
+        assert any("drawdown" in r.lower() for r in decision.veto_reasons)
+
+    def test_joining_an_already_correlated_cluster_reduces_the_allocation(self) -> None:
+        # AAPL closes and its own perfectly-scaled counterpart clear
+        # CORRELATION_CLUSTER_THRESHOLD (0.6) — same real construction
+        # TestComputePortfolioRiskSnapshot's own cluster test above uses.
+        closes = [100.0 + i for i in range(30)]
+        held = PaperPosition(
+            id="held-1", symbol="MSFT", side="buy", quantity=125.0, entryPrice=200.0, currentPrice=200.0,  # type: ignore[arg-type]
+            unrealizedPnl=0.0, unrealizedPnlPct=0.0, openedBy="sentinel", confidence=80.0,  # type: ignore[arg-type]
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        # $25,000 of MSFT against $100,000 equity (cash 75,000 + 25,000
+        # position) = 25% held alone, under the 40% threshold by itself
+        # — so the cluster only crosses 40% once a correlated NVDA
+        # candidate's OWN value pushes it there, leaving real room for a
+        # genuine partial reduction rather than an immediate veto (see
+        # the next test for the case where the existing cluster is
+        # already over the threshold on its own).
+        portfolio = _portfolio(cash=75_000.0, starting=100_000.0, positions=[held])
+        provider = _FakeProvider({"MSFT": closes, "NVDA": [c * 2 for c in closes]})
+        # maxPositionPct raised well past 50% so this test isolates the
+        # correlation-cluster mechanism alone — the same isolation
+        # convention TestEvaluatePretradeRiskDecision's own
+        # test_only_guardian_warning_is_approved_with_reduction_not_
+        # rejected already establishes for a different single check.
+        limits = RiskLimits(maxPositionPct=100.0, maxSectorConcentrationPct=100.0)
+        decision = evaluate_marginal_portfolio_risk(
+            limits, portfolio, provider, symbol="NVDA", proposed_value=50_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.decision == "approved_reduced"
+        assert decision.allowed_value < 50_000.0
+        assert decision.allowed_value > 0.0
+        assert decision.correlation_impact in ("medium", "high")
+        assert decision.largest_cluster_pct_after < 40.0 + 0.5  # binary search converges just under the threshold
+
+    def test_cluster_already_at_the_threshold_is_vetoed_not_reduced_to_a_token_size(self) -> None:
+        closes = [100.0 + i for i in range(30)]
+        # Two correlated positions already at 45% of equity BEFORE any
+        # candidate is considered — MSFT/NVDA correlated pair.
+        msft = PaperPosition(
+            id="held-1", symbol="MSFT", side="buy", quantity=225.0, entryPrice=200.0, currentPrice=200.0,  # type: ignore[arg-type]
+            unrealizedPnl=0.0, unrealizedPnlPct=0.0, openedBy="sentinel", confidence=80.0,  # type: ignore[arg-type]
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        nvda = PaperPosition(
+            id="held-2", symbol="NVDA", side="buy", quantity=225.0, entryPrice=200.0, currentPrice=200.0,  # type: ignore[arg-type]
+            unrealizedPnl=0.0, unrealizedPnlPct=0.0, openedBy="sentinel", confidence=80.0,  # type: ignore[arg-type]
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        portfolio = _portfolio(cash=10_000.0, starting=100_000.0, positions=[msft, nvda])
+        # AMD joins the SAME correlated cluster (perfectly scaled from
+        # the same closes as MSFT/NVDA).
+        provider = _FakeProvider({"MSFT": closes, "NVDA": closes, "AMD": [c * 3 for c in closes]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="AMD", proposed_value=1_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.decision == "vetoed"
+        assert decision.allowed_value == 0.0
+        assert decision.veto_reasons
+
+    def test_a_candidate_unrelated_to_an_already_over_concentrated_cluster_is_not_punished_for_it(self) -> None:
+        """The correlation-based reduction must be scoped to the
+        CANDIDATE's own cluster, never a portfolio-wide max driven by a
+        cluster the candidate has nothing to do with."""
+        closes = [100.0 + i for i in range(30)]
+        msft = PaperPosition(
+            id="held-1", symbol="MSFT", side="buy", quantity=225.0, entryPrice=200.0, currentPrice=200.0,  # type: ignore[arg-type]
+            unrealizedPnl=0.0, unrealizedPnlPct=0.0, openedBy="sentinel", confidence=80.0,  # type: ignore[arg-type]
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        nvda = PaperPosition(
+            id="held-2", symbol="NVDA", side="buy", quantity=225.0, entryPrice=200.0, currentPrice=200.0,  # type: ignore[arg-type]
+            unrealizedPnl=0.0, unrealizedPnlPct=0.0, openedBy="sentinel", confidence=80.0,  # type: ignore[arg-type]
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        portfolio = _portfolio(cash=10_000.0, starting=100_000.0, positions=[msft, nvda])
+        # GLD is a real, distinct flat/uncorrelated series — shares no
+        # real correlation with the already-concentrated MSFT/NVDA
+        # cluster.
+        provider = _FakeProvider({"MSFT": closes, "NVDA": closes, "GLD": [200.0 for _ in range(30)]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="GLD", proposed_value=1_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.decision == "approved"
+        assert decision.allowed_value == 1_000.0
+        assert decision.correlation_impact == "low"
+
+    def test_individual_risk_usd_is_none_without_enough_real_candle_history(self) -> None:
+        portfolio = _portfolio()
+        provider = _FakeProvider({"AAPL": [100.0, 101.0]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="AAPL", proposed_value=1_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.individual_risk_usd is None
+
+    def test_liquidity_status_data_unavailable_without_enough_volume_history(self) -> None:
+        portfolio = _portfolio()
+        provider = _FakeProvider({"AAPL": [100.0, 101.0, 102.0]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="AAPL", proposed_value=1_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.liquidity_status == "data_unavailable"
+
+    def test_liquidity_status_valid_with_enough_uniform_volume_history(self) -> None:
+        portfolio = _portfolio()
+        provider = _FakeProvider({"AAPL": [100.0 + i for i in range(30)]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="AAPL", proposed_value=1_000.0, sim_day=0, emergency_stop_active=False
+        )
+        # _FakeProvider's candles carry a uniform real volume (1000.0)
+        # across every bar, so relative volume reads at (or very near)
+        # 1.0 — comfortably "valid," never "data_unavailable" once
+        # there's enough real history for the baseline window.
+        assert decision.liquidity_status == "valid"
+
+    def test_correlation_regime_state_reads_elevated_with_a_highly_correlated_book(self) -> None:
+        closes = [100.0 + i for i in range(30)]
+        msft = PaperPosition(
+            id="held-1", symbol="MSFT", side="buy", quantity=10.0, entryPrice=200.0, currentPrice=200.0,  # type: ignore[arg-type]
+            unrealizedPnl=0.0, unrealizedPnlPct=0.0, openedBy="sentinel", confidence=80.0,  # type: ignore[arg-type]
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        nvda = PaperPosition(
+            id="held-2", symbol="NVDA", side="buy", quantity=10.0, entryPrice=200.0, currentPrice=200.0,  # type: ignore[arg-type]
+            unrealizedPnl=0.0, unrealizedPnlPct=0.0, openedBy="sentinel", confidence=80.0,  # type: ignore[arg-type]
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        portfolio = _portfolio(cash=90_000.0, starting=100_000.0, positions=[msft, nvda])
+        provider = _FakeProvider({"MSFT": closes, "NVDA": closes, "AAPL": [100.0 + i for i in range(30)]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="AAPL", proposed_value=1_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.correlation_regime_state in ("elevated", "extreme")
+
+    def test_correlation_regime_state_reads_normal_with_a_single_held_position(self) -> None:
+        held = PaperPosition(
+            id="held-1", symbol="MSFT", side="buy", quantity=10.0, entryPrice=200.0, currentPrice=200.0,  # type: ignore[arg-type]
+            unrealizedPnl=0.0, unrealizedPnlPct=0.0, openedBy="sentinel", confidence=80.0,  # type: ignore[arg-type]
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        portfolio = _portfolio(cash=98_000.0, starting=100_000.0, positions=[held])
+        provider = _FakeProvider({"MSFT": [100.0 + i for i in range(30)], "AAPL": [100.0 + i for i in range(30)]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="AAPL", proposed_value=1_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.correlation_regime_state == "normal"
+
+    def test_gross_and_net_exposure_after_reflect_the_added_candidate(self) -> None:
+        portfolio = _portfolio()
+        provider = _FakeProvider({"AAPL": [100.0 + i for i in range(30)]})
+        decision = evaluate_marginal_portfolio_risk(
+            RiskLimits(), portfolio, provider, symbol="AAPL", proposed_value=5_000.0, sim_day=0, emergency_stop_active=False
+        )
+        assert decision.gross_exposure_usd_before == 0.0
+        assert decision.gross_exposure_usd_after == 5_000.0
+        assert decision.net_exposure_usd_after == 5_000.0
+        assert decision.leverage_before == 0.0
+        assert decision.leverage_after > 0.0
+
+    def test_deterministic_replay(self) -> None:
+        closes = [100.0 + i for i in range(30)]
+        held = PaperPosition(
+            id="held-1", symbol="MSFT", side="buy", quantity=125.0, entryPrice=200.0, currentPrice=200.0,  # type: ignore[arg-type]
+            unrealizedPnl=0.0, unrealizedPnlPct=0.0, openedBy="sentinel", confidence=80.0,  # type: ignore[arg-type]
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        portfolio = _portfolio(cash=75_000.0, starting=100_000.0, positions=[held])
+        provider = _FakeProvider({"MSFT": closes, "NVDA": [c * 2 for c in closes]})
+        limits = RiskLimits(maxPositionPct=100.0, maxSectorConcentrationPct=100.0)
+        decision_1 = evaluate_marginal_portfolio_risk(limits, portfolio, provider, symbol="NVDA", proposed_value=50_000.0, sim_day=0, emergency_stop_active=False)
+        decision_2 = evaluate_marginal_portfolio_risk(limits, portfolio, provider, symbol="NVDA", proposed_value=50_000.0, sim_day=0, emergency_stop_active=False)
+        assert decision_1.model_dump(exclude={"computed_at"}) == decision_2.model_dump(exclude={"computed_at"})
+        # A real, non-trivial case (not a vacuous "approved" replay).
+        assert decision_1.decision == "approved_reduced"
 
 
 class TestDeterministicReplay:

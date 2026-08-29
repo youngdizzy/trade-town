@@ -340,6 +340,63 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — 11/10 Engineering Pass: Portfolio Risk Engine + Cross-Trade Capital Allocation" —
+  the real Marginal Risk Test (Phase 17): a BEFORE/AFTER portfolio-level simulation, not just a
+  per-position gate.** A Phase 0 audit found the directive's SIGNAL STRENGTH vs. PORTFOLIO CAPACITY
+  distinction already substantially served by earlier passes (`app/risk_engine.py`'s ordered
+  daily/weekly/monthly-loss/drawdown/position-size/open-position waterfall, `app/portfolio_
+  intelligence.py`'s real Pearson correlation clusters and per-position capital-at-risk,
+  `app/black_swan.py`'s stress ladder, `app/portfolio_monte_carlo.py`'s historical-bootstrap VaR/risk-
+  of-ruin, `app/emergency_stop.py`/`app/trading_restrictions.py`'s layered kill switches) — but the
+  directive's own explicit example ("a perfect signal can still receive ZERO allocation if the
+  portfolio cannot safely absorb the risk") named a real, confirmed gap: nothing actually SIMULATED
+  adding a candidate to the book and compared the portfolio's OWN state before vs. after. Every
+  existing check (Sentinel/Guardian) evaluates the candidate in isolation — never "what does the whole
+  correlated cluster look like once this joins it."
+  - New `app/portfolio_risk.py::evaluate_marginal_portfolio_risk()` — builds a real synthetic portfolio
+    (the candidate appended, cash reduced by its notional, a real, disclosed cash-secured
+    simplification since this codebase has no true margin/short-borrowing model) and runs it through
+    the EXACT same `compute_portfolio_intelligence()` every other real portfolio read already uses —
+    never a second, independently-derived correlation/exposure computation. Composes (never duplicates)
+    the existing `evaluate_pretrade_risk_decision()`: a halted/rejected individual decision always
+    vetoes the marginal one too, before any portfolio-level simulation runs.
+  - **A real reduction, not just a binary gate.** When the candidate's own correlated cluster (found via
+    a real 8-iteration binary search re-running the real intelligence computation at shrinking candidate
+    sizes — never a second, approximate correlation formula) would cross the existing
+    `_RESTRICTED_CLUSTER_PCT` (40%) threshold `compute_portfolio_risk_snapshot()` already treats as a
+    real concentration concern, `allowed_value` comes back genuinely smaller than `requested_value` —
+    `decision="approved_reduced"`. Deliberately scoped to the CANDIDATE's OWN cluster (`_symbol_cluster_
+    pct()`), never a portfolio-wide maximum that could be driven by an unrelated cluster the candidate
+    never joins — proven by a dedicated test
+    (`test_a_candidate_unrelated_to_an_already_over_concentrated_cluster_is_not_punished_for_it`).
+  - **New `SignalState`-style explicit vocabulary (Phase 20):** `MarginalRiskVerdict` (`approved` /
+    `approved_reduced` / `vetoed` / `data_blocked`), `RiskImpactLevel` (low/medium/high, reused for both
+    `correlationImpact` — the candidate's own cluster share — and `concentrationImpact` — its single-
+    symbol share against the EXISTING `RiskLimits.maxSectorConcentrationPct` Guardian already enforces,
+    never a new invented threshold), `LiquidityStatus` (Phase 14's explicit "do not invent execution
+    quality" — `data_unavailable` whenever there isn't yet enough real volume history for
+    `app/volume_analysis.py`'s own `relative_volume()`), `CorrelationRegimeState` (Phase 7's explicit
+    NORMAL/ELEVATED/EXTREME — the real average |pairwise correlation| across every currently-held pair,
+    reusing `app/portfolio_intelligence.py`'s own public `pearson_correlation()`/`returns()` rather than
+    its threshold-filtered `correlation_pairs` field, which would silently bias an "average" upward).
+  - **Honest boundary, disclosed in the schema's own docstring**: `leverageBefore`/`leverageAfter` are
+    reported as real, computed EVIDENCE only — this codebase's paper-trading model has no true margin/
+    short-borrowing concept, so no CEO-configurable leverage limit exists to enforce against, and Phase
+    36 explicitly forbids fabricating one "simply to make the system appear sophisticated."
+    `individualRiskUsd` reuses the exact same real Chandelier-Stop convention this session's earlier
+    capital-at-risk work already established; `None` (never fabricated) without enough real candle
+    history. `regimeStatus` reuses `app/trend_engine.py`'s own real regime proxy
+    (`regime_trend_at()`) — never a second classifier.
+  - New `GET /api/risk-limits/marginal-decision` endpoint, mirroring the existing `/pretrade-decision`
+    endpoint's exact shape. New `PortfolioMarginalRiskDecision`/related types in `types.ts` and
+    `api.ts::getMarginalPortfolioRiskDecision()` — kept in sync at the same "typed, real endpoint, no
+    dedicated UI consumer yet" stage the existing (and likewise frontend-unconsumed)
+    `PretradeRiskDecision` has been at since the original Portfolio Risk Engine directive; a real, full
+    "Trade Approval View" (Phase 32) is a genuinely separate, larger UI lift, not attempted this pass.
+  - Verified: 14 new backend tests (`TestEvaluateMarginalPortfolioRisk` in `test_portfolio_risk.py`,
+    including deterministic replay and the candidate-vs-unrelated-cluster isolation proof above), full
+    backend suite, `mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+
 - **"TradeTown — 11/10 Engineering Pass: Multi-Horizon Trend Engine + AHL-Inspired Systematic Trend
   Research" — explicit SignalState vocabulary, Fast/Medium/Slow evidence alignment, and an upfront
   data-quality gate.** A Phase 0 audit found the overwhelming majority of this fresh 37-point directive

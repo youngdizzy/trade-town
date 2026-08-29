@@ -9209,6 +9209,93 @@ class PretradeRiskDecision(CamelModel):
     detail: str
 
 
+# CEO directive "Portfolio Risk Engine + Cross-Trade Capital Allocation"
+# — the directive's own explicit SIGNAL STRENGTH vs PORTFOLIO CAPACITY
+# distinction: `PretradeRiskDecision` above answers "does this ONE
+# candidate clear Sentinel/Guardian's own per-position gates," never
+# "what does the WHOLE portfolio look like with this candidate added."
+# `PortfolioMarginalRiskDecision` (app/portfolio_risk.py's
+# `evaluate_marginal_portfolio_risk()`) answers that second question —
+# a real BEFORE/AFTER simulation, composing `PretradeRiskDecision`
+# rather than duplicating it (a rejected/halted individual decision
+# always vetoes the marginal one too).
+MarginalRiskVerdict = Literal["approved", "approved_reduced", "vetoed", "data_blocked"]
+# LOW/MEDIUM/HIGH — a real, disclosed read of how much a delta (not an
+# absolute level) matters, used for both correlation and concentration
+# impact below; see `_impact_level()` in app/portfolio_risk.py.
+RiskImpactLevel = Literal["low", "medium", "high"]
+# Phase 14's explicit "do not invent execution quality" instruction —
+# `data_unavailable` is the honest answer whenever the candidate lacks
+# enough real candle history for a real relative-volume read (see
+# app/volume_analysis.py's own `relative_volume()`), never a fabricated
+# "valid."
+LiquidityStatus = Literal["valid", "limited", "data_unavailable"]
+# Phase 7's explicit NORMAL/ELEVATED/EXTREME ask — a real, disclosed
+# read of the portfolio's OWN average real pairwise correlation
+# magnitude across every currently-held pair (not the candidate's own
+# correlation to the book, which is what `correlation_impact` above
+# already measures) — see `_classify_correlation_regime()`.
+CorrelationRegimeState = Literal["normal", "elevated", "extreme"]
+
+
+class PortfolioMarginalRiskDecision(CamelModel):
+    """The real Marginal Risk Test (Phase 17): portfolio state is
+    computed once with the candidate NOT held (`*_before` fields) and
+    once with it held at its own real, currently-evaluated size
+    (`*_after` fields), by literally constructing a synthetic portfolio
+    and running it through the exact same `app/portfolio_intelligence.
+    py::compute_portfolio_intelligence()` every other real portfolio
+    read in this codebase already uses — never a second, independently-
+    derived correlation/exposure computation that could quietly drift
+    from the real one. `allowed_value` can be smaller than
+    `requested_value` (a real reduction, found by re-running that same
+    real computation at shrinking candidate sizes until the resulting
+    largest correlated-cluster share clears app/portfolio_risk.py's own
+    real `_RESTRICTED_CLUSTER_PCT` threshold) or `0.0` (a veto) — never
+    the reverse. `individual_risk_usd` reuses the exact same real
+    Chandelier-Stop convention `app/portfolio_intelligence.py`'s own
+    per-position capital-at-risk read already uses, applied to this
+    hypothetical candidate; `None` when there isn't yet enough real
+    candle history to compute it, never a fabricated number. Cash-
+    secured simplification, disclosed: opening the candidate is modeled
+    as `cash -= requested_value` regardless of side — this codebase's
+    own paper-trading model has no true margin/short-borrowing concept
+    (see `app/portfolio.py::open_position()`), so a CEO-configurable
+    hard leverage limit does not exist yet and is not enforced here;
+    `leverage_before`/`leverage_after` are reported as real, computed
+    EVIDENCE only, per Phase 36's "do not fabricate a threshold simply
+    to look sophisticated" instruction — see the module docstring's own
+    disclosed-limitations section."""
+
+    decision: MarginalRiskVerdict
+    symbol: str
+    requested_value: float = Field(alias="requestedValue")
+    allowed_value: float = Field(alias="allowedValue")
+    reduction_factor: float = Field(alias="reductionFactor")
+    individual_risk_usd: float | None = Field(default=None, alias="individualRiskUsd")
+    portfolio_capital_at_risk_pct_before: float = Field(alias="portfolioCapitalAtRiskPctBefore")
+    portfolio_capital_at_risk_pct_after: float = Field(alias="portfolioCapitalAtRiskPctAfter")
+    gross_exposure_usd_before: float = Field(alias="grossExposureUsdBefore")
+    gross_exposure_usd_after: float = Field(alias="grossExposureUsdAfter")
+    net_exposure_usd_before: float = Field(alias="netExposureUsdBefore")
+    net_exposure_usd_after: float = Field(alias="netExposureUsdAfter")
+    leverage_before: float = Field(alias="leverageBefore")
+    leverage_after: float = Field(alias="leverageAfter")
+    largest_cluster_pct_before: float = Field(alias="largestClusterPctBefore")
+    largest_cluster_pct_after: float = Field(alias="largestClusterPctAfter")
+    correlation_impact: RiskImpactLevel = Field(alias="correlationImpact")
+    concentration_impact: RiskImpactLevel = Field(alias="concentrationImpact")
+    correlation_regime_state: CorrelationRegimeState = Field(alias="correlationRegimeState")
+    liquidity_status: LiquidityStatus = Field(alias="liquidityStatus")
+    regime_status: str = Field(alias="regimeStatus")
+    drawdown_status: str = Field(alias="drawdownStatus")
+    daily_loss_status: str = Field(alias="dailyLossStatus")
+    veto_reasons: list[str] = Field(default_factory=list, alias="vetoReasons")
+    warnings: list[str] = Field(default_factory=list)
+    risk_policy_version: str = Field(alias="riskPolicyVersion")
+    computed_at: str = Field(alias="computedAt")
+
+
 class LosingStreakRead(CamelModel):
     """Computed fresh every tick by walking `trade_history` backward from
     the most recent closed trade — never persisted as a second copy."""
