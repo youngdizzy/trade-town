@@ -64,6 +64,7 @@ from __future__ import annotations
 
 from app.ema_pullback_research import CHANDELIER_ATR_MULTIPLIER, CHANDELIER_ATR_PERIOD
 from app.market_data import MarketDataProvider
+from app.portfolio_risk import compute_correlation_concentration_cap
 from app.risk_engine import SIM_MINUTES_PER_DAY, portfolio_equity
 from app.schemas import (
     CrossPortfolioRiskParityRead,
@@ -469,9 +470,44 @@ def build_position_sizing(
     cross_portfolio_risk_sizing = _cross_portfolio_inverse_vol_sizing(proposal, provider, portfolio, equity, risk_limits, decision_score)
     cross_portfolio_cap_quantity = (equity * cross_portfolio_risk_sizing.final_exposure.capped_exposure_pct / 100 / price) if cross_portfolio_risk_sizing is not None else candidate_quantity
 
+    # CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-Firm
+    # Implementation" — the real correlation/concentration-cluster
+    # reduction the previous "Cross-Trade Capital Allocation" pass built
+    # (app/portfolio_risk.py::evaluate_marginal_portfolio_risk()) reached
+    # the CEO as real, live evidence in the Trade Approval view, but
+    # never actually narrowed the quantity a trade executes at — "a
+    # strong signal does NOT automatically get capital" was shown, not
+    # enforced. Wired in here as one more real, narrowing-only cap,
+    # evaluated against this candidate's own already tier/heat/cash/
+    # volatility-scaled notional (never the raw, pre-scaling ceiling —
+    # every other cap here narrows from that same starting point too).
+    # Deliberately calls `compute_correlation_concentration_cap()`, NOT
+    # `evaluate_marginal_portfolio_risk()` itself — that function also
+    # composes Sentinel's own critical hard gates (drawdown/daily-loss/
+    # position-size/emergency-stop) into a full veto, and this module's
+    # own docstring is explicit that it answers "how much," never
+    # "whether"; those gates remain exclusively app/gatekeeper.py's real
+    # job downstream, never duplicated here (see that function's own
+    # docstring for the full reasoning).
+    marginal_risk_decision = compute_correlation_concentration_cap(
+        risk_limits, portfolio, provider, symbol=proposal.symbol, proposed_value=candidate_quantity * price, sim_day=sim_day
+    )
+    marginal_risk_cap_quantity = (
+        candidate_quantity if marginal_risk_decision.decision == "data_blocked" or price <= 0 else marginal_risk_decision.allowed_value / price
+    )
+
     final_quantity = max(
         0.0,
-        min(candidate_quantity, weekly_cap_quantity, heat_cap_quantity, cash_cap_quantity, volatility_cap_quantity, inverse_vol_cap_quantity, cross_portfolio_cap_quantity),
+        min(
+            candidate_quantity,
+            weekly_cap_quantity,
+            heat_cap_quantity,
+            cash_cap_quantity,
+            volatility_cap_quantity,
+            inverse_vol_cap_quantity,
+            cross_portfolio_cap_quantity,
+            marginal_risk_cap_quantity,
+        ),
     )
     final_quantity = round(final_quantity, 4)
     capital_deployed_pct = round(final_quantity * price / equity * 100, 2) if equity > 0 else 0.0
@@ -482,6 +518,20 @@ def build_position_sizing(
     )
     if final_quantity < candidate_quantity - 1e-9:
         if (
+            marginal_risk_cap_quantity <= weekly_cap_quantity
+            and marginal_risk_cap_quantity <= heat_cap_quantity
+            and marginal_risk_cap_quantity <= cash_cap_quantity
+            and marginal_risk_cap_quantity <= volatility_cap_quantity
+            and marginal_risk_cap_quantity <= inverse_vol_cap_quantity
+            and marginal_risk_cap_quantity <= cross_portfolio_cap_quantity
+            and marginal_risk_cap_quantity < candidate_quantity - 1e-9
+        ):
+            binding_constraint = (
+                marginal_risk_decision.warnings[0]
+                if marginal_risk_decision.warnings
+                else (marginal_risk_decision.veto_reasons[0] if marginal_risk_decision.veto_reasons else "the real portfolio-level Marginal Risk Test (this candidate's own effect on the whole book, not just itself)")
+            )
+        elif (
             cross_portfolio_cap_quantity <= weekly_cap_quantity
             and cross_portfolio_cap_quantity <= heat_cap_quantity
             and cross_portfolio_cap_quantity <= cash_cap_quantity
@@ -523,6 +573,7 @@ def build_position_sizing(
         volatilitySizing=volatility_sizing,
         inverseVolSizing=inverse_vol_sizing,
         crossPortfolioRiskSizing=cross_portfolio_risk_sizing,
+        marginalRiskDecision=marginal_risk_decision,
         weeklyDeploymentPct=round(weekly_deployed_before_pct + capital_deployed_pct, 2),
         weeklyDeploymentCapPct=risk_limits.max_weekly_deployment_pct,
         cashReserveOk=cash_reserve_ok,

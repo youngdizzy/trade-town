@@ -411,13 +411,68 @@ def evaluate_marginal_portfolio_risk(
     emergency_stop_active: bool,
     side: OrderSide = "buy",
 ) -> PortfolioMarginalRiskDecision:
-    """The real Marginal Risk Test (CEO directive "Portfolio Risk Engine
-    + Cross-Trade Capital Allocation," Phase 17) — see
-    `PortfolioMarginalRiskDecision`'s own docstring for the full real
-    methodology and disclosed simplifications. Composes (never
+    """The real, full, CEO-facing Marginal Risk Test (CEO directive
+    "Portfolio Risk Engine + Cross-Trade Capital Allocation," Phase 17)
+    — see `PortfolioMarginalRiskDecision`'s own docstring for the full
+    real methodology and disclosed simplifications. Composes (never
     duplicates) `evaluate_pretrade_risk_decision()` above: a
     halted/rejected individual decision always vetoes the marginal one
-    too, before any portfolio-level simulation runs."""
+    too, before any portfolio-level simulation runs. Used by the CEO's
+    own Trade Approval view and the `/marginal-decision` endpoint —
+    NOT by app/position_sizing.py's own sizing cap chain, which calls
+    `compute_correlation_concentration_cap()` below instead (see that
+    function's own docstring for why)."""
+    return _marginal_portfolio_risk(
+        limits, portfolio, provider, symbol=symbol, proposed_value=proposed_value, sim_day=sim_day, emergency_stop_active=emergency_stop_active, side=side, enforce_individual_risk_gates=True
+    )
+
+
+def compute_correlation_concentration_cap(
+    limits: RiskLimits,
+    portfolio: PaperPortfolio,
+    provider: MarketDataProvider,
+    *,
+    symbol: str,
+    proposed_value: float,
+    sim_day: int,
+    side: OrderSide = "buy",
+) -> PortfolioMarginalRiskDecision:
+    """The real read app/position_sizing.py's own real sizing cap chain
+    uses — deliberately narrower than `evaluate_marginal_portfolio_
+    risk()` above: `.allowed_value` here ONLY ever narrows for the real
+    correlation/concentration-cluster reduction that function also
+    computes, and deliberately never inherits its emergency-stop/
+    critical-Sentinel-violation veto path. Composing that FULL veto here
+    would make position_sizing.py — whose own module docstring is
+    explicit that it answers "how much," never "whether" — silently
+    start rejecting candidates on drawdown/daily-loss/position-size
+    grounds that remain exclusively app/gatekeeper.py's real job
+    downstream. `.decision` can still read `"data_blocked"` (no real
+    candle history — the caller narrows to `proposed_value` unchanged in
+    that case, matching every other cap's own "no evidence, no cap"
+    convention) but never `"vetoed"` from a Sentinel/emergency-stop
+    cause the way the full function's own veto path can. Returns the
+    full decision object (not just the dollar figure) so
+    `PositionSizingResult.marginal_risk_decision` can show the CEO
+    exactly the same real reduction reasoning this cap actually
+    applied — never a second, differently-scoped explanation."""
+    return _marginal_portfolio_risk(
+        limits, portfolio, provider, symbol=symbol, proposed_value=proposed_value, sim_day=sim_day, emergency_stop_active=False, side=side, enforce_individual_risk_gates=False
+    )
+
+
+def _marginal_portfolio_risk(
+    limits: RiskLimits,
+    portfolio: PaperPortfolio,
+    provider: MarketDataProvider,
+    *,
+    symbol: str,
+    proposed_value: float,
+    sim_day: int,
+    emergency_stop_active: bool,
+    side: OrderSide,
+    enforce_individual_risk_gates: bool,
+) -> PortfolioMarginalRiskDecision:
     computed_at = _now_iso()
     try:
         candles = provider.get_candles(symbol, PROPOSAL_TIMEFRAME, PROPOSAL_CANDLE_COUNT)
@@ -478,7 +533,7 @@ def evaluate_marginal_portfolio_risk(
     quantity_full = proposed_value / price if price > 0 else 0.0
     individual_risk_usd = _candidate_individual_risk_usd(candles, quantity_full)
 
-    if emergency_stop_active or individual_decision.verdict in ("halted", "rejected"):
+    if enforce_individual_risk_gates and (emergency_stop_active or individual_decision.verdict in ("halted", "rejected")):
         return PortfolioMarginalRiskDecision(
             decision="vetoed",
             symbol=symbol,

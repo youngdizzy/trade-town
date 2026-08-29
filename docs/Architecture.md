@@ -16740,6 +16740,54 @@ requested/allowed sizes, and an honestly-disclosed "Regime: unknown —
 insufficient real candle history" for the dev save's fresh symbol. No
 backend changes.
 
+### Follow-up: "11/10 Professional Quant-Firm Implementation" — the cap now actually applies
+
+A fresh audit against this directive's own Phase 9 ("a strong signal
+does NOT automatically get capital") found the exact confirmed gap:
+the real correlation/concentration-cluster reduction reached the CEO
+as advisory evidence in two UI surfaces, but `app/position_sizing.py`'s
+own real, narrowing-only sizing cap chain never actually applied it —
+every real trade still executed at its pre-marginal-risk size. Every
+other section of this directive's 28-part ask was already real from
+earlier passes (exposure, correlation, concentration, regime reads,
+risk budgets, pre-trade decisions, kill switches, stress testing,
+Monte Carlo, observability, alerts).
+
+New `app/portfolio_risk.py::compute_correlation_concentration_cap()`
+— deliberately narrower than `evaluate_marginal_portfolio_risk()`: both
+now call one shared internal implementation
+(`_marginal_portfolio_risk()`, an `enforce_individual_risk_gates` flag
+selects which behavior), so the two entry points can never silently
+drift apart, but the sizing-facing one never inherits the CEO-facing
+one's Sentinel/emergency-stop critical-violation veto path. **A real
+regression this exact scoping caught**: wiring the full composed
+decision straight into sizing broke 4 existing tests — a candidate at
+100% of equity tripped Sentinel's own `max_position_pct` critical check
+and zeroed the quantity out, silently overriding the real weekly/heat
+caps those tests were isolating. `position_sizing.py`'s own module
+docstring is explicit that it answers "how much," never "whether" —
+that veto remains exclusively `app/gatekeeper.py`'s job downstream.
+Fixed by design (the narrower shared-implementation split), not by
+loosening any assertion.
+
+New `PositionSizingResult.marginalRiskDecision` field, and a matching
+"Marginal Risk Test" section in `WarRoomPanel.tsx` (mirrors the
+existing Cross-Portfolio Risk Parity section's AVAILABLE/UNAVAILABLE
+pattern) — the CEO now sees the exact same reasoning this cap actually
+applied, never a second, differently-scoped explanation.
+
+**Measured, not assumed, performance cost**: the full backend suite
+(3085 tests) ran in 372.7s vs. this session's typical ~240-270s — a
+real ~40% slowdown from one extra `compute_portfolio_intelligence()`
+call per real sizing candidate. Disclosed per the directive's own Phase
+24 ("measure actual performance"); no optimization attempted this pass.
+
+7 new tests (`TestBuildPositionSizingMarginalRiskCap`,
+`TestMarginalRiskCapNeverInheritsSentinelVeto`) in
+`test_position_sizing.py`. Full backend suite green, `mypy`/`ruff`
+clean. Frontend `tsc`/lint/build clean. Live-verified against the real
+running dev stack.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

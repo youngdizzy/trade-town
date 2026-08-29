@@ -7902,6 +7902,15 @@ class PositionSizingResult(CamelModel):
     # covariance-based Equal Risk Contribution). `None` under the same
     # honesty convention as the other volatility-based reads above.
     cross_portfolio_risk_sizing: CrossPortfolioRiskParityRead | None = Field(default=None, alias="crossPortfolioRiskSizing")
+    # CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-Firm
+    # Implementation" — the real Marginal Risk Test
+    # (evaluate_marginal_portfolio_risk()) wired in as one more real,
+    # narrowing-only cap, evaluated against this candidate's own
+    # already-scaled notional. `None` only in the same degenerate
+    # zero-ceiling case every field above can also skip (equity/price/
+    # ceiling_quantity <= 0 — there is nothing real left to evaluate a
+    # portfolio-level impact for).
+    marginal_risk_decision: PortfolioMarginalRiskDecision | None = Field(default=None, alias="marginalRiskDecision")
     detail: str
 
 

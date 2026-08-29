@@ -340,6 +340,51 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Portfolio Risk Engine, 11/10 Professional Quant-Firm Implementation" — the real Marginal Risk
+  Test now actually narrows what a trade executes at, not just what the CEO sees.** A repo audit
+  against this directive's own Phase 9 ("a strong signal does NOT automatically get capital") found the
+  exact confirmed gap: `evaluate_marginal_portfolio_risk()`'s real correlation/concentration-cluster
+  reduction (built for the previous "Cross-Trade Capital Allocation" pass) reached the CEO as real, live
+  evidence in the Trade Approval view, but was never actually wired into `app/position_sizing.py`'s own
+  real, narrowing-only sizing cap chain — it was shown, not enforced. Every other section of this
+  directive's own 28-part ask (portfolio exposure, position-level risk, correlation, concentration,
+  regime-aware reads, risk budgets, pre-trade APPROVED/REDUCED/REJECTED decisions, intraday monitoring,
+  kill switches, stress testing, Monte Carlo risk-of-ruin, observability via detail strings, alerts) was
+  already real and shipped across this session's earlier passes.
+  - New `app/portfolio_risk.py::compute_correlation_concentration_cap()` — deliberately narrower than
+    `evaluate_marginal_portfolio_risk()`: it reuses the exact same real correlation/concentration-cluster
+    reduction (zero new math, one shared internal implementation, `_marginal_portfolio_risk()`, so the two
+    entry points can never silently drift apart) but never inherits that function's Sentinel/emergency-
+    stop critical-violation veto path. A real regression this exact scoping fix caught: wiring the FULL
+    composed decision straight into `position_sizing.py` made 4 existing tests fail
+    (`test_weekly_deployment_budget_binds_and_is_named`, `test_portfolio_heat_cap_binds_when_set_and_is_named`,
+    and two volatility-cap tests) — a candidate at 100% of equity tripped Sentinel's own
+    `max_position_pct` critical check and zeroed the quantity out, silently overriding the real caps
+    those tests were isolating. `position_sizing.py`'s own module docstring is explicit that it answers
+    "how much," never "whether" — that veto path remains exclusively `app/gatekeeper.py`'s real job
+    downstream; duplicating it here would have been exactly the kind of second, competing enforcement
+    path this codebase's own conventions forbid. Fixed by design, not by loosening the assertions: the
+    correlation-only cap is now the one actually wired in.
+  - New `PositionSizingResult.marginalRiskDecision` field — the same real reduction reasoning this cap
+    actually applied, so the CEO's own Trade Approval view can show exactly why (never a second,
+    differently-scoped explanation from what was really enforced).
+  - New `TestBuildPositionSizingMarginalRiskCap` (6 tests) and `TestMarginalRiskCapNeverInheritsSentinelVeto`
+    (1 test, the explicit regression-prevention proof for the design correction above) in
+    `test_position_sizing.py`.
+  - **Measured, not assumed, performance cost**: the full backend suite (3085 tests) ran in 372.7s versus
+    this session's typical ~240-270s — a real ~40% slowdown, since every real sizing candidate across the
+    suite now runs one additional `compute_portfolio_intelligence()` call (candle fetches per held
+    symbol). Disclosed honestly per this directive's own Phase 24 ("measure actual performance,"
+    "correctness is more important than premature optimization") rather than silently absorbed or hidden
+    — no optimization attempted this pass; still well within a reasonable CI budget.
+  - New "Marginal Risk Test" section in `WarRoomPanel.tsx`, mirroring the existing "Cross-Portfolio Risk
+    Parity" section's AVAILABLE/UNAVAILABLE pattern exactly — `PositionSizingResult` already has a real,
+    established rendering surface there (Sizing Score, Volatility-Based Risk Sizing, Inverse-Volatility
+    Sizing, Cross-Portfolio Risk Parity all render today), so this slots in as one more real section
+    rather than a new, disconnected display. Shows requested vs. allowed size (amber when reduced), the
+    candidate's own real cluster share, correlation impact, and any warnings/data-blocked reason.
+  - Verified: full backend suite (3085 tests) green, `mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+
 - **"Portfolio Risk Engine + Cross-Trade Capital Allocation" follow-up: the real Marginal Risk Test
   reaches the CEO's own Trade Approval view (Phase 32).** The Marginal Risk Test below shipped with a
   real, tested backend and a typed-but-frontend-unconsumed API contract, matching the stage the

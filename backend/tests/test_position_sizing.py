@@ -787,3 +787,167 @@ class TestBuildPositionSizingCrossPortfolioCap:
         result = self._build(ceiling_quantity=1_000.0, risk_limits=wide_open, provider=provider, portfolio=portfolio, proposal=_Proposal(symbol="AAPL", price=0.5), decision_score=_decision_score(5.0))
         assert result.reduced_from_ceiling is True
         assert "cross-portfolio inverse-volatility risk-parity budget" in result.detail
+
+
+class TestBuildPositionSizingMarginalRiskCap:
+    """CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-
+    Firm Implementation" — the real correlation/concentration-cluster
+    reduction from app/portfolio_risk.py::evaluate_marginal_portfolio_
+    risk() wired in as a real, narrowing-only cap. Deliberately scoped
+    to correlation/concentration ONLY (via compute_correlation_
+    concentration_cap()) — never inherits Sentinel's own critical hard
+    gates, which remain exclusively app/gatekeeper.py's job (see
+    TestNeverInheritsSentinelVeto below for the regression this class
+    exists to prevent)."""
+
+    def _build(self, **overrides):
+        # Same wide_open + maxed decision_score convention
+        # TestBuildPositionSizingVolatility's own _build already
+        # establishes — every OTHER cap becomes a real no-op by
+        # construction, so a test can isolate this cap's own real
+        # effect (or lack of one) without a second, unrelated cap
+        # muddying the assertion.
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+            maxPositionPct=100.0,
+            maxSectorConcentrationPct=100.0,
+        )
+        defaults = dict(
+            proposal=_Proposal(),
+            ceiling_quantity=1000.0,
+            expected_value=_expected_value(),
+            decision_score=_decision_score(95.0, passed=True),
+            portfolio=_portfolio(),
+            portfolio_heat=_heat(),
+            risk_limits=wide_open,
+            risk_warnings=[],
+            sim_day=1,
+            provider=_FakeProvider(),
+        )
+        defaults.update(overrides)
+        return build_position_sizing(**defaults)
+
+    def test_marginal_risk_decision_is_populated(self) -> None:
+        result = self._build()
+        assert result.marginal_risk_decision is not None
+
+    def test_marginal_risk_decision_is_none_when_ceiling_is_zero(self) -> None:
+        result = self._build(ceiling_quantity=0.0)
+        assert result.marginal_risk_decision is None
+
+    def test_joining_an_already_correlated_cluster_narrows_final_quantity(self) -> None:
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+            maxPositionPct=100.0,
+            maxSectorConcentrationPct=100.0,
+        )
+        # MSFT already at 25% of equity alone (not yet a "cluster" —
+        # a lone symbol never is); NVDA is a perfectly-correlated
+        # candidate (real Pearson correlation of 1.0 via proportional
+        # closes) requesting far more than the 40% real restricted-
+        # cluster threshold would allow once the two are considered
+        # together.
+        closes = [100.0 + i for i in range(VOLATILITY_CANDLE_COUNT)]
+        provider = _PerSymbolProvider({"MSFT": closes, "NVDA": [c * 2 for c in closes]}, default_closes=closes)
+        portfolio = _portfolio(cash_balance=75_000.0, positions=[_position(symbol="MSFT", quantity=125.0, entry_price=200.0)])
+        result = self._build(
+            ceiling_quantity=1_000.0,
+            risk_limits=wide_open,
+            provider=provider,
+            portfolio=portfolio,
+            proposal=_Proposal(symbol="NVDA", price=200.0),
+            decision_score=_decision_score(95.0),
+        )
+        assert result.marginal_risk_decision is not None
+        assert result.marginal_risk_decision.decision in ("approved_reduced", "vetoed")
+        assert result.reduced_from_ceiling is True
+        # Rounded to 4 decimal places on quantity before being reported
+        # (see build_position_sizing()'s own `round(final_quantity, 4)`)
+        # — a small, real rounding tolerance at $200/share, not a loose
+        # assertion.
+        assert result.final_quantity * 200.0 <= max(result.marginal_risk_decision.allowed_value, 0.0) + 0.05
+
+    def test_binding_constraint_names_the_marginal_risk_test_when_it_is_tightest(self) -> None:
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+            maxPositionPct=100.0,
+            maxSectorConcentrationPct=100.0,
+        )
+        closes = [100.0 + i for i in range(VOLATILITY_CANDLE_COUNT)]
+        provider = _PerSymbolProvider({"MSFT": closes, "NVDA": [c * 2 for c in closes]}, default_closes=closes)
+        portfolio = _portfolio(cash_balance=75_000.0, positions=[_position(symbol="MSFT", quantity=125.0, entry_price=200.0)])
+        result = self._build(
+            ceiling_quantity=1_000.0,
+            risk_limits=wide_open,
+            provider=provider,
+            portfolio=portfolio,
+            proposal=_Proposal(symbol="NVDA", price=200.0),
+            decision_score=_decision_score(95.0),
+        )
+        assert result.reduced_from_ceiling is True
+        assert "Marginal Risk Test" in result.detail or "correlated cluster" in result.detail
+
+    def test_no_real_candle_history_is_honestly_data_blocked_and_never_narrows_further(self) -> None:
+        result = self._build(ceiling_quantity=10.0, provider=_FakeProvider(closes=[], raise_for_missing=True))
+        assert result.marginal_risk_decision is not None
+        assert result.marginal_risk_decision.decision == "data_blocked"
+        # Nothing fabricated — with every other cap a real no-op by this
+        # class's own wide-open _build() convention, and no real candle
+        # history for either the volatility or the marginal-risk cap,
+        # final_quantity falls all the way back to the real ceiling.
+        assert result.final_quantity == 10.0
+
+
+class TestMarginalRiskCapNeverInheritsSentinelVeto:
+    """The regression this class exists to prevent: composing app/
+    portfolio_risk.py::evaluate_marginal_portfolio_risk()'s FULL veto
+    (which includes Sentinel's own critical hard gates — drawdown,
+    daily loss, position size) directly into position_sizing.py's cap
+    chain would make this module start rejecting candidates on grounds
+    that remain exclusively app/gatekeeper.py's real job downstream —
+    exactly the "how much, never whether" boundary this module's own
+    docstring draws. compute_correlation_concentration_cap() must never
+    let an unrelated critical Sentinel violation zero out the real
+    weekly/heat/cash caps' own, differently-reasoned narrowing."""
+
+    def _build(self, **overrides):
+        defaults = dict(
+            proposal=_Proposal(),
+            ceiling_quantity=10.0,
+            expected_value=_expected_value(),
+            decision_score=_decision_score(60.0),
+            portfolio=_portfolio(),
+            portfolio_heat=_heat(),
+            risk_limits=RiskLimits(),
+            risk_warnings=[],
+            sim_day=1,
+            provider=_FakeProvider(),
+        )
+        defaults.update(overrides)
+        return build_position_sizing(**defaults)
+
+    def test_a_candidate_that_would_breach_max_position_pct_is_still_capped_by_the_real_weekly_budget_not_vetoed_to_zero(self) -> None:
+        # A candidate requesting 100% of equity trips Sentinel's own
+        # critical max_position_pct check inside evaluate_pretrade_risk_
+        # decision() — if that composed into this module's own cap
+        # chain, final_quantity would incorrectly zero out here instead
+        # of being narrowed by the real weekly deployment budget this
+        # test is actually isolating.
+        portfolio = _portfolio(trade_history=[_trade(quantity=140.0, entry_price=100.0, opened_sim_minutes=0)])
+        result = self._build(
+            decision_score=_decision_score(95.0, passed=True),
+            ceiling_quantity=1_000.0,
+            portfolio=portfolio,
+            risk_limits=RiskLimits(tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0), maxWeeklyDeploymentPct=15.0),
+            sim_day=1,
+        )
+        assert result.final_quantity > 0.0
+        assert "weekly capital deployment budget" in result.detail
+        assert result.marginal_risk_decision is not None
+        assert result.marginal_risk_decision.decision != "vetoed"
