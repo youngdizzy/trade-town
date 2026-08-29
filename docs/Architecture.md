@@ -17040,6 +17040,40 @@ hit its real take-profit and closed at exactly its target price. A
 still-open position's real Stop/Target/Current R rendered correctly in
 `ActiveTradesPanel` via a live browser screenshot.
 
+### Follow-up: Gate 5 — Max Planned Loss
+
+The directive's own Gate 5 ("reject if planned loss exceeds the
+permitted risk budget") closed as a real, explicit, auditable 15th
+Gatekeeper check, `app/gatekeeper.py::_max_loss_check()`. Reuses the
+exact same real quantity/ATR-stop-distance/equity `_valid_stop_check`
+already reads — `planned_loss_usd = quantity * stop_distance`,
+`risk_budget_usd = equity * risk_limits.risk_per_trade_pct / 100`, both
+computed once in `app/executive.py::resolve_proposal()` and threaded
+through, never a second, competing calculation.
+
+Deliberately defense-in-depth, not a new constraint:
+`app/position_sizing.py`'s own real ATR-based volatility cap already
+narrows the candidate quantity so planned loss stays inside this exact
+budget by construction — this check is mathematically guaranteed to
+almost never fire in real gameplay. Its real value is making that
+guarantee an explicit, testable, auditable hard backstop rather than an
+implicit side effect of the sizing formula, and giving the CEO's
+existing "TRADE BLOCKED" screen (`ExecutiveVoting.tsx`'s Gatekeeper
+Rejection popup, which already generically renders every
+`GatekeeperCheck`'s own label/detail — no new UI code needed) a real
+dollar-figure explanation when it does.
+
+Same two-part "not evaluated" (`planned_loss_usd`/`risk_budget_usd`
+both `None`) vs. "evaluated, no real figures" honesty convention
+`_valid_stop_check` already established — a bare `None` is a
+legitimate real state (no ATR evidence, or zero/negative equity), not
+just an unready caller.
+
+New `TestMaxLossCheck` (4 tests, `test_gatekeeper.py`) plus 2 wiring
+tests in `test_executive.py` proving `resolve_proposal()` computes and
+passes the real figures correctly both when ATR evidence exists and
+when it doesn't. Full backend suite green, `mypy`/`ruff` clean.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

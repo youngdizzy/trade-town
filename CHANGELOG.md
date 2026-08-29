@@ -421,6 +421,22 @@ development milestones, not semver releases.
     actual `/api/executive/decide` endpoint, opening a real position with a real stop/target and real
     linked orders, confirmed via screenshot in `WarRoomPanel`/`ActiveTradesPanel` and via the real
     order book's own state before and after a real take-profit fill.
+  - **Follow-up: Gate 5 (Max Planned Loss)** — the directive's own Gate 5 ask ("reject if planned loss
+    exceeds the permitted risk budget") closed as a real, explicit, auditable 15th Gatekeeper check
+    (`_max_loss_check`), reusing the exact same real quantity/ATR-stop-distance/equity `_valid_stop_check`
+    already reads (`planned_loss_usd = quantity * stop_distance`, `risk_budget_usd = equity *
+    risk_per_trade_pct / 100`) — no second, competing calculation. Deliberately defense-in-depth, not a
+    new constraint: `app/position_sizing.py`'s own real ATR-based volatility cap already narrows the
+    candidate quantity so planned loss stays inside this exact budget by construction, so this check is
+    mathematically guaranteed to almost never fire in practice — its real value is making that guarantee
+    an explicit, testable, auditable hard backstop instead of an implicit side effect of the sizing
+    formula, and giving the CEO's "TRADE BLOCKED" screen a real dollar-figure explanation (reuses the
+    existing `GatekeeperCheck` rendering in `ExecutiveVoting.tsx`'s rejection screen — no new UI code).
+    Same two-part "not evaluated" vs. "evaluated, no real figures" honesty convention `_valid_stop_check`
+    established. New tests: `TestMaxLossCheck` (4, `test_gatekeeper.py`) plus 2 wiring tests in
+    `test_executive.py` proving `resolve_proposal()` computes and passes real
+    `planned_loss_usd`/`risk_budget_usd` both when ATR evidence exists and when it doesn't. Full
+    backend suite green, `mypy`/`ruff` clean.
 
 - **"You are now entering the NEXT major TradeTown build phase," Phase 10 — session-suitability
   sizing: the CEO's own real SESSION x REGIME evidence stops being read-only analytics.** A

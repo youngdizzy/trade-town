@@ -500,6 +500,18 @@ def resolve_proposal(
             equity = portfolio_equity(portfolio)
             volatility_sizing = compute_volatility_sizing(proposal, provider, equity, risk_limits)
             stop_distance = volatility_sizing.stop_distance if volatility_sizing.available else None
+            # CEO directive "Hard Risk Gates 2.0," Gate 5 — the real
+            # theoretical planned loss (this trade's own real quantity x
+            # the same real ATR stop distance above) against the
+            # account's real risk-per-trade budget. Reuses `quantity`/
+            # `equity`/`stop_distance` verbatim — no second, competing
+            # calculation — feeding evaluate_gatekeeper()'s Max Planned
+            # Loss check as a defense-in-depth backstop (see that
+            # check's own docstring for why position_sizing.py's own
+            # real volatility cap should already keep this trade inside
+            # budget by construction).
+            planned_loss_usd = quantity * stop_distance if stop_distance is not None else None
+            risk_budget_usd = equity * risk_limits.risk_per_trade_pct / 100 if equity > 0 else None
             gatekeeper_verdict = evaluate_gatekeeper(
                 proposal,
                 ceo_choice,
@@ -519,6 +531,8 @@ def resolve_proposal(
                 trading_restrictions=trading_restrictions,
                 stop_distance=stop_distance,
                 stop_evaluated=True,
+                planned_loss_usd=planned_loss_usd,
+                risk_budget_usd=risk_budget_usd,
             )
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"

@@ -21,10 +21,13 @@ here; see app/confidence.py's module docstring for the same honesty
 boundary already established for an overlapping list. Stop-loss
 placement (formerly on this same "no real data source" list) is now
 real — CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
-Enforcement" made it the thirteenth check (`_valid_stop_check`, below):
-the paper broker's real, previously-unused stop_loss/take_profit order
-mechanism (app/broker.py) is now actually placed at every real fill,
-using app/position_sizing.py's own real ATR-based stop distance.
+Enforcement" made it the fourteenth check (`_valid_stop_check`, below),
+plus a fifteenth (`_max_loss_check`) enforcing the theoretical planned
+loss against the account's real risk-per-trade budget as an explicit,
+auditable backstop: the paper broker's real, previously-unused
+stop_loss/take_profit order mechanism (app/broker.py) is now actually
+placed at every real fill, using app/position_sizing.py's own real
+ATR-based stop distance.
 
 A trade the Gatekeeper blocks never executes — there is no P&L to grade.
 Instead its real *hypothetical* outcome is tracked (GatekeeperRejection)
@@ -374,6 +377,47 @@ def _valid_stop_check(stop_distance: float | None, stop_evaluated: bool) -> Gate
     return GatekeeperCheck(id="valid_stop", label="Valid Stop-Loss", passed=passed, detail=detail, code="gatekeeper_valid_stop")
 
 
+# CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+# Enforcement," Gate 5 (Account Risk Limit) — "Reject if planned loss
+# exceeds the permitted risk budget for the current account stage."
+# `planned_loss_usd` (quantity x the real ATR stop distance) and
+# `risk_budget_usd` (equity x risk_limits.risk_per_trade_pct) are both
+# computed once by app/executive.py's resolve_proposal(), reusing the
+# exact same real quantity/stop distance/equity `_valid_stop_check`
+# above already reads — never a second, independently-derived number.
+# Defense-in-depth, not a new constraint: app/position_sizing.py's own
+# real ATR-based volatility cap already narrows the candidate quantity
+# so planned loss stays inside this same budget by construction (see
+# that module's own `_volatility_sizing`/`compute_volatility_sizing`
+# docstring) — this check almost never actually fires in practice, but
+# makes that guarantee an explicit, auditable, hard-enforced backstop
+# rather than an implicit side effect of the sizing formula, exactly
+# this directive's own "every decision must be auditable" principle.
+# Same two-part "not evaluated" vs. "evaluated, no real budget" honesty
+# convention `_valid_stop_check` above establishes — a bare `None` for
+# either input is a legitimate real state, not just an unready caller.
+def _max_loss_check(planned_loss_usd: float | None, risk_budget_usd: float | None) -> GatekeeperCheck:
+    if planned_loss_usd is None or risk_budget_usd is None:
+        return GatekeeperCheck(
+            id="max_loss",
+            label="Max Planned Loss",
+            passed=True,
+            detail="Not evaluated for this call — no real planned-loss/risk-budget figures in scope.",
+            code="gatekeeper_max_loss",
+        )
+    passed = planned_loss_usd <= risk_budget_usd + 1e-6
+    overage = round(max(0.0, planned_loss_usd - risk_budget_usd), 2)
+    detail = (
+        f"Planned loss if stopped out: ${planned_loss_usd:,.2f} against a ${risk_budget_usd:,.2f} risk-per-trade budget — "
+        + (
+            "within the permitted budget."
+            if passed
+            else f"${overage:,.2f} above the permitted budget."
+        )
+    )
+    return GatekeeperCheck(id="max_loss", label="Max Planned Loss", passed=passed, detail=detail, code="gatekeeper_max_loss")
+
+
 def evaluate_gatekeeper(
     proposal: TradeProposal,
     ceo_choice: AnalystChoice,
@@ -393,6 +437,8 @@ def evaluate_gatekeeper(
     trading_restrictions: list[TradingRestriction] | None = None,
     stop_distance: float | None = None,
     stop_evaluated: bool = False,
+    planned_loss_usd: float | None = None,
+    risk_budget_usd: float | None = None,
 ) -> "GatekeeperVerdict":
     """`min_confidence_override` (Design Bible Chapter 75) — the real,
     disclosed points app/trading_modes.py's Daily Circuit Breaker adds to
@@ -433,7 +479,12 @@ def evaluate_gatekeeper(
     — Stop-Loss / Position-Risk Enforcement") feed the Valid Stop-Loss
     check — see `_valid_stop_check()`'s own docstring for why this needs
     two arguments (a bare `None` is a legitimate real "no ATR evidence"
-    read, not just "caller doesn't support this yet")."""
+    read, not just "caller doesn't support this yet").
+
+    `planned_loss_usd`/`risk_budget_usd` (same directive, Gate 5) feed
+    the Max Planned Loss check — see `_max_loss_check()`'s own
+    docstring. Both `None` for any caller that hasn't been threaded
+    through yet, the same honest convention as every pair above."""
     from app.schemas import GatekeeperVerdict  # local import avoids a schemas.py forward-reference cycle at module load
 
     checks = [
@@ -457,6 +508,7 @@ def evaluate_gatekeeper(
         _account_halt_check(proposal, portfolio, risk_limits, quantity, price, sim_day),
         _trading_restriction_check(proposal, trading_restrictions or []),
         _valid_stop_check(stop_distance, stop_evaluated),
+        _max_loss_check(planned_loss_usd, risk_budget_usd),
     ]
     approved = all(c.passed for c in checks)
     if approved:

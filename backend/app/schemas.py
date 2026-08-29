@@ -2336,7 +2336,8 @@ NoTradeReasonCode = Literal[
     # never the crude category-co-occurrence proxy app/gatekeeper.py's
     # own later-stage "gatekeeper_correlation" check still uses.
     "correlated_exposure_too_high",
-    # Gatekeeper: app/gatekeeper.py's 12 real checks
+    # Gatekeeper: app/gatekeeper.py's real checks (15 as of "Hard Risk
+    # Gates 2.0 — Stop-Loss / Position-Risk Enforcement")
     "gatekeeper_confidence",
     "gatekeeper_risk_manager",
     "gatekeeper_agreement",
@@ -2364,6 +2365,15 @@ NoTradeReasonCode = Literal[
     # real trade must have a measurable, enforceable stop before
     # execution.
     "gatekeeper_valid_stop",
+    # CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    # Enforcement," Gate 5 — app/gatekeeper.py's _max_loss_check(). The
+    # theoretical planned loss (quantity x the real ATR stop distance)
+    # exceeds the account's real risk-per-trade budget — defense-in-
+    # depth: app/position_sizing.py's own real volatility cap already
+    # narrows quantity so this should never actually happen, but the
+    # gate makes that guarantee explicit and auditable rather than an
+    # implicit side effect of the sizing formula.
+    "gatekeeper_max_loss",
     # Risk engine: app/risk_engine.py's evaluate_sentinel_risk()/evaluate_guardian_exposure()
     "risk_equity_exhausted",
     "risk_daily_loss_limit",

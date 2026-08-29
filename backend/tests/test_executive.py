@@ -637,6 +637,41 @@ class TestResolveProposalStopLossEnforcement:
         assert captured["stop_evaluated"] is True
         assert isinstance(captured["stop_distance"], float)
         assert captured["stop_distance"] > 0
+        # CEO directive "Hard Risk Gates 2.0," Gate 5 — the real planned-
+        # loss/risk-budget figures the Max Planned Loss check needs,
+        # computed from the same real quantity/stop distance/equity, not
+        # a second, independently-derived pair.
+        assert isinstance(captured["planned_loss_usd"], float)
+        assert captured["planned_loss_usd"] > 0
+        assert isinstance(captured["risk_budget_usd"], float)
+        assert captured["risk_budget_usd"] > 0
+
+    def test_evaluate_gatekeeper_receives_none_planned_loss_with_no_real_candle_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        def _capture(*_args: object, **kwargs: object) -> GatekeeperVerdict:
+            captured.update(kwargs)
+            return GatekeeperVerdict(approved=True, checks=[], summary="APPROVED — stubbed for this test.", createdAt=_now_iso())
+
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", _capture)
+        proposal = self._proposal()
+        resolve_proposal(
+            proposal,
+            "buy",
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
+            current_price=100.0,
+            now_sim_minutes=100,
+            market_intelligence=default_market_intelligence_state(),
+            provider=_NoCandleHistoryProvider(),
+        )
+        # No real stop distance -> no real basis for a planned-loss
+        # figure either -- never a fabricated dollar amount.
+        assert captured["planned_loss_usd"] is None
+        # risk_budget_usd is independent of stop evidence (equity-based
+        # only) -- still real.
+        assert isinstance(captured["risk_budget_usd"], float)
+        assert captured["risk_budget_usd"] > 0
 
     def test_evaluate_gatekeeper_receives_none_stop_distance_with_no_real_candle_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: dict[str, object] = {}

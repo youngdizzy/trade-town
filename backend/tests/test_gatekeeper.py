@@ -21,6 +21,7 @@ from app.gatekeeper import (
     _debate_check,
     _exposure_check,
     _failure_boundary_check,
+    _max_loss_check,
     _risk_manager_check,
     _risk_warning_check,
     _trading_restriction_check,
@@ -482,6 +483,32 @@ class TestValidStopCheck:
         assert "3.2500" in check.detail
 
 
+class TestMaxLossCheck:
+    """CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    Enforcement," Gate 5 — the theoretical planned loss must not exceed
+    the account's real risk-per-trade budget. Defense-in-depth: real
+    ATR-based position sizing should already keep this within budget by
+    construction, but the gate makes that guarantee explicit."""
+
+    def test_vacuously_passes_when_either_input_is_none(self) -> None:
+        assert _max_loss_check(None, None).passed is True
+        assert _max_loss_check(500.0, None).passed is True
+        assert _max_loss_check(None, 2000.0).passed is True
+
+    def test_passes_when_planned_loss_is_within_budget(self) -> None:
+        check = _max_loss_check(1500.0, 2000.0)
+        assert check.passed is True
+
+    def test_passes_at_exactly_the_budget_boundary(self) -> None:
+        check = _max_loss_check(2000.0, 2000.0)
+        assert check.passed is True
+
+    def test_fails_when_planned_loss_exceeds_the_budget(self) -> None:
+        check = _max_loss_check(2500.0, 2000.0)
+        assert check.passed is False
+        assert "$500.00" in check.detail
+
+
 class TestTradingRestrictionCheck:
     """CEO directive "Layered Kill Switches" — the Gatekeeper's own
     defense-in-depth half of app/trading_restrictions.py's two real
@@ -555,7 +582,11 @@ class TestEvaluateGatekeeper:
         # 14th check: CEO directive "Hard Risk Gates 2.0" — Valid
         # Stop-Loss, vacuously passing here since stop_evaluated wasn't
         # passed (see TestValidStopCheck below for the real behavior).
-        assert len(verdict.checks) == 14
+        # 15th check: CEO directive "Hard Risk Gates 2.0," Gate 5 — Max
+        # Planned Loss, vacuously passing here since no planned_loss_usd/
+        # risk_budget_usd was supplied (see TestMaxLossCheck below for
+        # the real behavior).
+        assert len(verdict.checks) == 15
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
         # CEO directive "Professional Quant Firm Phase 41-45," Critical Task #0's No-Trade
