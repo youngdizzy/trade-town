@@ -12,6 +12,7 @@ import type {
   ExecutiveRecommendation,
   GatekeeperVerdict,
   HoldReason,
+  PortfolioMarginalRiskDecision,
   ScenarioResult,
   ScenarioType,
   StrategyMatch,
@@ -62,6 +63,27 @@ const STANCE_TONE: Record<DebateTurn["stance"], "cyan" | "red" | "green"> = { op
 const SEVERITY_LABEL: Record<ChallengeSeverity, string> = { none_found: "NO WEAKNESSES FOUND", minor: "MINOR WEAKNESSES", major: "MAJOR WEAKNESSES" };
 const SEVERITY_TONE: Record<ChallengeSeverity, "green" | "amber" | "red"> = { none_found: "green", minor: "amber", major: "red" };
 
+// CEO directive "Portfolio Risk Engine + Cross-Trade Capital
+// Allocation" — the real Marginal Risk Test's own explicit vocabulary
+// (backend/app/portfolio_risk.py). See PortfolioMarginalRiskDecision's
+// own schema docstring for what each state means.
+const MARGINAL_RISK_TONE: Record<PortfolioMarginalRiskDecision["decision"], "green" | "amber" | "red" | "neutral"> = {
+  approved: "green",
+  approved_reduced: "amber",
+  vetoed: "red",
+  data_blocked: "neutral",
+};
+const MARGINAL_RISK_LABEL: Record<PortfolioMarginalRiskDecision["decision"], string> = {
+  approved: "APPROVED",
+  approved_reduced: "APPROVED — REDUCED",
+  vetoed: "VETOED",
+  data_blocked: "DATA BLOCKED",
+};
+const IMPACT_TONE: Record<PortfolioMarginalRiskDecision["correlationImpact"], "green" | "amber" | "red"> = { low: "green", medium: "amber", high: "red" };
+const LIQUIDITY_STATUS_LABEL: Record<PortfolioMarginalRiskDecision["liquidityStatus"], string> = { valid: "VALID", limited: "LIMITED", data_unavailable: "DATA UNAVAILABLE" };
+const LIQUIDITY_STATUS_TONE: Record<PortfolioMarginalRiskDecision["liquidityStatus"], "green" | "amber" | "neutral"> = { valid: "green", limited: "amber", data_unavailable: "neutral" };
+const CORRELATION_REGIME_TONE: Record<PortfolioMarginalRiskDecision["correlationRegimeState"], "green" | "amber" | "red"> = { normal: "green", elevated: "amber", extreme: "red" };
+
 /**
  * Feature 12 — the Executive Voting window. The player is TradeTown's CEO;
  * every trade candidate that crosses the confidence threshold arrives here
@@ -99,6 +121,15 @@ export function ExecutiveVoting() {
   const [execIntel, setExecIntel] = useState<ExecutiveRecommendation | null>(null);
   const [execIntelLoading, setExecIntelLoading] = useState(false);
   const [execIntelError, setExecIntelError] = useState<string | null>(null);
+  // CEO directive "Portfolio Risk Engine + Cross-Trade Capital
+  // Allocation" — the real Marginal Risk Test (backend/app/
+  // portfolio_risk.py::evaluate_marginal_portfolio_risk()), fetched
+  // fresh (never cached) whenever the analysis section is opened for a
+  // given proposal, the same on-demand convention the What-If lab above
+  // already establishes.
+  const [marginalRisk, setMarginalRisk] = useState<PortfolioMarginalRiskDecision | null>(null);
+  const [marginalRiskLoading, setMarginalRiskLoading] = useState(false);
+  const [marginalRiskError, setMarginalRiskError] = useState<string | null>(null);
   // CEO directive "Professional Trading Firm — Market-Analysis Knowledge
   // + Session Intelligence Expansion," Phase 6 — the Confluence Engine,
   // computed fresh per proposal (never persisted — see
@@ -200,6 +231,34 @@ export function ExecutiveVoting() {
     // the lab opens or the active proposal's symbol actually changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showWhatIf, proposal?.symbol]);
+
+  // CEO directive "Portfolio Risk Engine + Cross-Trade Capital
+  // Allocation" — fetched fresh every time REVIEW ANALYSIS is opened
+  // for a given proposal, mirroring the What-If lab's own on-demand
+  // convention above. Keyed on quantity/price too (not just symbol) so
+  // a Modify Size action's own resulting proposal change refetches the
+  // real portfolio-impact read for the ACTUAL requested notional.
+  useEffect(() => {
+    if (!showAnalysis || !proposal) return;
+    let cancelled = false;
+    setMarginalRiskLoading(true);
+    setMarginalRiskError(null);
+    api
+      .getMarginalPortfolioRiskDecision(proposal.symbol, proposal.quantity * proposal.price)
+      .then((res) => {
+        if (!cancelled) setMarginalRisk(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setMarginalRiskError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setMarginalRiskLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAnalysis, proposal?.symbol, proposal?.quantity, proposal?.price]);
 
   // CEO directive "TradeTown — 11/10 Market Intelligence + Quant
   // Research Engine" — fetched once whenever the voting window is open
@@ -972,6 +1031,72 @@ export function ExecutiveVoting() {
                 <div className="mt-1.5 text-[9px] text-cmd-textDim">
                   Remaining permissible loss budget before this trade — not a new limit, just what&apos;s left of the existing ones above.
                 </div>
+              </Glass>
+
+              {/* CEO directive "Portfolio Risk Engine + Cross-Trade
+                  Capital Allocation" — the real Marginal Risk Test: what
+                  does the WHOLE portfolio look like with this specific
+                  candidate added, not just whether it clears its own
+                  per-position gates. See backend/app/portfolio_risk.py's
+                  evaluate_marginal_portfolio_risk()/
+                  PortfolioMarginalRiskDecision docstrings. */}
+              <Glass className="p-3">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <TerminalLabel>Portfolio Risk Engine</TerminalLabel>
+                  {marginalRisk && <StatusPill tone={MARGINAL_RISK_TONE[marginalRisk.decision]}>{MARGINAL_RISK_LABEL[marginalRisk.decision]}</StatusPill>}
+                </div>
+                {marginalRiskLoading && <div className="text-[9px] text-cmd-textDim">Simulating the portfolio with this trade added…</div>}
+                {marginalRiskError && <div className="text-[9px] text-cmd-red">{marginalRiskError}</div>}
+                {!marginalRiskLoading && marginalRisk && (
+                  <>
+                    <DataRow label="Requested size" value={formatMoney(marginalRisk.requestedValue)} />
+                    <DataRow
+                      label="Allowed size"
+                      value={formatMoney(marginalRisk.allowedValue)}
+                      valueClassName={marginalRisk.allowedValue < marginalRisk.requestedValue ? "text-cmd-amber" : undefined}
+                    />
+                    <DataRow label="Individual risk (stop-distance)" value={marginalRisk.individualRiskUsd !== null ? formatMoney(marginalRisk.individualRiskUsd) : "insufficient real history"} />
+                    <DataRow
+                      label="Portfolio capital-at-risk"
+                      value={`${formatPct(marginalRisk.portfolioCapitalAtRiskPctBefore)} → ${formatPct(marginalRisk.portfolioCapitalAtRiskPctAfter)}`}
+                    />
+                    <DataRow label="Gross exposure" value={`${formatMoney(marginalRisk.grossExposureUsdBefore)} → ${formatMoney(marginalRisk.grossExposureUsdAfter)}`} />
+                    <DataRow label="Leverage" value={`${marginalRisk.leverageBefore.toFixed(2)}x → ${marginalRisk.leverageAfter.toFixed(2)}x`} />
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-cmd-border/40 pt-1.5 text-[9px]">
+                      <span className="text-cmd-textDim">
+                        Correlation <StatusPill tone={IMPACT_TONE[marginalRisk.correlationImpact]}>{marginalRisk.correlationImpact.toUpperCase()}</StatusPill>
+                      </span>
+                      <span className="text-cmd-textDim">
+                        Concentration <StatusPill tone={IMPACT_TONE[marginalRisk.concentrationImpact]}>{marginalRisk.concentrationImpact.toUpperCase()}</StatusPill>
+                      </span>
+                      <span className="text-cmd-textDim">
+                        Liquidity <StatusPill tone={LIQUIDITY_STATUS_TONE[marginalRisk.liquidityStatus]}>{LIQUIDITY_STATUS_LABEL[marginalRisk.liquidityStatus]}</StatusPill>
+                      </span>
+                      <span className="text-cmd-textDim">
+                        Book correlation <StatusPill tone={CORRELATION_REGIME_TONE[marginalRisk.correlationRegimeState]}>{marginalRisk.correlationRegimeState.toUpperCase()}</StatusPill>
+                      </span>
+                    </div>
+                    <div className="mt-1.5 text-[9px] text-cmd-textDim">Regime: {marginalRisk.regimeStatus}</div>
+                    {marginalRisk.vetoReasons.length > 0 && (
+                      <div className="mt-1.5 space-y-0.5">
+                        {marginalRisk.vetoReasons.map((r) => (
+                          <div key={r} className="text-[9px] text-cmd-red">
+                            ✗ {r}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {marginalRisk.warnings.length > 0 && (
+                      <div className="mt-1.5 space-y-0.5">
+                        {marginalRisk.warnings.map((w) => (
+                          <div key={w} className="text-[9px] text-cmd-amber">
+                            ⚠ {w}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
               </Glass>
 
               <Glass className="p-3">

@@ -16721,11 +16721,24 @@ sophisticated.
 New `GET /api/risk-limits/marginal-decision` endpoint (mirrors the
 existing `/pretrade-decision` endpoint exactly). New
 `PortfolioMarginalRiskDecision`-family types kept in sync in
-`types.ts`/`api.ts` at the same "typed, real endpoint, no dedicated UI
-consumer yet" stage the existing (and likewise frontend-unconsumed)
-`PretradeRiskDecision` has been at since the original directive — a
-full "Trade Approval View" is a separate, larger UI lift, not attempted
-this pass. 14 new tests in `test_portfolio_risk.py`.
+`types.ts`/`api.ts`. 14 new tests in `test_portfolio_risk.py`.
+
+**Follow-up: reaches the CEO's own Trade Approval view.** Rather than a
+new "giant tab" (the directive's own explicit instruction), a new
+"Portfolio Risk Engine" card was added to `ExecutiveVoting.tsx`'s
+existing REVIEW ANALYSIS section, directly beside the pre-existing Risk
+Snapshot/Risk Budget Remaining cards — the real place the CEO already
+reviews a candidate before deciding BUY/SELL/WAIT. Fetched fresh on
+open, mirroring the existing What-If Lab's own on-demand convention.
+Renders requested/allowed size, individual stop-distance risk,
+portfolio capital-at-risk/gross exposure/leverage before→after, and
+correlation/concentration/liquidity/correlation-regime badges, with
+veto reasons and warnings surfaced directly. Live-verified against the
+real running dev stack via a temporary Playwright spec (removed after
+verification) — a real AAPL proposal rendered `APPROVED`, matching
+requested/allowed sizes, and an honestly-disclosed "Regime: unknown —
+insufficient real candle history" for the dev save's fresh symbol. No
+backend changes.
 
 ## Save format compatibility
 

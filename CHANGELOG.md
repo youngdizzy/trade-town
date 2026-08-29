@@ -340,6 +340,35 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Portfolio Risk Engine + Cross-Trade Capital Allocation" follow-up: the real Marginal Risk Test
+  reaches the CEO's own Trade Approval view (Phase 32).** The Marginal Risk Test below shipped with a
+  real, tested backend and a typed-but-frontend-unconsumed API contract, matching the stage the
+  pre-existing `PretradeRiskDecision` had sat at since the original directive. This follow-up closes
+  that gap the honest way — not a whole new "giant tab" (the directive's own explicit instruction), but
+  a new "Portfolio Risk Engine" card in the EXISTING Executive Voting popup's "REVIEW ANALYSIS" section,
+  directly beside the pre-existing "Risk Snapshot"/"Risk Budget Remaining" cards — the real place a CEO
+  already reviews a candidate trade before deciding BUY/SELL/WAIT.
+  - Fetched fresh (never cached) the moment REVIEW ANALYSIS opens for a given proposal, mirroring the
+    existing What-If Simulation Lab's own on-demand fetch convention exactly. Renders: requested vs.
+    allowed size (visually flagged amber when reduced), individual stop-distance risk, portfolio
+    capital-at-risk before→after, gross exposure before→after, leverage before→after, and four real
+    status badges (correlation impact, concentration impact, liquidity status, book-wide correlation
+    regime) plus the real regime read — with veto reasons in red and warnings in amber when present.
+  - New `MARGINAL_RISK_TONE`/`MARGINAL_RISK_LABEL`/`IMPACT_TONE`/`LIQUIDITY_STATUS_TONE`/
+    `CORRELATION_REGIME_TONE` local maps in `ExecutiveVoting.tsx`, following the file's own established
+    `CHOICE_TONE`/`SEVERITY_TONE`-style local-constant convention (single consumer, not promoted to the
+    shared `lib/derive.ts` module the Multi-Horizon Trend Engine's `SIGNAL_STATE_TONE` needed for its
+    two consumers).
+  - Verified: `tsc`/lint/build clean. Live-verified end-to-end against the real running dev stack via a
+    temporary Playwright spec (removed after verification): opened a real pending AAPL proposal, expanded
+    REVIEW ANALYSIS, and confirmed the card rendered real live data — `APPROVED`, requested/allowed both
+    $1,463.60 (no reduction needed), individual risk $20.58, correlation/concentration `LOW`, liquidity
+    `VALID`, book correlation `NORMAL`, and an honestly-disclosed "Regime: unknown — insufficient real
+    candle history" (the dev save's fresh symbol genuinely didn't have enough candle history yet — not a
+    bug, the exact honest-unavailability behavior the schema's own docstring promises).
+  - No backend changes this slice — pure frontend consumption of the already-shipped, already-tested
+    `GET /api/risk-limits/marginal-decision` endpoint.
+
 - **"TradeTown — 11/10 Engineering Pass: Portfolio Risk Engine + Cross-Trade Capital Allocation" —
   the real Marginal Risk Test (Phase 17): a BEFORE/AFTER portfolio-level simulation, not just a
   per-position gate.** A Phase 0 audit found the directive's SIGNAL STRENGTH vs. PORTFOLIO CAPACITY
