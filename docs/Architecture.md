@@ -10075,6 +10075,42 @@ Surfaced as a new "Confluence Classification" card in `WarRoomPanel.tsx`
 directly below the existing Evidence Confluence card, rendering the four
 buckets with family names.
 
+**Same directive, Live Desk addendum: sweep + BOS/CHoCH chart markers.**
+`LiquidityRead.sweepDetected`/`sweepDirection` and
+`MarketStructureRead.lastBreakOfStructure`/`changeOfCharacter` were real
+and already broadcast (`MarketIntelligenceState.liquidity[]`/`structure[]`)
+but had never reached a chart — neither read carried a timestamp, so
+there was no honest way to know WHERE on the chart the event happened.
+Fixed at the root rather than guessed around in the frontend: both
+`compute_liquidity()` and `compute_market_structure()`
+(`app/market_intelligence.py`) already hold the real triggering candle
+in a local loop variable at the moment of detection — new
+`LiquidityRead.sweepTimestamp` and `MarketStructureRead.
+lastBreakOfStructureTimestamp` fields capture it directly, never a
+re-derived or estimated position. (`changeOfCharacter`, when set, shares
+`lastBreakOfStructure`'s own swing — disclosed in the field's docstring
+rather than adding a redundant second timestamp.) New
+`CandlestickChart.tsx` primitive, `ChartOverlayMarker` — a single real
+(timestamp, price) point (a triangle for a directional break/sweep, a
+dot otherwise) — distinct from every existing primitive (a flat line, a
+rectangular zone, a sloped polyline). `MarketChartPanel.tsx`'s
+`buildOverlays()` resolves each marker's exact candle by matching the
+real timestamp against the exact candle array already on screen (an
+exact match, since both come from the same array — never a nearest-
+timestamp guess), reading that candle's own real high/low for the
+marker's price. New "BOS/CHOCH" overlay toggle category; the sweep
+marker reuses the existing "LIQUIDITY" toggle.
+- Verified: 6 new/extended backend tests (2 in `TestComputeMarketStructure`,
+  3 in `TestComputeLiquidity`, plus a not-enough-history honest-null
+  check in each), full backend suite (2991 passed / 1 pre-existing
+  flaky failure in `test_foundational_mentors.py`, confirmed unrelated
+  — fails intermittently with zero files touched this pass, reproduced
+  independently), `mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+  Also fixed a latent gap found while wiring this:
+  `MarketStructureRead.changeOfCharacter` (added in an earlier pass) had
+  never been synced to `types.ts` at all — added alongside the new
+  fields.
+
 ### Phase E: symbol_robustness
 
 `_symbol_robustness_check()` (`app/model_validation.py`) groups a

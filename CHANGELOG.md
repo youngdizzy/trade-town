@@ -193,6 +193,40 @@ development milestones, not semver releases.
     double-counting or drops; the empty-candles case reports all six as `missing`. Full backend suite
     (2986 tests), `mypy`, `ruff` clean. Frontend `tsc`/lint/build clean.
 
+- **"TradeTown — 11/10 Market Intelligence + Quant Research Engine" Live Desk addendum: sweep +
+  BOS/CHoCH chart markers.** `LiquidityRead.sweepDetected`/`sweepDirection` and
+  `MarketStructureRead.lastBreakOfStructure`/`changeOfCharacter` were real and already broadcast
+  (`MarketIntelligenceState.liquidity[]`/`structure[]`) but had never reached a chart — the real gap
+  was that neither read carried a timestamp, so there was no honest way to know WHERE on the chart the
+  event happened. Fixed at the root rather than guessed around in the frontend.
+  - New `LiquidityRead.sweepTimestamp` / `MarketStructureRead.lastBreakOfStructureTimestamp` fields
+    (`app/schemas.py`). Both `app/market_intelligence.py::compute_liquidity()` and
+    `compute_market_structure()` already hold the real triggering candle in a local loop variable at
+    the exact moment of detection — the new fields capture it directly, never a re-derived or estimated
+    position. `changeOfCharacter`, when set, shares `lastBreakOfStructure`'s own swing — disclosed in
+    the field's own docstring rather than adding a redundant second timestamp.
+  - New `ChartOverlayMarker` primitive in `CandlestickChart.tsx` — a single real (timestamp, price)
+    point, drawn as a directional triangle or a dot — distinct from every existing overlay primitive
+    (a flat line, a rectangular zone, a sloped polyline).
+  - `MarketChartPanel.tsx`'s `buildOverlays()` resolves each marker's exact candle by matching the real
+    timestamp against the exact candle array already rendered on screen — an EXACT match (both values
+    come from the same real array), never a nearest-timestamp guess — then reads that candle's own real
+    high/low for the marker's price. New "BOS/CHOCH" overlay toggle category; the sweep marker reuses
+    the existing "LIQUIDITY" toggle.
+  - Fixed a latent gap discovered while wiring this: `MarketStructureRead.changeOfCharacter` (added in
+    an earlier pass this session) had never been synced to `types.ts` at all, and neither
+    `MarketStructureRead` nor `LiquidityRead` were consumed by ANY frontend component before this
+    change (confirmed via repo-wide grep) — genuinely unwired backend data, not a regression.
+  - Verified: 6 new/extended backend tests (`test_market_intelligence.py`'s
+    `TestComputeMarketStructure`/`TestComputeLiquidity`, including honest-null checks for the
+    not-enough-history path), full backend suite (2991 passed / 1 pre-existing flaky failure in
+    `test_foundational_mentors.py::TestTickEmployeeProgress`, confirmed unrelated — reproduced failing
+    independently on an unmodified file, ~40% failure rate across 5 repeated runs, a pre-existing
+    randomized-test flake not introduced by this change), `mypy`/`ruff` clean. Frontend
+    `tsc`/lint/build clean. No live Playwright pass this slice — new markers only render when a real
+    sweep/BOS/CHoCH condition and its matching toggle are both active, the same on-demand rendering
+    convention every other overlay category here already uses.
+
 - **"AHL-Inspired Systematic Trend & Momentum Research Engine" — re-audit of the four items an earlier
   pass had labeled hard-blocked, and closure of all four.** A user request to "continue till finished with
   everything deferred" prompted a fresh, rigorous re-audit (file/line citations, not impressions) of the

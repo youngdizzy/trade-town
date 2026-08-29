@@ -446,10 +446,16 @@ def compute_market_structure(symbol: str, candles: list[Candle]) -> MarketStruct
     swing_lows = [p for _, p in lows_idx]
 
     bos: Literal["bullish", "bearish", "none"] = "none"
+    # The real candle index of the swing that produced `bos` — straight
+    # from _find_swings()'s own (index, price) pair, never re-derived —
+    # so the Live Desk chart can mark exactly where the break happened.
+    bos_index: int | None = None
     if len(swing_highs) >= 2 and swing_highs[-1] > swing_highs[-2]:
         bos = "bullish"
+        bos_index = highs_idx[-1][0]
     elif len(swing_lows) >= 2 and swing_lows[-1] < swing_lows[-2]:
         bos = "bearish"
+        bos_index = lows_idx[-1][0]
 
     trend = trend_pct(candles)
     vol = volatility_pct(candles)
@@ -482,6 +488,7 @@ def compute_market_structure(symbol: str, candles: list[Candle]) -> MarketStruct
         swingHighs=[round(p, 2) for p in swing_highs[-5:]],
         swingLows=[round(p, 2) for p in swing_lows[-5:]],
         lastBreakOfStructure=bos,
+        lastBreakOfStructureTimestamp=candles[bos_index].timestamp if bos_index is not None else None,
         structureState=state,
         changeOfCharacter=change_of_character,
         detail=detail,
@@ -520,16 +527,20 @@ def compute_liquidity(symbol: str, candles: list[Candle]) -> LiquidityRead:
 
     sweep_detected = False
     sweep_direction: Literal["above_highs", "below_lows", "none"] = "none"
+    # Straight from the candle object that actually triggered the sweep
+    # check below — never re-derived — so the Live Desk chart can mark
+    # exactly where it happened.
+    sweep_timestamp: str | None = None
     for candle in recent:
         for price, _ in high_clusters:
             if candle.high > price * (1 + LIQUIDITY_CLUSTER_TOLERANCE_PCT / 100) and candle.close < price:
-                sweep_detected, sweep_direction = True, "above_highs"
+                sweep_detected, sweep_direction, sweep_timestamp = True, "above_highs", candle.timestamp
                 break
         if sweep_detected:
             break
         for price, _ in low_clusters:
             if candle.low < price * (1 - LIQUIDITY_CLUSTER_TOLERANCE_PCT / 100) and candle.close > price:
-                sweep_detected, sweep_direction = True, "below_lows"
+                sweep_detected, sweep_direction, sweep_timestamp = True, "below_lows", candle.timestamp
                 break
         if sweep_detected:
             break
@@ -540,7 +551,15 @@ def compute_liquidity(symbol: str, candles: list[Candle]) -> LiquidityRead:
         detail += f"; a sweep {sweep_direction.replace('_', ' ')} was just detected." if sweep_detected else "."
     else:
         detail = "No real equal-high/equal-low clustering found in the sampled history."
-    return LiquidityRead(symbol=symbol, zones=zones, sweepDetected=sweep_detected, sweepDirection=sweep_direction, liquidityScore=round(liquidity_score, 1), detail=detail)
+    return LiquidityRead(
+        symbol=symbol,
+        zones=zones,
+        sweepDetected=sweep_detected,
+        sweepDirection=sweep_direction,
+        sweepTimestamp=sweep_timestamp,
+        liquidityScore=round(liquidity_score, 1),
+        detail=detail,
+    )
 
 
 # ---------------------------------------------------------------------

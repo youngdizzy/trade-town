@@ -72,6 +72,7 @@ class TestComputeMarketStructure:
         structure = compute_market_structure("NEXA", _flat_candles(n=4))
         assert structure.last_break_of_structure == "none"
         assert structure.structure_state == "consolidation"
+        assert structure.last_break_of_structure_timestamp is None
 
     def test_rising_swing_highs_are_a_real_bullish_break_of_structure(self) -> None:
         # Two clean up-legs with a real local-max swing high each,
@@ -93,6 +94,11 @@ class TestComputeMarketStructure:
         assert len(structure.swing_highs) >= 2
         assert structure.swing_highs[-1] > structure.swing_highs[-2]
         assert structure.last_break_of_structure == "bullish"
+        # CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+        # Research Engine" — Live Desk chart markers. The real timestamp
+        # of the swing candle (index 20, the second/higher swing high),
+        # straight from the candle array itself, not fabricated.
+        assert structure.last_break_of_structure_timestamp == candles[20].timestamp
 
     def test_flat_series_reads_as_consolidation(self) -> None:
         structure = compute_market_structure("NEXA", _flat_candles())
@@ -151,6 +157,9 @@ class TestComputeMarketStructure:
         assert structure.last_break_of_structure == "bullish"
         assert structure.structure_state == "trend_reversal"
         assert structure.change_of_character == "bullish"
+        # Same swing candle drives both last_break_of_structure and
+        # change_of_character — index base_i + 20 = 30.
+        assert structure.last_break_of_structure_timestamp == candles[30].timestamp
 
 
 class TestComputeLiquidity:
@@ -158,6 +167,7 @@ class TestComputeLiquidity:
         liquidity = compute_liquidity("NEXA", _flat_candles(n=4))
         assert liquidity.zones == []
         assert liquidity.sweep_detected is False
+        assert liquidity.sweep_timestamp is None
 
     def test_two_equal_highs_form_a_real_liquidity_zone(self) -> None:
         candles = []
@@ -195,6 +205,10 @@ class TestComputeLiquidity:
         liquidity = compute_liquidity("NEXA", candles)
         assert liquidity.sweep_detected is True
         assert liquidity.sweep_direction == "above_highs"
+        # CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+        # Research Engine" — Live Desk chart markers. The real timestamp
+        # of the candle whose wick pierced the zone (index 15).
+        assert liquidity.sweep_timestamp == candles[15].timestamp
 
 
 class TestComputeSession:

@@ -3410,6 +3410,13 @@ class LiquidityRead(CamelModel):
     sweep_direction: Literal["above_highs", "below_lows", "none"] = Field(
         alias="sweepDirection"
     )
+    # CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+    # Research Engine" — Live Desk chart markers. The real timestamp of
+    # the candle that triggered sweep_detected, straight from the same
+    # candle object compute_liquidity() already inspects — never a
+    # re-derived or estimated position. None whenever sweep_detected is
+    # False (nothing to mark).
+    sweep_timestamp: str | None = Field(default=None, alias="sweepTimestamp")
     liquidity_score: float = Field(alias="liquidityScore")  # 0-100
     detail: str
 
@@ -3426,6 +3433,16 @@ class MarketStructureRead(CamelModel):
     swing_lows: list[float] = Field(default_factory=list, alias="swingLows")
     last_break_of_structure: Literal["bullish", "bearish", "none"] = Field(
         alias="lastBreakOfStructure"
+    )
+    # CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+    # Research Engine" — Live Desk chart markers. The real timestamp of
+    # the swing candle that produced last_break_of_structure (and, when
+    # set, change_of_character — the same swing), straight from
+    # _find_swings()'s own real (index, price) pair re-resolved against
+    # this same candle array, never a re-derived or estimated position.
+    # None whenever last_break_of_structure is "none".
+    last_break_of_structure_timestamp: str | None = Field(
+        default=None, alias="lastBreakOfStructureTimestamp"
     )
     structure_state: Literal[
         "trend_continuation",
