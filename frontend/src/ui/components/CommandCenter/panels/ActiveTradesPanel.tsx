@@ -121,7 +121,40 @@ export function ActiveTradesPanel({ onSelect, selectedId }: { onSelect: (positio
                         Style: <span className="text-cmd-text">{p.tradingStyle === "day" ? "Day" : "Swing"}</span>
                       </span>
                     )}
-                    <span className="italic text-cmd-textDim">No stop order placed</span>
+                    {/* CEO directive "Hard Risk Gates 2.0 — Stop-Loss /
+                        Position-Risk Enforcement" — a real, ATR-based
+                        stop/target price now exists on any position
+                        opened after this directive, with a real linked
+                        protective order actually placed in the broker's
+                        order book (see WarRoomPanel's own Volatility-
+                        Based Risk Sizing section for the ATR distance
+                        this was derived from). "No stop order placed" is
+                        still the honest state for a position that
+                        predates it, or where no real ATR evidence
+                        existed at open time. */}
+                    {p.stopPrice !== null ? (
+                      <>
+                        <span>
+                          Stop: <span className="tabular-nums text-cmd-red">${p.stopPrice.toFixed(2)}</span>
+                        </span>
+                        {p.targetPrice !== null && (
+                          <span>
+                            Target: <span className="tabular-nums text-cmd-green">${p.targetPrice.toFixed(2)}</span>
+                          </span>
+                        )}
+                        <span>
+                          Current R:{" "}
+                          <span className="tabular-nums text-cmd-text">
+                            {(
+                              (((p.currentPrice - p.entryPrice) * (p.side === "buy" ? 1 : -1)) / Math.abs(p.entryPrice - p.stopPrice)) || 0
+                            ).toFixed(2)}
+                            R
+                          </span>
+                        </span>
+                      </>
+                    ) : (
+                      <span className="italic text-cmd-textDim">No stop order placed</span>
+                    )}
                   </div>
                 </Glass>
               </button>

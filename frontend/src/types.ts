@@ -501,6 +501,20 @@ export interface PaperPosition {
    * the manual-order fill path (no proposal exists there) or one
    * opened before this field existed. */
   proposalId: string | null;
+  /** CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+   * Enforcement" — a real, ATR-based stop/target PRICE, set once at
+   * open time and immutable for the life of the position. A real
+   * linked "stop_loss"/"take_profit" order (backend/app/broker.py) is
+   * also placed at the same instant using this exact price — this
+   * field is the planning-record copy for display/R-multiple. `null`
+   * when no real ATR evidence existed for this symbol at open time, or
+   * for any position opened before this directive. */
+  stopPrice: number | null;
+  /** Real, disclosed policy choice (backend/app/executive.py's
+   * TARGET_REWARD_RISK_MULTIPLE): entry +/- a fixed multiple of the
+   * same real ATR distance the stop uses. `null` under the same
+   * condition as stopPrice. */
+  targetPrice: number | null;
 }
 
 /** One closed paper position — the Learning System's "training data" record (v0.5 brief Feature 5). */
@@ -572,6 +586,13 @@ export interface PaperTrade {
    * any trade closed before this piece. */
   maePct: number;
   mfePct: number;
+  /** CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+   * Enforcement" — carried over from the PaperPosition this trade
+   * closed. What finally makes DecisionVaultEntry.rMultiple a real,
+   * non-fabricated computation. `null` under the same honest condition
+   * as PaperPosition.stopPrice/targetPrice. */
+  stopPrice: number | null;
+  targetPrice: number | null;
 }
 
 // CEO directive "Professional Trading Firm Transformation" — Post-Trade
@@ -4551,10 +4572,12 @@ export interface InstitutionalMemoryEntry {
  * joining every real artifact already generated for it — see
  * backend/app/decision_vault.py's module docstring for the full honesty
  * boundary, including which brief-requested fields are deliberately not
- * here (rMultiple, strategyId on ordinary trades). marketRegime/
- * liquidityContext are "as of trade close," not "as of the original
- * decision" — nothing in this codebase stamps either onto a proposal at
- * decision time. */
+ * here (strategyId on ordinary trades). rMultiple graduated from "not
+ * here" to real (CEO directive "Hard Risk Gates 2.0") once every real
+ * trade got a real stop price — see rMultiple's own comment below.
+ * marketRegime/liquidityContext are "as of trade close," not "as of the
+ * original decision" — nothing in this codebase stamps either onto a
+ * proposal at decision time. */
 export interface DecisionVaultEntry {
   id: string;
   tradeId: string;
@@ -4581,9 +4604,13 @@ export interface DecisionVaultEntry {
   pnl: number;
   pnlPct: number;
   holdDurationMinutes: number;
-  /** Always null — no stop-loss/initial-risk concept exists anywhere in
-   * this codebase's real risk engine (see backend/app/risk_engine.py's
-   * recommended_quantity()), so R-Multiple can't be honestly computed. */
+  /** CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+   * Enforcement" — real for any trade closed after this directive:
+   * `(exitPrice - entryPrice) * direction / abs(entryPrice - stopPrice)`,
+   * a genuine risk-multiple. Still null for every trade closed BEFORE
+   * this directive (no stopPrice exists on that record) and for the
+   * honest minority of real trades where no ATR evidence existed at
+   * open time either — never backfilled or guessed. */
   rMultiple: number | null;
   caseStudyId: string | null;
   caseStudyCategory: CaseStudyCategory | null;
@@ -4676,9 +4703,11 @@ export interface KnowledgeQualityScore {
  * above for the Decision Memory System) — the Executive Decision
  * Simulator's War Room. A real, probability-weighted read over
  * WhatIfSimulation's own 12 real scenarios, never a fabricated forecast.
- * riskToReward is deliberately labeled that, not "R-Multiple" — no
- * stop-loss/initial-risk unit exists anywhere in this codebase to
- * measure R against (see DecisionVaultEntry.rMultiple above). */
+ * riskToReward is deliberately still labeled that, not "R-Multiple" — a
+ * PRE-trade simulated ratio over the bootstrap scenario mix, a
+ * different question from DecisionVaultEntry.rMultiple's real, post-
+ * trade, single-realization measurement against an actual stop price
+ * (see that field's own comment above). */
 export interface ExpectedValueAnalysis {
   expectedValuePct: number;
   edgePct: number;

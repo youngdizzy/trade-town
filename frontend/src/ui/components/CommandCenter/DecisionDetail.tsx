@@ -320,7 +320,14 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
                 {exitOrders.length > 0 ? (
                   exitOrders.map((eo) => <DataRow key={eo.id} label={`Exit (${eo.orderType})`} value={`${eo.quantity} @ ${formatMoney(eo.price)}`} />)
                 ) : (
-                  <div className="mt-1 text-[9px] text-cmd-textDim">No stop-loss or take-profit order attached — TradeTown&apos;s auto-trader doesn&apos;t place exit orders yet.</div>
+                  // CEO directive "Hard Risk Gates 2.0 — Stop-Loss /
+                  // Position-Risk Enforcement" — every real trade now
+                  // gets a real linked stop_loss/take_profit order at
+                  // fill time; this empty state is now honestly for a
+                  // decision that predates that directive, or one where
+                  // no real ATR evidence existed for a stop at open
+                  // time (see PositionSizingResult.volatilitySizing).
+                  <div className="mt-1 text-[9px] text-cmd-textDim">No stop-loss or take-profit order attached — this decision predates real stop-loss enforcement, or no real ATR evidence existed for a stop at open time.</div>
                 )}
               </>
             ) : approved ? (
