@@ -140,6 +140,7 @@ import type {
   TradingSession,
   Strategy,
   StrategyCertification,
+  StrategyComplexityScore,
   StrategyDossier,
   StrategyExecutiveDashboard,
   TierAllocationLimits,
@@ -881,6 +882,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify(definition),
     }),
+  // CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+  // Backtesting Engine," Section 13 — a real structural complexity
+  // count, no market data needed. Also packaged into
+  // runResearchExperiment()'s own record below.
+  complexityScore: (definition: CompiledStrategyDefinition) =>
+    request<StrategyComplexityScore>("/sandbox/complexity-score", { method: "POST", body: JSON.stringify(definition) }),
   runResearchExperiment: (definition: CompiledStrategyDefinition, candlesPerSymbol?: number) =>
     request<ResearchExperimentRecord>(`/sandbox/research-experiment${candlesPerSymbol ? `?candlesPerSymbol=${candlesPerSymbol}` : ""}`, {
       method: "POST",

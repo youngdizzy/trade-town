@@ -1630,6 +1630,28 @@ export interface CompiledStrategyDefinition {
   detail: string;
 }
 
+export type StrategyComplexityBand = "simple" | "moderate" | "complex";
+
+/** CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+ * Backtesting Engine," Section 13 (Simplicity/Complexity Score) — a
+ * real structural count over a CompiledStrategyDefinition's own rule
+ * sequence (sequence steps, real conditions, distinct indicator
+ * types, tunable numeric parameters), never a subjective judgment.
+ * Advisory only: not wired into any promotion gate or ranking. See
+ * backend/app/strategy_complexity.py's compute_strategy_complexity(). */
+export interface StrategyComplexityScore {
+  definitionId: string;
+  definitionVersion: number;
+  stepCount: number;
+  conditionCount: number;
+  distinctIndicatorCount: number;
+  parameterCount: number;
+  complexityScore: number;
+  band: StrategyComplexityBand;
+  detail: string;
+  generatedAt: string;
+}
+
 /** CEO directive "Strategy Intelligence + Live Strategy Attribution,"
  * Phase 1 — the response of `POST /sandbox/register-researchable-strategy`.
  * `strategy` is `null` when `definition.status !== "compiled"` — never a
@@ -1785,6 +1807,7 @@ export interface ResearchExperimentRecord {
   parameterSensitivity: ParameterSensitivityResult;
   costSensitivity: CostSensitivityResult;
   lookAheadAudit: LookAheadAuditResult;
+  complexity: StrategyComplexityScore;
   overfittingDiagnosis: OverfittingDiagnosis;
   conclusion: string;
   /** CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 5 — a real, per-symbol

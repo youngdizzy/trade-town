@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
-import type { CompiledStrategyBacktestResult, CompiledStrategyDefinition, ResearchExperimentRecord } from "@/types";
+import type { CompiledStrategyBacktestResult, CompiledStrategyDefinition, ResearchExperimentRecord, StrategyComplexityBand } from "@/types";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
 import { BucketGroup } from "./EmaPullbackResearchView";
 
@@ -25,6 +25,14 @@ const OVERFITTING_TONE: Record<string, "green" | "amber" | "red" | "purple"> = {
   oos_failure: "red",
   insufficient_data: "purple",
   pending_validation: "purple",
+};
+
+// CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+// Backtesting Engine," Section 13.
+const COMPLEXITY_TONE: Record<StrategyComplexityBand, "green" | "amber" | "red" | "purple"> = {
+  simple: "green",
+  moderate: "amber",
+  complex: "red",
 };
 
 const CEO_EXAMPLE_TEXT =
@@ -454,6 +462,17 @@ export function StrategyCompilerView({ seed }: { seed?: CompiledStrategyDefiniti
                 ))}
               </div>
             )}
+          </Glass>
+
+          <Glass className="p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <TerminalLabel>Complexity Score</TerminalLabel>
+              <StatusPill tone={COMPLEXITY_TONE[experiment.complexity.band]}>{experiment.complexity.band}</StatusPill>
+            </div>
+            <div className="text-[9px] text-cmd-text">{experiment.complexity.detail}</div>
+            <div className="mt-1 text-[8px] italic text-cmd-textDim">
+              Advisory only — not wired into any promotion gate or ranking. Prefer robust + simple over complex + overfit when performance is otherwise comparable.
+            </div>
           </Glass>
 
           <Glass className="p-3">
