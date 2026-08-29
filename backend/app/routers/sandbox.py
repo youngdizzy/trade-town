@@ -17,6 +17,7 @@ from app.research_experiment import run_research_experiment
 from app.quant_research_lab import find_similar_experiments
 from app.schemas import (
     AgentId,
+    AgentStrategySurvivalScore,
     BacktestSession,
     CompiledStrategyBacktestResult,
     CompiledStrategyDefinition,
@@ -51,7 +52,7 @@ from app.state import game_state
 from app.strategy_compiler import compile_strategy_text, strategy_definition_slug
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL as ENGINE_DEFAULT_CANDLES_PER_SYMBOL
 from app.strategy_engine import run_compiled_strategy_backtest
-from app.strategy_lab import compute_strategy_certification, compute_strategy_executive_dashboard, generate_strategy_dossier
+from app.strategy_lab import compute_agent_strategy_survival, compute_strategy_certification, compute_strategy_executive_dashboard, generate_strategy_dossier
 from app.strategy_tournament import run_strategy_tournament
 from app.survivorship import check_survivorship_bias
 from app.walk_forward import DEFAULT_WINDOW_BARS, run_walk_forward_validation
@@ -271,6 +272,18 @@ async def strategy_executive_dashboard() -> StrategyExecutiveDashboard:
         state.strategy_failed_archive,
         sim_day=state.time.day,
     )
+
+
+@router.get("/agent-survival", response_model=list[AgentStrategySurvivalScore])
+async def agent_strategy_survival() -> list[AgentStrategySurvivalScore]:
+    """CEO directive "Professional Quant Portfolio Intelligence + Alpha
+    Research Engine," Phase 6 (Agent Talent System) — per-agent
+    strategy survival, mirroring GET /api/executive/agent-accuracy's
+    own real per-agent evidence-floor convention one level up. See
+    app/strategy_lab.py's compute_agent_strategy_survival(). Read-only,
+    computed fresh every call."""
+    state = await game_state.snapshot()
+    return compute_agent_strategy_survival(state.strategies, state.strategy_hall_of_fame, state.strategy_failed_archive)
 
 
 @router.get("/live-strategy-eligibility", response_model=StrategyMatch)

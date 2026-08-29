@@ -120,10 +120,13 @@ from app.market_data import Candle, MarketDataProvider
 from app.market_intelligence import _REGIME_TO_SCENARIO_KEYWORD, compute_liquidity, compute_market_structure
 from app.sandbox import RISK_MAX_AVG_DRAWDOWN, STRATEGY_DEVILS_ADVOCATES, stage_index
 from app.schemas import (
+    AGENT_IDS,
     AgentId,
+    AgentStrategySurvivalScore,
     CoachReport,
     CostSensitivityResult,
     ExecutiveDepartmentRole,
+    ExecutiveEvidenceState,
     ExecutiveStance,
     ExperimentTier,
     FailedStrategyArchiveEntry,
@@ -1075,6 +1078,67 @@ def cap_strategy_failed_archive(items: list[FailedStrategyArchiveEntry]) -> list
     if len(items) > MAX_STRATEGY_FAILED_ARCHIVE:
         del items[: len(items) - MAX_STRATEGY_FAILED_ARCHIVE]
     return items
+
+
+# CEO directive "Professional Quant Portfolio Intelligence + Alpha
+# Research Engine," Phase 6 (Agent Talent System) — the real evidence
+# floor and pass/fail bands for compute_agent_strategy_survival()
+# below, reused verbatim from app/executive_intelligence.py's own real
+# MIN_ACCURACY_SAMPLE_FOR_VERDICT / 60% / 40% convention rather than
+# inventing a second number for what is the same underlying question
+# (is this rate, over this few samples, real evidence yet).
+MIN_STRATEGIES_FOR_SURVIVAL_VERDICT = 3
+_SURVIVAL_PASS_THRESHOLD_PCT = 60.0
+_SURVIVAL_FAIL_THRESHOLD_PCT = 40.0
+
+
+def _survival_evaluation_state(resolved: int, survival_rate_pct: float | None) -> ExecutiveEvidenceState:
+    if resolved < MIN_STRATEGIES_FOR_SURVIVAL_VERDICT or survival_rate_pct is None:
+        return "not_enough_evidence"
+    if survival_rate_pct >= _SURVIVAL_PASS_THRESHOLD_PCT:
+        return "pass"
+    if survival_rate_pct < _SURVIVAL_FAIL_THRESHOLD_PCT:
+        return "fail"
+    return "inconclusive"
+
+
+def compute_agent_strategy_survival(
+    strategies: list[Strategy],
+    hall_of_fame: list[StrategyHallOfFameEntry],
+    failed_archive: list[FailedStrategyArchiveEntry],
+) -> list[AgentStrategySurvivalScore]:
+    """The exact same real per-agent evidence-floor methodology
+    app/executive_intelligence.py's compute_agent_vote_accuracy()
+    already established for trade votes (CEO directive "Professional
+    Quant Trading Core," Phase B), applied one level up: for each real
+    named agent, of the real strategies it created (Strategy.created_by)
+    that have actually reached a real terminal outcome — induction into
+    the Hall of Fame above (survived) or filed to the Failed Archive
+    above (failed), both of which already carry created_by verbatim
+    from generate_strategy_retirement_outcome()'s own real retirement
+    logic — what fraction survived. A strategy still active at any
+    pre-"retired" stage has reached neither outcome yet and is honestly
+    excluded from resolvedCount, never guessed at from its current
+    stage or health trend."""
+    scores: list[AgentStrategySurvivalScore] = []
+    for agent_id in AGENT_IDS:
+        created = sum(1 for s in strategies if s.created_by == agent_id)
+        survived = sum(1 for e in hall_of_fame if e.created_by == agent_id)
+        failed = sum(1 for e in failed_archive if e.created_by == agent_id)
+        resolved = survived + failed
+        survival_rate = round(survived / resolved * 100.0, 1) if resolved else None
+        scores.append(
+            AgentStrategySurvivalScore(
+                agentId=agent_id,
+                strategiesCreated=created,
+                resolvedCount=resolved,
+                survivedCount=survived,
+                failedCount=failed,
+                survivalRatePct=survival_rate,
+                evaluationState=_survival_evaluation_state(resolved, survival_rate),
+            )
+        )
+    return scores
 
 
 def compute_strategy_executive_dashboard(

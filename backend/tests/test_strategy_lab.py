@@ -10,14 +10,17 @@ from app.market_data import MockMarketDataProvider
 from app.market_intelligence import default_market_intelligence_state
 from app.sandbox import generate_strategy_review
 from app.schemas import (
+    AGENT_IDS,
     CoachReport,
     CostSensitivityResult,
+    FailedStrategyArchiveEntry,
     LookAheadAuditResult,
     ModelValidationCheck,
     ModelValidationReport,
     ResearchItem,
     SimulationResult,
     Strategy,
+    StrategyHallOfFameEntry,
     StrategyMonteCarloResult,
     StrategyStageEvent,
     WalkForwardValidationResult,
@@ -33,7 +36,9 @@ from app.strategy_lab import (
     HALL_OF_FAME_MIN_TRADE_COUNT,
     HALL_OF_FAME_MIN_WIN_RATE,
     MIN_RETIREMENT_TRADE_COUNT,
+    MIN_STRATEGIES_FOR_SURVIVAL_VERDICT,
     _tail_mean,
+    compute_agent_strategy_survival,
     compute_experiment_tier,
     compute_strategy_certification,
     compute_strategy_confidence_score,
@@ -56,13 +61,19 @@ def _now_iso() -> str:
 
 
 def _strategy(
-    *, allocated_capital: float = 0.0, stage: str = "market_simulation", stage_history: list[StrategyStageEvent] | None = None, compiled_definition_id: str | None = None
+    *,
+    allocated_capital: float = 0.0,
+    stage: str = "market_simulation",
+    stage_history: list[StrategyStageEvent] | None = None,
+    compiled_definition_id: str | None = None,
+    strategy_id: str = "strategy-1",
+    created_by: str = "echo",
 ) -> Strategy:
     return Strategy(
-        id="strategy-1",
+        id=strategy_id,
         name="Momentum Breakout",
         description="Follows short-term price momentum.",
-        createdBy="echo",  # type: ignore[arg-type]
+        createdBy=created_by,  # type: ignore[arg-type]
         focusCategory="stock",  # type: ignore[arg-type]
         createdAt=_now_iso(),
         stage=stage,  # type: ignore[arg-type]
@@ -886,3 +897,127 @@ class TestEvaluateRetirementReadiness:
         ready, detail = evaluate_retirement_readiness(strategy, other_strategy_results)
         assert ready is False
         assert "0 real trade(s)" in detail
+
+
+def _hof_entry(*, entry_id: str = "hof-1", strategy_id: str = "strategy-1", created_by: str = "echo") -> StrategyHallOfFameEntry:
+    return StrategyHallOfFameEntry(
+        id=entry_id,
+        strategyId=strategy_id,
+        strategyName="Momentum Breakout",
+        createdBy=created_by,  # type: ignore[arg-type]
+        description="Follows short-term price momentum.",
+        simDaysActive=90,
+        tradesExecuted=40,
+        winRate=60.0,
+        profitFactor=1.8,
+        maxDrawdownPct=8.0,
+        historicalReturnPct=22.0,
+        legacyNotes=[],
+        retiredReason="Consistently profitable.",
+        simDay=90,
+        inductedAt=_now_iso(),
+    )
+
+
+def _failed_archive_entry(*, entry_id: str = "failed-1", strategy_id: str = "strategy-1", created_by: str = "echo") -> FailedStrategyArchiveEntry:
+    return FailedStrategyArchiveEntry(
+        id=entry_id,
+        strategyId=strategy_id,
+        strategyName="Momentum Breakout",
+        createdBy=created_by,  # type: ignore[arg-type]
+        failedAtStage="paper_trading",  # type: ignore[arg-type]
+        whatFailed=["Win rate collapsed under real regime shift."],
+        lessonsLearned=["Needs a regime filter."],
+        retiredReason="Win rate fell below the real retirement bar.",
+        simDay=60,
+        createdAt=_now_iso(),
+    )
+
+
+class TestComputeAgentStrategySurvival:
+    """CEO directive "Professional Quant Portfolio Intelligence + Alpha
+    Research Engine," Phase 6 (Agent Talent System) — the exact same
+    real per-agent evidence-floor methodology
+    compute_agent_vote_accuracy() already established for trade votes,
+    applied one level up to real strategy Hall of Fame / Failed Archive
+    outcomes."""
+
+    def test_every_agent_id_is_represented_even_ones_who_never_created_a_strategy(self) -> None:
+        scores = compute_agent_strategy_survival([], [], [])
+        assert {s.agent_id for s in scores} == set(AGENT_IDS)
+
+    def test_zero_resolved_is_none_not_a_fabricated_zero(self) -> None:
+        scores = compute_agent_strategy_survival([], [], [])
+        echo = next(s for s in scores if s.agent_id == "echo")
+        assert echo.strategies_created == 0
+        assert echo.resolved_count == 0
+        assert echo.survival_rate_pct is None
+        assert echo.evaluation_state == "not_enough_evidence"
+
+    def test_strategies_created_counts_every_real_strategy_regardless_of_stage(self) -> None:
+        strategies = [_strategy(strategy_id=f"s{i}", created_by="echo", stage="paper_trading") for i in range(2)]
+        scores = compute_agent_strategy_survival(strategies, [], [])
+        echo = next(s for s in scores if s.agent_id == "echo")
+        assert echo.strategies_created == 2
+        # Neither has reached a real terminal outcome yet.
+        assert echo.resolved_count == 0
+        assert echo.evaluation_state == "not_enough_evidence"
+
+    def test_an_agent_who_only_ever_survives_reads_a_real_hundred_percent(self) -> None:
+        n = MIN_STRATEGIES_FOR_SURVIVAL_VERDICT
+        strategies = [_strategy(strategy_id=f"s{i}", created_by="atlas", stage="retired") for i in range(n)]
+        hall_of_fame = [_hof_entry(entry_id=f"hof-{i}", strategy_id=f"s{i}", created_by="atlas") for i in range(n)]
+        scores = compute_agent_strategy_survival(strategies, hall_of_fame, [])
+        atlas = next(s for s in scores if s.agent_id == "atlas")
+        assert atlas.strategies_created == n
+        assert atlas.resolved_count == n
+        assert atlas.survived_count == n
+        assert atlas.failed_count == 0
+        assert atlas.survival_rate_pct == 100.0
+        assert atlas.evaluation_state == "pass"
+
+    def test_an_agent_who_only_ever_fails_reads_a_real_zero_percent(self) -> None:
+        n = MIN_STRATEGIES_FOR_SURVIVAL_VERDICT
+        strategies = [_strategy(strategy_id=f"s{i}", created_by="nova", stage="retired") for i in range(n)]
+        failed_archive = [_failed_archive_entry(entry_id=f"failed-{i}", strategy_id=f"s{i}", created_by="nova") for i in range(n)]
+        scores = compute_agent_strategy_survival(strategies, [], failed_archive)
+        nova = next(s for s in scores if s.agent_id == "nova")
+        assert nova.resolved_count == n
+        assert nova.survived_count == 0
+        assert nova.failed_count == n
+        assert nova.survival_rate_pct == 0.0
+        assert nova.evaluation_state == "fail"
+
+    def test_a_mixed_real_track_record_is_isolated_per_agent(self) -> None:
+        strategies = [
+            _strategy(strategy_id="s-echo-1", created_by="echo", stage="retired"),
+            _strategy(strategy_id="s-echo-2", created_by="echo", stage="retired"),
+            _strategy(strategy_id="s-sentinel-1", created_by="sentinel", stage="retired"),
+        ]
+        hall_of_fame = [_hof_entry(entry_id="hof-1", strategy_id="s-echo-1", created_by="echo")]
+        failed_archive = [
+            _failed_archive_entry(entry_id="failed-1", strategy_id="s-echo-2", created_by="echo"),
+            _failed_archive_entry(entry_id="failed-2", strategy_id="s-sentinel-1", created_by="sentinel"),
+        ]
+        scores = compute_agent_strategy_survival(strategies, hall_of_fame, failed_archive)
+        echo = next(s for s in scores if s.agent_id == "echo")
+        sentinel = next(s for s in scores if s.agent_id == "sentinel")
+        assert echo.survived_count == 1
+        assert echo.failed_count == 1
+        assert echo.survival_rate_pct == 50.0
+        # Below the real minimum sample size — no verdict fabricated from 2 strategies.
+        assert echo.evaluation_state == "not_enough_evidence"
+        assert sentinel.survived_count == 0
+        assert sentinel.failed_count == 1
+
+    def test_a_still_active_strategy_is_excluded_from_resolved_count(self) -> None:
+        strategies = [
+            _strategy(strategy_id="s1", created_by="scout", stage="retired"),
+            _strategy(strategy_id="s2", created_by="scout", stage="paper_trading"),
+        ]
+        hall_of_fame = [_hof_entry(entry_id="hof-1", strategy_id="s1", created_by="scout")]
+        scores = compute_agent_strategy_survival(strategies, hall_of_fame, [])
+        scout = next(s for s in scores if s.agent_id == "scout")
+        assert scout.strategies_created == 2
+        assert scout.resolved_count == 1
+        assert scout.survived_count == 1

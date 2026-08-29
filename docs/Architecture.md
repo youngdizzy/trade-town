@@ -15158,6 +15158,40 @@ flat vote count it replaced — verified by a dedicated regression test.
 `TestAgentAccuracyWeightedAgreement`), full backend suite green,
 mypy/ruff clean.
 
+**Per-Agent Strategy Survival Tracking** (closed in a later follow-up
+— "Professional Quant Portfolio Intelligence + Alpha Research Engine,"
+Phase 6, Agent Talent System). The exact same disclosed gap as above,
+one level up: real per-agent Strategy outcomes were never rolled up.
+Every real `Strategy` already carries `createdBy: AgentId`, and every
+real retirement (`app/strategy_lab.py::
+generate_strategy_retirement_outcome()`) already produces exactly one
+of a `StrategyHallOfFameEntry` (survived) or `FailedStrategyArchiveEntry`
+(failed) — both of which already carry `created_by` verbatim from the
+strategy that resolved. New `app/strategy_lab.py::
+compute_agent_strategy_survival()` reuses `compute_agent_vote_accuracy()`'s
+exact evidence-floor/pass-fail-band methodology
+(`MIN_STRATEGIES_FOR_SURVIVAL_VERDICT = 3`, the same 60%/40% bands, not
+a second invented number): for each agent, of its real strategies that
+reached a real terminal outcome, what fraction survived. A strategy
+still active at any pre-`"retired"` stage counts toward
+`strategiesCreated` but is honestly excluded from `resolvedCount` — a
+real audit confirmed `"approved"` is not itself terminal (an approved
+strategy can still later retire into either outcome), so survival can
+only be read from actual Hall of Fame/Failed Archive membership, never
+guessed from current stage. New `AgentStrategySurvivalScore` schema,
+new `GET /api/sandbox/agent-survival` endpoint (mirrors
+`GET /api/executive/agent-accuracy`'s own convention, computed fresh
+per request). Frontend: `AgentsPanel.tsx`'s existing "Vote Accuracy"
+row gained a sibling "Strategy Survival" row, same tone convention,
+same honest-omission-until-real-evidence pattern. 7 new tests
+(`TestComputeAgentStrategySurvival`), full backend suite green,
+mypy/ruff clean; frontend `tsc`/lint/build clean. Live-verified: the
+real endpoint against the real running dev stack (every agent's one
+real still-active strategy correctly reads `not_enough_evidence`); the
+populated case (a real 100%-survivor and a real 0%-survivor agent side
+by side) confirmed via a temporary Playwright spec mocking the
+endpoint's real response shape (removed after verification).
+
 **Asset Discovery Engine** (closed in a later follow-up). Researched
 first: the audit's own finding — "no whole-universe opportunity scanner
 exists... purely reactive" — was real, and re-architecting

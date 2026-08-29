@@ -3315,6 +3315,31 @@ class AgentVoteAccuracyScore(CamelModel):
     evaluation_state: ExecutiveEvidenceState = Field(default="not_enough_evidence", alias="evaluationState")
 
 
+class AgentStrategySurvivalScore(CamelModel):
+    """Per-agent strategy-proposal survival tracking — CEO directive
+    "Professional Quant Portfolio Intelligence + Alpha Research
+    Engine," Phase 6 (Agent Talent System). The exact same real
+    evidence-floor methodology AgentVoteAccuracyScore above already
+    established for trade votes, applied one level up to real
+    strategy outcomes: does this agent's own real Strategy (`Strategy.
+    createdBy`) tend to survive to app/strategy_lab.py's real Hall of
+    Fame, or end up in its real Failed Archive? Both of those records
+    already carry `createdBy` verbatim from the strategy they
+    resolved — no join, no fabricated attribution. A strategy still
+    active at any pre-"retired" stage has reached neither terminal
+    outcome yet and is honestly excluded from `resolvedCount`, not
+    guessed at. See app/strategy_lab.py's
+    compute_agent_strategy_survival()."""
+
+    agent_id: AgentId = Field(alias="agentId")
+    strategies_created: int = Field(alias="strategiesCreated")
+    resolved_count: int = Field(alias="resolvedCount")
+    survived_count: int = Field(alias="survivedCount")
+    failed_count: int = Field(alias="failedCount")
+    survival_rate_pct: float | None = Field(default=None, alias="survivalRatePct")
+    evaluation_state: ExecutiveEvidenceState = Field(default="not_enough_evidence", alias="evaluationState")
+
+
 # Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine
 # (WEDE). Honest scope, stated here once rather than per-field below: of
 # the brief's eight named weighting inputs, only two have a real,

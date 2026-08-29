@@ -341,6 +341,47 @@ development milestones, not semver releases.
 ### Added
 
 - **"TradeTown — Next Phase: Professional Quant Portfolio Intelligence + Alpha Research Engine,"
+  Phase 6 (Agent Talent System) — per-agent strategy survival tracking.** A background audit against
+  this directive's own scope found the overwhelming majority of its strategy-research asks already
+  real (Monte Carlo, walk-forward, regime testing, red-team review, a real Hall of Fame/Failed
+  Archive, a real 9-stage gated pipeline — see `docs/Architecture.md`'s own strategy-lab entries) —
+  but nothing ever rolled any of it up per individual named agent, the exact same disclosed gap
+  `AgentVoteAccuracyScore` already closed one level down for trade votes ("department-level (not
+  per-agent) accuracy-weighted learning is real... a genuine feedback loop, just department-scoped").
+  Every real `Strategy` already carries `createdBy: AgentId`; every real strategy retirement already
+  produces exactly one of a `StrategyHallOfFameEntry` (survived) or `FailedStrategyArchiveEntry`
+  (failed) via `app/strategy_lab.py::generate_strategy_retirement_outcome()`, and both entries already
+  carry `createdBy` verbatim from the strategy that resolved — the join was simply never made.
+  - New `app/strategy_lab.py::compute_agent_strategy_survival()` — the exact same real
+    evidence-floor/pass-fail-band methodology `app/executive_intelligence.py::
+    compute_agent_vote_accuracy()` already established (reused verbatim as `MIN_STRATEGIES_FOR_
+    SURVIVAL_VERDICT = 3` / 60% pass / 40% fail, not a second invented number), applied per agent:
+    of the real strategies that agent created, how many reached a real terminal outcome (survived to
+    Hall of Fame vs. filed to Failed Archive) and what fraction survived. A strategy still active at
+    any pre-`"retired"` stage has reached neither outcome yet and is honestly excluded from
+    `resolvedCount`, never guessed at from its current stage or health trend (confirmed via a real
+    audit that `"approved"` is NOT itself a terminal stage — an approved strategy can still later be
+    retired into either the Hall of Fame or the Failed Archive).
+  - New `AgentStrategySurvivalScore` schema and new `GET /api/sandbox/agent-survival` endpoint,
+    mirroring `GET /api/executive/agent-accuracy`'s own real per-agent convention (computed fresh per
+    request, no new `GameSaveState` field).
+  - Frontend: `AgentsPanel.tsx`'s existing per-agent "Vote Accuracy" row gained a sibling "Strategy
+    Survival" row directly beneath it, reusing the exact same tone convention (`ACCURACY_TONE`) and
+    honest-omission pattern (a row renders only once that agent has at least one real resolved
+    strategy outcome).
+  - New tests: `TestComputeAgentStrategySurvival` (7, `test_strategy_lab.py`) — every agent ID
+    represented even when it never created a strategy, a real 0 read as `None`/`not_enough_evidence`
+    rather than a fabricated 0%, an all-survivor and an all-failure agent isolated from each other, a
+    mixed real track record correctly split per agent (and correctly still `not_enough_evidence` below
+    the real minimum sample), and a still-active strategy excluded from the resolved count.
+  - Verified: full backend suite green, `mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+    Live-verified against the real running dev stack: `GET /api/sandbox/agent-survival` returns the
+    real per-agent shape from the current dev save (each agent's one real strategy still active, so
+    every row honestly reads `not_enough_evidence`); the populated case (a real 100%-survivor agent
+    and a real 0%-survivor agent rendering side by side on the AGENTS tab) was confirmed with a
+    Playwright spec mocking the endpoint's real response shape, screenshotted rendering correctly.
+
+- **"TradeTown — Next Phase: Professional Quant Portfolio Intelligence + Alpha Research Engine,"
   Phase 7 (Agent Calibration) — per-agent Brier-score calibration.** The directive's own example
   ("if an agent repeatedly says 90% confidence and succeeds only 55% of the time, the system should
   detect that") was already fully backed by real, existing infrastructure that had simply never been

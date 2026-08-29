@@ -1469,6 +1469,38 @@ has never been through Company Review yet. Read-only, computed from
 already-persisted state (no recomputation), same pattern as
 `GET /api/sandbox/certification`.
 
+### `GET /api/sandbox/agent-survival`
+
+CEO directive "Professional Quant Portfolio Intelligence + Alpha
+Research Engine," Phase 6 (Agent Talent System) — mirrors
+`GET /api/executive/agent-accuracy`'s own real per-agent
+evidence-floor convention one level up, over real Strategy outcomes
+instead of trade votes. `compute_agent_strategy_survival()`
+(`app/strategy_lab.py`), computed fresh every request off
+`state.strategies`/`state.strategy_hall_of_fame`/
+`state.strategy_failed_archive`. Returns one `AgentStrategySurvivalScore`
+for every `AgentId` (15 entries):
+
+```json
+{
+  "agentId": "echo",
+  "strategiesCreated": 0,
+  "resolvedCount": 0,
+  "survivedCount": 0,
+  "failedCount": 0,
+  "survivalRatePct": null,
+  "evaluationState": "not_enough_evidence"
+}
+```
+
+Reuses `Strategy.createdBy` and the real `createdBy` already stamped
+on every `StrategyHallOfFameEntry`/`FailedStrategyArchiveEntry` at the
+moment of retirement (`generate_strategy_retirement_outcome()`) — no
+join needed, no fabricated attribution. A strategy still active at any
+pre-`"retired"` stage counts toward `strategiesCreated` but is honestly
+excluded from `resolvedCount` until it actually reaches one of those
+two real terminal archives.
+
 ### `GET /api/sandbox/live-strategy-eligibility`
 
 CEO directive "Strategy Intelligence + Live Strategy Attribution,"
