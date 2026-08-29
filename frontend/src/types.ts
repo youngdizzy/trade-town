@@ -3321,6 +3321,11 @@ export interface LiquidityRead {
   zones: LiquidityZone[];
   sweepDetected: boolean;
   sweepDirection: "above_highs" | "below_lows" | "none";
+  /** CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+   * Research Engine" — Live Desk chart markers. The real timestamp of
+   * the candle that triggered sweepDetected. Null whenever
+   * sweepDetected is false. */
+  sweepTimestamp: string | null;
   liquidityScore: number;
   detail: string;
 }
@@ -3330,7 +3335,17 @@ export interface MarketStructureRead {
   swingHighs: number[];
   swingLows: number[];
   lastBreakOfStructure: "bullish" | "bearish" | "none";
+  /** Same directive — the real timestamp of the swing candle that
+   * produced lastBreakOfStructure (and changeOfCharacter, when set —
+   * the same swing). Null whenever lastBreakOfStructure is "none". */
+  lastBreakOfStructureTimestamp: string | null;
   structureState: "trend_continuation" | "trend_reversal" | "consolidation" | "expansion" | "compression";
+  /** CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+   * Engine" Phase 10 — one real, specific, disclosed Change of
+   * Character definition (see backend/app/schemas.py's
+   * MarketStructureRead.change_of_character docstring for why this
+   * exact one, not a claim of the only valid one). */
+  changeOfCharacter: "bullish" | "bearish" | "none";
   detail: string;
 }
 

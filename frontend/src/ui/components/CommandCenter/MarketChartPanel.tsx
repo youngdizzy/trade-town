@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { Candle, MultiHorizonTrendScore, PaperPosition, SessionRangeRead, TechnicalAnalysisRead, TrendEnsembleReading } from "@/types";
-import { CandlestickChart, type ChartOverlayLine, type ChartOverlayPolyline, type ChartOverlayZone } from "./CandlestickChart";
+import type { Candle, LiquidityRead, MarketStructureRead, MultiHorizonTrendScore, PaperPosition, SessionRangeRead, TechnicalAnalysisRead, TrendEnsembleReading } from "@/types";
+import { CandlestickChart, type ChartOverlayLine, type ChartOverlayMarker, type ChartOverlayPolyline, type ChartOverlayZone } from "./CandlestickChart";
 import { marketTickerStats } from "./lib/derive";
 import { useCandles } from "./lib/useCandles";
 import { Glass, TerminalLabel } from "./ui";
@@ -33,8 +33,15 @@ const SESSION_RANGE_COLOR = "#94a3b8";
 const TREND_FAST_COLOR = "#facc15";
 const TREND_MEDIUM_COLOR = "#fb923c";
 const TREND_SLOW_COLOR = "#f472b6";
+// CEO directive "TradeTown — 11/10 Market Intelligence + Quant Research
+// Engine" — real, distinct marker colors for the sweep/BOS/CHoCH point
+// events, kept visually distinct from every existing overlay color.
+const SWEEP_MARKER_COLOR = "#38bdf8";
+const BOS_BULLISH_COLOR = "#3ce28a";
+const BOS_BEARISH_COLOR = "#ff4d5e";
+const CHOCH_COLOR = "#e879f9";
 
-type OverlayCategory = "supportResistance" | "fibonacci" | "fairValueGaps" | "orderBlock" | "chartPatterns" | "liquidity" | "sessionRange" | "trendEngine";
+type OverlayCategory = "supportResistance" | "fibonacci" | "fairValueGaps" | "orderBlock" | "chartPatterns" | "liquidity" | "sessionRange" | "trendEngine" | "structure";
 const OVERLAY_LABELS: Record<OverlayCategory, string> = {
   supportResistance: "S/R",
   fibonacci: "FIB",
@@ -44,6 +51,7 @@ const OVERLAY_LABELS: Record<OverlayCategory, string> = {
   liquidity: "LIQUIDITY",
   sessionRange: "SESSION",
   trendEngine: "TREND",
+  structure: "BOS/CHOCH",
 };
 
 // CEO directive "AHL-Inspired Systematic Trend & Momentum Research
@@ -81,11 +89,44 @@ function buildOverlays(
   sessionRange: SessionRangeRead | null,
   firstCandleTimestamp: string | null,
   trend: TrendEnsembleReading | null,
-  candles: Candle[]
-): { lines: ChartOverlayLine[]; zones: ChartOverlayZone[]; polylines: ChartOverlayPolyline[] } {
+  candles: Candle[],
+  liquidity: LiquidityRead | null,
+  structure: MarketStructureRead | null
+): { lines: ChartOverlayLine[]; zones: ChartOverlayZone[]; polylines: ChartOverlayPolyline[]; markers: ChartOverlayMarker[] } {
   const lines: ChartOverlayLine[] = [];
   const zones: ChartOverlayZone[] = [];
   const polylines: ChartOverlayPolyline[] = [];
+  const markers: ChartOverlayMarker[] = [];
+
+  // CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+  // Research Engine" — Live Desk sweep + BOS/CHoCH markers. Both real
+  // event timestamps come straight from backend/app/market_intelligence.py
+  // (sweepTimestamp / lastBreakOfStructureTimestamp), never estimated.
+  if (active.liquidity && liquidity?.sweepDetected && liquidity.sweepTimestamp !== null) {
+    const sweepCandle = candles.find((c) => c.timestamp === liquidity.sweepTimestamp);
+    if (sweepCandle) {
+      markers.push({
+        timestamp: liquidity.sweepTimestamp,
+        price: liquidity.sweepDirection === "above_highs" ? sweepCandle.high : sweepCandle.low,
+        label: `SWEEP ${liquidity.sweepDirection === "above_highs" ? "▲" : "▼"}`,
+        color: SWEEP_MARKER_COLOR,
+        shape: liquidity.sweepDirection === "above_highs" ? "up" : "down",
+      });
+    }
+  }
+  if (active.structure && structure && structure.lastBreakOfStructure !== "none" && structure.lastBreakOfStructureTimestamp !== null) {
+    const breakCandle = candles.find((c) => c.timestamp === structure.lastBreakOfStructureTimestamp);
+    if (breakCandle) {
+      const isChoch = structure.changeOfCharacter !== "none";
+      markers.push({
+        timestamp: structure.lastBreakOfStructureTimestamp,
+        price: structure.lastBreakOfStructure === "bullish" ? breakCandle.high : breakCandle.low,
+        label: isChoch ? `CHoCH ${structure.changeOfCharacter === "bullish" ? "▲" : "▼"}` : `BOS ${structure.lastBreakOfStructure === "bullish" ? "▲" : "▼"}`,
+        color: isChoch ? CHOCH_COLOR : structure.lastBreakOfStructure === "bullish" ? BOS_BULLISH_COLOR : BOS_BEARISH_COLOR,
+        shape: structure.lastBreakOfStructure === "bullish" ? "up" : "down",
+      });
+    }
+  }
 
   if (active.trendEngine && trend) {
     const fast = trendPolyline(trend.fast, candles, TREND_FAST_COLOR, "FAST");
@@ -117,7 +158,7 @@ function buildOverlays(
     });
   }
 
-  if (!ta) return { lines, zones, polylines };
+  if (!ta) return { lines, zones, polylines, markers };
 
   if (active.supportResistance) {
     ta.supportResistance.levels.forEach((l) => {
@@ -166,7 +207,7 @@ function buildOverlays(
     });
   }
 
-  return { lines, zones, polylines };
+  return { lines, zones, polylines, markers };
 }
 
 /**
@@ -219,6 +260,7 @@ export function MarketChartPanel({
     liquidity: false,
     sessionRange: false,
     trendEngine: false,
+    structure: false,
   });
 
   useEffect(() => {
@@ -300,7 +342,12 @@ export function MarketChartPanel({
   // Professional Quant Live Trading Desk — the same real, already-
   // broadcast MarketIntelligenceState.liquidity[] every other panel
   // reads (e.g. MarketIntelPanel), scoped to this chart's own symbol.
-  const liquidityZones = marketIntelligence.liquidity.find((l) => l.symbol === symbol)?.zones ?? [];
+  const liquidityRead = marketIntelligence.liquidity.find((l) => l.symbol === symbol) ?? null;
+  const liquidityZones = liquidityRead?.zones ?? [];
+  // Same directive — the real, already-broadcast
+  // MarketIntelligenceState.structure[] (Break of Structure/Change of
+  // Character), previously unconsumed by any chart.
+  const structureRead = marketIntelligence.structure.find((s) => s.symbol === symbol) ?? null;
   const overlays = buildOverlays(
     technicalAnalysis?.symbol === symbol ? technicalAnalysis : null,
     activeOverlays,
@@ -308,7 +355,9 @@ export function MarketChartPanel({
     sessionRange?.symbol === symbol ? sessionRange : null,
     candles[0]?.timestamp ?? null,
     trend?.symbol === symbol ? trend : null,
-    candles
+    candles,
+    liquidityRead,
+    structureRead
   );
   // CEO directive "AHL-Inspired Systematic Trend & Momentum Research
   // Engine" follow-up — the real fix for the Live Desk chart gap this

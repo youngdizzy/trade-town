@@ -47,6 +47,24 @@ export interface ChartOverlayPolyline {
   color: string;
 }
 
+/** CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+ * Research Engine" — a real, single (timestamp, price) event: a
+ * liquidity sweep or a Break of Structure/Change of Character, each
+ * with its own real triggering candle's timestamp
+ * (backend/app/market_intelligence.py's sweepTimestamp /
+ * lastBreakOfStructureTimestamp — never a re-derived or estimated
+ * position). Distinct from every other primitive here: not a level, not
+ * a zone, not a slope — a single point in time. */
+export interface ChartOverlayMarker {
+  timestamp: string;
+  price: number;
+  label: string;
+  color: string;
+  /** "up"/"down" draws a small triangle in that direction (a break or a
+   * sweep has a real directional sense); "dot" draws a plain circle. */
+  shape: "up" | "down" | "dot";
+}
+
 export interface ChartOverlays {
   /** The order's fill price, if a real order was placed for this symbol — never a fabricated stop/target. */
   entry?: number;
@@ -55,6 +73,7 @@ export interface ChartOverlays {
   lines?: ChartOverlayLine[];
   zones?: ChartOverlayZone[];
   polylines?: ChartOverlayPolyline[];
+  markers?: ChartOverlayMarker[];
 }
 
 /**
@@ -118,6 +137,7 @@ export function CandlestickChart({
       overlays?.lines?.forEach((l) => values.push(l.price));
       overlays?.zones?.forEach((z) => values.push(z.priceLow, z.priceHigh));
       overlays?.polylines?.forEach((p) => p.points.forEach((pt) => values.push(pt.price)));
+      overlays?.markers?.forEach((m) => values.push(m.price));
       const min = Math.min(...values);
       const max = Math.max(...values);
       const span = max - min || 1;
@@ -225,6 +245,34 @@ export function CandlestickChart({
           ctx.fillText(p.label, xFor(last.timestamp) + 3, yFor(last.price));
           ctx.font = "9px monospace";
         }
+      });
+
+      // Point-in-time markers (liquidity sweep / Break of Structure /
+      // Change of Character) — each a real single (timestamp, price)
+      // event, drawn as a small triangle/dot at its own real triggering
+      // candle, never a fabricated position.
+      overlays?.markers?.forEach((m) => {
+        const x = xFor(m.timestamp);
+        const y = yFor(m.price);
+        ctx.fillStyle = m.color;
+        ctx.strokeStyle = m.color;
+        ctx.beginPath();
+        if (m.shape === "up") {
+          ctx.moveTo(x, y - 6);
+          ctx.lineTo(x - 5, y + 3);
+          ctx.lineTo(x + 5, y + 3);
+        } else if (m.shape === "down") {
+          ctx.moveTo(x, y + 6);
+          ctx.lineTo(x - 5, y - 3);
+          ctx.lineTo(x + 5, y - 3);
+        } else {
+          ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.font = "8px monospace";
+        ctx.fillText(m.label, x + 6, m.shape === "down" ? y - 4 : y + 4);
+        ctx.font = "9px monospace";
       });
 
       // Overlays — only ever real values (entry fill price / live mark price)
