@@ -7979,6 +7979,22 @@ class CorrelatedExposureCluster(CamelModel):
 
 
 class PortfolioHeat(CamelModel):
+    # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+    # 11/10 Professional Quant Implementation" — despite its name, this
+    # field is gross NOTIONAL exposure (sum of quantity*current_price
+    # across every open position, as a % of equity), never a real
+    # stop-defined risk read: a position with a tight stop and one with
+    # a wide (or no) stop contribute their full notional value to this
+    # figure identically. `tier`'s own 25/50/75% thresholds are
+    # calibrated for this notional-exposure scale (a fully-invested,
+    # unleveraged account naturally approaches 100%) — kept exactly as
+    # they are, unrenamed and unchanged, since a CEO may already have a
+    # real, configured `RiskLimits.portfolio_heat_cap_pct` comparing
+    # against this exact number; silently redefining it would silently
+    # change what that CEO's own real configured cap means. See
+    # `estimated_capital_at_risk_pct` below for the real, separate,
+    # stop-distance-based reading this field's own name implies but
+    # never computed.
     total_capital_at_risk_pct: float = Field(alias="totalCapitalAtRiskPct")
     unrealized_drawdown_pct: float = Field(alias="unrealizedDrawdownPct")
     largest_position_pct: float = Field(alias="largestPositionPct")
@@ -7987,6 +8003,25 @@ class PortfolioHeat(CamelModel):
     )
     hottest_category_pct: float = Field(default=0.0, alias="hottestCategoryPct")
     tier: Literal["cool", "warm", "hot", "overheated"]
+    # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+    # 11/10 Professional Quant Implementation," Phase 2 — the real
+    # distinction between POSITION VALUE and CAPITAL AT RISK this
+    # directive explicitly asks for. A real, MODELED estimate (never a
+    # real resting stop order — this codebase's live positions have no
+    # such mechanism, the same already-disclosed gap
+    # app/position_sizing.py's own VolatilitySizingRead docstring
+    # names): for every open position with enough real candle history,
+    # `quantity * (CHANDELIER_ATR_MULTIPLIER * real ATR)` — the exact
+    # same real Chandelier-Stop convention this account's own sizing
+    # engine already uses, applied live/fresh against TODAY's real
+    # candles (never the entry-time snapshot, since no stop is ever
+    # actually persisted). Summed across positions, as a % of equity.
+    # `capitalAtRiskDetail` discloses which positions (if any) were
+    # excluded for not having enough real candle history yet — never
+    # silently dropped without explanation. Default 0.0 only for a save
+    # from before this field existed; recomputed fresh every tick.
+    estimated_capital_at_risk_pct: float = Field(default=0.0, alias="estimatedCapitalAtRiskPct")
+    capital_at_risk_detail: str = Field(default="", alias="capitalAtRiskDetail")
 
 
 class CapitalEfficiency(CamelModel):

@@ -7,6 +7,70 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **"TradeTown — Next Major Build: Portfolio Risk Engine + Firm-Wide Risk Governance, 11/10
+  Professional Quant Implementation."** A thorough Phase 0 audit (this codebase's own CHANGELOG
+  record, `app/portfolio_risk.py`, `app/portfolio_monte_carlo.py`, `app/black_swan.py`,
+  `app/trading_restrictions.py`, `app/emergency_stop.py`) found the overwhelming majority of this
+  directive's 37-phase ask ALREADY real and working from three earlier passes this session: a
+  canonical portfolio risk snapshot with a derived risk state (normal/warning/restricted/halted) and
+  fully-explained reasons, an authoritative pre-trade decision that composes every real Sentinel/
+  Guardian check into named reasons (never a bare score), real Pearson correlation + connected-
+  components correlated-exposure clusters, a real -10/-20/-35/-50/-70% stress-test ladder plus four
+  named scenarios, a real historical-bootstrap portfolio Monte Carlo / risk-of-ruin (deterministically
+  seeded), layered kill switches (firm-wide Emergency Stop, symbol/category Trading Restrictions,
+  per-strategy retirement), and a Command Center RISK tab surfacing all of it. This pass does not
+  rebuild any of that — it verifies it (full backend suite green before touching anything), then
+  closes two genuinely NEW gaps the audit found.
+  - **Phase 2 (Position-Level Risk) — a real, confirmed bug: `PortfolioHeat.totalCapitalAtRiskPct` is
+    actually gross NOTIONAL exposure, never a stop-defined risk read**, exactly the confusion this
+    directive's own Phase 2 explicitly warns against ("do not confuse notional exposure with actual
+    stop-defined risk"). `total_at_risk = sum(quantity * current_price ...) / equity * 100` — a
+    position with a tight stop and one with a wide (or no) stop contribute their full notional value
+    identically. Not renamed in place (its 25/50/75% tier thresholds and any CEO-configured
+    `portfolioHeatCapPct` are calibrated for this exact notional scale — silently redefining it would
+    silently change what an already-configured cap means). Instead: the field's docstring now
+    honestly discloses what it actually measures, and a new, genuinely separate
+    `PortfolioHeat.estimatedCapitalAtRiskPct` field (+ `capitalAtRiskDetail`) computes the real thing
+    — for every open position with enough live candle history, `quantity * (CHANDELIER_ATR_MULTIPLIER
+    * real ATR)`, the exact same real Chandelier-Stop convention `app/position_sizing.py`'s own sizing
+    engine already uses, applied fresh against TODAY's real candles (never a stale entry-time
+    snapshot, since no real resting stop order exists for any open position in this codebase — the
+    same already-disclosed gap `VolatilitySizingRead`'s own docstring names). Positions lacking real
+    candle history are named in `capitalAtRiskDetail`, never silently dropped.
+    - New `PortfolioIntelPanel.tsx` "Est. Capital at Risk (modeled)" row alongside the existing heat
+      meter, now honestly relabeled "Gross Notional Exposure"; the detail string renders below when
+      any position was excluded.
+    - Verified live in the browser against the real running dev stack: both readings render (0.0%
+      each on the current save's zero-position state — an honest zero, not a fabricated demo value).
+    - 7 new tests (`test_portfolio_intelligence.py`): honest exclusion when no candle history exists,
+      a real nonzero Chandelier-based read from a real oscillating price series, the two readings
+      proven to genuinely differ (never coincidentally equal), and independence between the two
+      metrics (excluding a position from the modeled reading never touches the real notional figure).
+  - **Phase 27 (Deterministic Replay) — proven with real evidence, not assumed from reading the
+    code.** A repo audit (grepped `evaluate_pretrade_risk_decision()`, `compute_portfolio_risk_snapshot()`,
+    and every function they call in `app/risk_engine.py` for randomness/hidden wall-clock reads) found
+    neither function's actual DECISION content depends on anything but its own real inputs — the only
+    real wall-clock read anywhere in the chain feeds a metadata timestamp field, never the verdict
+    logic. 2 new tests in `TestDeterministicReplay` (`test_portfolio_risk.py`) call each function
+    twice with byte-identical inputs on a real, non-trivial (multi-violation / halted) case and assert
+    the outputs are equal — `PretradeRiskDecision` (no timestamp field at all) byte-for-byte;
+    `PortfolioRiskSnapshot` field-by-field excluding its own honest `computedAt` metadata. This is the
+    real evidence behind the claim "given the same portfolio, market data, and risk configuration,
+    the result is reproducible," not an assumption.
+  - **Everything else in the 37-phase list not covered above stays exactly as this session's own
+    prior CHANGELOG entries already disclosed it — not silently re-declared done.** Confirmed still
+    genuinely missing/out-of-scope: hierarchical hard risk BUDGETS (firm→asset-class→strategy→agent→
+    position — today's real `RiskBudgetStatus`/`AccountRiskBudgetStatus` are flat, account-level
+    only); a real factor-model exposure taxonomy (no GICS/factor data exists in this codebase); an
+    agent-level kill switch (deliberately not built — reasoning unchanged from the prior pass:
+    `AnalystVote` structurally requires all six roles); true portfolio-level volatility TARGETING as a
+    CEO-configurable knob (today's real cross-portfolio inverse-vol sizing narrows exposure but has no
+    "target portfolio volatility" setting). None of these were fabricated around or silently skipped —
+    disclosed here per this directive's own explicit "STOP and document, don't fabricate" instruction.
+  - Verified: 9 new/extended backend tests total, full backend suite (3028 tests), `mypy`/`ruff`
+    clean. Frontend `tsc`/lint/build clean; live-verified in the browser (Playwright, temporary spec,
+    removed after verification).
+
 - **"TradeTown — 11/10 Next Engineering Pass" — `relative_volume_series()` fell back to a
   fabricated `0.0` for a mathematically undefined (all-zero-baseline) relative-volume ratio, while
   its own single-value sibling `relative_volume()` correctly returned an honest `None` for the

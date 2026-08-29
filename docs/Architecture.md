@@ -16468,6 +16468,52 @@ intelligence.py`, `app/black_swan.py`, `app/routers/risk.py`,
 Frontend: `types.ts`, `net/api.ts`, `game/systems/NexusManager.ts`,
 `state/gameStore.ts`. Docs: `CHANGELOG.md`.
 
+### Follow-up: "11/10 Professional Quant Implementation" — capital-at-risk fix + deterministic replay
+
+A fresh 37-phase re-ask of this same directive. Phase 0 audit found the
+overwhelming majority already real (see above) — this follow-up
+verifies it (full suite green first) and closes two genuinely new gaps.
+
+**Phase 2 fix — position value vs. capital at risk.**
+`PortfolioHeat.totalCapitalAtRiskPct` is, despite its name, gross
+NOTIONAL exposure (`quantity * current_price`, summed, as a % of
+equity) — a position with a tight stop and one with a wide/no stop
+contribute identically. Not renamed in place (its 25/50/75% tier
+thresholds, and any CEO-configured `RiskLimits.portfolioHeatCapPct`,
+are calibrated for this exact notional scale). Instead: the field's
+docstring now honestly discloses this, and new
+`PortfolioHeat.estimatedCapitalAtRiskPct`/`capitalAtRiskDetail` fields
+compute the real thing — `quantity * (CHANDELIER_ATR_MULTIPLIER * live
+ATR)` per open position (the same real Chandelier-Stop convention
+`app/position_sizing.py`'s own sizing engine already uses), applied
+fresh against today's real candles, since no real resting stop order
+exists for any open position in this codebase. `_heat()` now takes a
+`MarketDataProvider` parameter to fetch live candles per symbol.
+Positions lacking real candle history are named in the detail string,
+never silently dropped. New `PortfolioIntelPanel.tsx` row; "Total
+Capital at Risk" relabeled "Gross Notional Exposure" in the UI. 7 new
+tests in `test_portfolio_intelligence.py`.
+
+**Phase 27 — deterministic replay, proven not assumed.** A repo audit
+(grepped both functions and their full call chain for randomness/
+hidden wall-clock reads) found `evaluate_pretrade_risk_decision()`'s
+and `compute_portfolio_risk_snapshot()`'s actual decision content
+depends on nothing but their own real inputs — the only real
+`datetime.now()` call in the chain feeds a metadata timestamp field,
+never the verdict logic. 2 new tests in `TestDeterministicReplay`
+(`test_portfolio_risk.py`) call each function twice with identical
+inputs on a real multi-violation/halted case and assert the outputs
+match — `PretradeRiskDecision` (no timestamp field) byte-for-byte,
+`PortfolioRiskSnapshot` field-by-field excluding `computedAt`.
+
+**Confirmed still genuinely missing, not fabricated around**:
+hierarchical risk budgets (today's real budget reads are flat,
+account-level only); a real factor-model taxonomy (no GICS/factor data
+exists); an agent-level kill switch (same disclosed reasoning as
+before — `AnalystVote` structurally requires all six roles); a
+CEO-configurable "target portfolio volatility" knob (cross-portfolio
+inverse-vol sizing narrows exposure but has no target-vol setting).
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

@@ -441,13 +441,13 @@ class TestCountCorrelatedPositions:
 
 class TestHeat:
     def test_empty_portfolio_is_cool_with_zero_readings(self) -> None:
-        heat = _heat(_portfolio(positions=[]), equity=100000.0, category_exposure=[])
+        heat = _heat(_portfolio(positions=[]), equity=100000.0, category_exposure=[], provider=_FakeProvider({}))
         assert heat.tier == "cool"
         assert heat.total_capital_at_risk_pct == 0.0
         assert heat.hottest_category is None
 
     def test_zero_equity_is_cool_rather_than_dividing_by_zero(self) -> None:
-        heat = _heat(_portfolio(positions=[_position()]), equity=0.0, category_exposure=[])
+        heat = _heat(_portfolio(positions=[_position()]), equity=0.0, category_exposure=[], provider=_FakeProvider({}))
         assert heat.tier == "cool"
 
     def test_tier_thresholds_from_cool_to_overheated(self) -> None:
@@ -455,7 +455,7 @@ class TestHeat:
             equity = 100000.0
             position_value = equity * capital_at_risk_pct / 100
             portfolio = _portfolio(positions=[_position(quantity=1.0, current_price=position_value)])
-            heat = _heat(portfolio, equity=equity, category_exposure=[])
+            heat = _heat(portfolio, equity=equity, category_exposure=[], provider=_FakeProvider({}))
             assert heat.tier == expected_tier, f"{capital_at_risk_pct}% should be {expected_tier}, got {heat.tier}"
 
     def test_unrealized_drawdown_only_reports_when_portfolio_is_net_negative(self) -> None:
@@ -468,19 +468,67 @@ class TestHeat:
         itself must be the one that's genuinely below/above
         `starting_balance` to exercise a real unrealized loss/gain."""
         losing = _portfolio(positions=[_position(current_price=90.0)], starting_balance=100_000.0)
-        heat = _heat(losing, equity=95_000.0, category_exposure=[])
+        heat = _heat(losing, equity=95_000.0, category_exposure=[], provider=_FakeProvider({}))
         assert heat.unrealized_drawdown_pct == 5.0
 
         winning = _portfolio(positions=[_position(current_price=110.0)], starting_balance=100_000.0)
-        heat = _heat(winning, equity=105_000.0, category_exposure=[])
+        heat = _heat(winning, equity=105_000.0, category_exposure=[], provider=_FakeProvider({}))
         assert heat.unrealized_drawdown_pct == 0.0
 
     def test_hottest_category_reads_the_top_exposure(self) -> None:
         portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=50.0, current_price=100.0)])
         exposure = _category_exposure(portfolio, equity=100000.0)
-        heat = _heat(portfolio, equity=100000.0, category_exposure=exposure)
+        heat = _heat(portfolio, equity=100000.0, category_exposure=exposure, provider=_FakeProvider({}))
         assert heat.hottest_category == "company"
         assert heat.hottest_category_pct == exposure[0].pct_of_equity
+
+    # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+    # 11/10 Professional Quant Implementation," Phase 2 — the real,
+    # separate, stop-distance-based capital-at-risk reading, distinct
+    # from totalCapitalAtRiskPct (which is actually gross notional
+    # exposure — see PortfolioHeat's own docstring).
+
+    def test_no_candle_history_excludes_every_position_honestly(self) -> None:
+        portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=10.0, current_price=100.0)])
+        heat = _heat(portfolio, equity=100000.0, category_exposure=[], provider=_FakeProvider({}))
+        assert heat.estimated_capital_at_risk_pct == 0.0
+        assert "AAPL" in heat.capital_at_risk_detail
+        assert "not enough real candle history" in heat.capital_at_risk_detail.lower()
+
+    def test_real_candle_history_produces_a_real_nonzero_chandelier_based_read(self) -> None:
+        # A real, oscillating close series (never flat — ATR of a flat
+        # series is 0, which this function must honestly exclude, not
+        # divide by) so a genuine positive ATR — and therefore a genuine
+        # positive capital-at-risk figure — actually exists.
+        closes = [100.0, 103.0, 99.0, 102.0, 98.0, 104.0, 97.0, 105.0, 96.0, 106.0] * 3
+        provider = _FakeProvider({"AAPL": closes})
+        portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=10.0, current_price=100.0)])
+        heat = _heat(portfolio, equity=100000.0, category_exposure=[], provider=provider)
+        assert heat.estimated_capital_at_risk_pct > 0.0
+        assert "chandelier" in heat.capital_at_risk_detail.lower()
+        assert "AAPL" not in heat.capital_at_risk_detail  # not excluded — real ATR was available
+
+    def test_is_a_genuinely_different_smaller_reading_than_gross_notional_exposure(self) -> None:
+        # The exact real distinction Phase 2 asks for: a position's full
+        # notional value (quantity * price) is always a real, meaningful
+        # multiple of a stop-distance-based risk read (a few ATR units),
+        # never the same number, for any real, non-degenerate price
+        # series.
+        closes = [100.0, 103.0, 99.0, 102.0, 98.0, 104.0, 97.0, 105.0, 96.0, 106.0] * 3
+        provider = _FakeProvider({"AAPL": closes})
+        portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=10.0, current_price=100.0)])
+        heat = _heat(portfolio, equity=100000.0, category_exposure=[], provider=provider)
+        assert heat.estimated_capital_at_risk_pct < heat.total_capital_at_risk_pct
+
+    def test_a_position_excluded_from_capital_at_risk_does_not_affect_notional_exposure(self) -> None:
+        # The two readings are genuinely independent — excluding a
+        # position from the modeled stop-risk figure (no real candle
+        # history) must never change the real, already-correct notional
+        # exposure figure.
+        portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=10.0, current_price=100.0)])
+        heat = _heat(portfolio, equity=100000.0, category_exposure=[], provider=_FakeProvider({}))
+        assert heat.total_capital_at_risk_pct == 1.0  # 10 * 100 / 100000 * 100
+        assert heat.estimated_capital_at_risk_pct == 0.0
 
 
 class TestCapitalEfficiency:

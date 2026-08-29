@@ -73,6 +73,7 @@ import statistics
 from datetime import datetime, timezone
 
 from app.analytics import max_drawdown_pct
+from app.ema_pullback_research import CHANDELIER_ATR_MULTIPLIER, CHANDELIER_ATR_PERIOD
 from app.market_data import MarketDataProvider
 from app.risk_engine import portfolio_equity
 from app.schemas import (
@@ -88,10 +89,24 @@ from app.schemas import (
     ResearchCategory,
     StrategyExposureRead,
 )
+from app.technical_indicators import atr
 from app.watchlist import SYMBOL_CATEGORY
 
 PROPOSAL_TIMEFRAME = "1h"
 PROPOSAL_CANDLE_COUNT = 30
+
+# CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+# 11/10 Professional Quant Implementation," Phase 2 — the exact same
+# real Chandelier-Stop candle window app/position_sizing.py's own
+# VOLATILITY_TIMEFRAME/VOLATILITY_CANDLE_COUNT already use for sizing,
+# duplicated here rather than cross-imported (portfolio_intelligence.py
+# has no other dependency on position_sizing.py, and importing just
+# these two small, stable constants isn't worth a new module coupling —
+# the same "small, stable value duplicated across a module boundary"
+# precedent app/portfolio_monte_carlo.py's own _seeded_rng() already
+# established relative to app/strategy_lab.py's).
+_CAPITAL_AT_RISK_TIMEFRAME = "1h"
+_CAPITAL_AT_RISK_CANDLE_COUNT = 30
 
 # A real Pearson coefficient above this magnitude is reported as a real
 # cluster — high enough that only a genuinely tight relationship (the
@@ -281,12 +296,50 @@ def count_correlated_positions(symbol: str, portfolio: PaperPortfolio, provider:
     return count
 
 
-def _heat(portfolio: PaperPortfolio, equity: float, category_exposure: list[CategoryExposure]) -> PortfolioHeat:
+def _estimated_capital_at_risk(portfolio: PaperPortfolio, provider: MarketDataProvider) -> tuple[float, str]:
+    """CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+    11/10 Professional Quant Implementation," Phase 2 — POSITION VALUE
+    vs. CAPITAL AT RISK. A real, MODELED estimate (see PortfolioHeat's
+    own docstring for the full honesty boundary: no real resting stop
+    order exists for any open position in this codebase). For every
+    position with enough real, live candle history, the real Chandelier
+    Stop distance (the exact same formula
+    app/position_sizing.py::_volatility_sizing() already uses at
+    sizing time) applied to TODAY's real ATR, times real quantity — a
+    real dollar figure, summed across every open position. Returns
+    (total_usd, detail) — `detail` names every position excluded for
+    lacking real candle history, never silently dropping it without
+    explanation."""
+    total_usd = 0.0
+    excluded: list[str] = []
+    for pos in portfolio.positions:
+        try:
+            candles = provider.get_candles(pos.symbol, _CAPITAL_AT_RISK_TIMEFRAME, _CAPITAL_AT_RISK_CANDLE_COUNT)
+        except ValueError:
+            excluded.append(pos.symbol)
+            continue
+        atr_value = atr(candles, period=CHANDELIER_ATR_PERIOD)
+        if atr_value is None or atr_value <= 0:
+            excluded.append(pos.symbol)
+            continue
+        stop_distance = CHANDELIER_ATR_MULTIPLIER * atr_value
+        total_usd += pos.quantity * stop_distance
+
+    if excluded:
+        detail = f"Modeled via this account's own Chandelier-Stop convention (never a real resting stop order); {', '.join(sorted(set(excluded)))} excluded — not enough real candle history yet."
+    else:
+        detail = "Modeled via this account's own Chandelier-Stop convention — never a real resting stop order, since none exists for any open position in this codebase."
+    return total_usd, detail
+
+
+def _heat(portfolio: PaperPortfolio, equity: float, category_exposure: list[CategoryExposure], provider: MarketDataProvider) -> PortfolioHeat:
     if equity <= 0 or not portfolio.positions:
         return PortfolioHeat(totalCapitalAtRiskPct=0.0, unrealizedDrawdownPct=0.0, largestPositionPct=0.0, hottestCategory=None, hottestCategoryPct=0.0, tier="cool")
 
     total_at_risk = sum(pos.quantity * pos.current_price for pos in portfolio.positions) / equity * 100
     largest = max((pos.quantity * pos.current_price for pos in portfolio.positions), default=0.0) / equity * 100
+    estimated_capital_at_risk_usd, capital_at_risk_detail = _estimated_capital_at_risk(portfolio, provider)
+    estimated_capital_at_risk_pct = estimated_capital_at_risk_usd / equity * 100
     # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" —
     # this field was named "unrealized" but was actually computed from
     # `total_pnl_pct`, which is REALIZED-only cumulative P&L relative to
@@ -314,6 +367,8 @@ def _heat(portfolio: PaperPortfolio, equity: float, category_exposure: list[Cate
         hottestCategory=hottest.category if hottest else None,
         hottestCategoryPct=hottest.pct_of_equity if hottest else 0.0,
         tier=tier,  # type: ignore[arg-type]
+        estimatedCapitalAtRiskPct=round(estimated_capital_at_risk_pct, 1),
+        capitalAtRiskDetail=capital_at_risk_detail,
     )
 
 
@@ -422,7 +477,7 @@ def compute_portfolio_intelligence(portfolio: PaperPortfolio, provider: MarketDa
     category_exposure = _category_exposure(portfolio, equity)
     correlation_pairs = _correlation_pairs(portfolio, provider)
     correlated_clusters = _correlated_clusters(portfolio, correlation_pairs, equity)
-    heat = _heat(portfolio, equity, category_exposure)
+    heat = _heat(portfolio, equity, category_exposure, provider)
     exposure = _exposure_summary(portfolio, equity)
     strategy_exposure = _strategy_exposure(portfolio, equity)
     capital_efficiency = _capital_efficiency(portfolio)
