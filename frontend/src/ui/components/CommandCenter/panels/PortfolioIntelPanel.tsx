@@ -106,7 +106,7 @@ export function PortfolioIntelPanel() {
         <div className="space-y-2">
           <div>
             <div className="mb-0.5 flex items-center justify-between text-[9px] text-cmd-textDim">
-              <span>Total Capital at Risk</span>
+              <span title="Gross notional exposure (quantity × price, every open position) as a % of equity — the tier thresholds below are calibrated for this scale.">Gross Notional Exposure</span>
               <span className="tabular-nums text-cmd-text">{pi.heat.totalCapitalAtRiskPct.toFixed(0)}%</span>
             </div>
             <Meter value={pi.heat.totalCapitalAtRiskPct} tone={HEAT_TONE[pi.heat.tier]} />
@@ -115,7 +115,13 @@ export function PortfolioIntelPanel() {
             <DataRow label="Unrealized Drawdown" value={`${pi.heat.unrealizedDrawdownPct.toFixed(1)}%`} valueClassName={pi.heat.unrealizedDrawdownPct > 0 ? "text-cmd-red" : "text-cmd-text"} />
             <DataRow label="Largest Position" value={`${pi.heat.largestPositionPct.toFixed(0)}%`} />
             {pi.heat.hottestCategory && <DataRow label="Hottest Category" value={`${pi.heat.hottestCategory} (${pi.heat.hottestCategoryPct.toFixed(0)}%)`} />}
+            {/* CEO directive "Portfolio Risk Engine + Firm-Wide Risk
+                Governance, 11/10 Professional Quant Implementation," Phase
+                2 — the real, separate, stop-distance-based reading,
+                distinct from the notional exposure above. */}
+            <DataRow label="Est. Capital at Risk (modeled)" value={`${pi.heat.estimatedCapitalAtRiskPct.toFixed(1)}%`} />
           </div>
+          {pi.heat.capitalAtRiskDetail && <p className="text-[8px] italic text-cmd-textDim">{pi.heat.capitalAtRiskDetail}</p>}
         </div>
       </Glass>
 

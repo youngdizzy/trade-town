@@ -4891,12 +4891,29 @@ export interface CorrelatedExposureCluster {
  * the player"). Nothing reads this and places, closes, or resizes an
  * order. */
 export interface PortfolioHeat {
+  /** Despite the name, this is gross NOTIONAL exposure (sum of
+   * quantity*currentPrice across every open position, as a % of
+   * equity) — never a real stop-defined risk read. `tier`'s
+   * 25/50/75% thresholds are calibrated for this notional scale. See
+   * `estimatedCapitalAtRiskPct` below for the real, separate,
+   * stop-distance-based reading this field's own name implies but
+   * never computed. */
   totalCapitalAtRiskPct: number;
   unrealizedDrawdownPct: number;
   largestPositionPct: number;
   hottestCategory: ResearchCategory | null;
   hottestCategoryPct: number;
   tier: "cool" | "warm" | "hot" | "overheated";
+  /** CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+   * 11/10 Professional Quant Implementation," Phase 2 — a real,
+   * MODELED estimate (never a real resting stop order — no such
+   * mechanism exists for any open position in this codebase) using
+   * this account's own real Chandelier-Stop convention against
+   * today's live candles, summed across positions as a % of equity.
+   * See `capitalAtRiskDetail` for which positions (if any) were
+   * excluded for lacking real candle history. */
+  estimatedCapitalAtRiskPct: number;
+  capitalAtRiskDetail: string;
 }
 
 /** Real profit-per-dollar / profit-per-dollar-hour, averaged only over
