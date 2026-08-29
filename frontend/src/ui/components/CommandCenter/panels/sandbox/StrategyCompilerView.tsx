@@ -60,6 +60,26 @@ const EXAMPLE_STRATEGIES: { label: string; name: string; text: string }[] = [
     name: "Break of Structure Continuation Research Model v1",
     text: "Buy when a bullish break of structure occurs, then enter when price closes above the previous swing high. Place a Chandelier Stop and target 2R.",
   },
+  {
+    label: "Change of Character Reversal",
+    name: "Change of Character Reversal Research Model v1",
+    text: "Buy when a bullish change of character occurs, then enter when price closes above the previous swing high. Place a Chandelier Stop and target 2R.",
+  },
+  {
+    label: "Fair Value Gap Continuation",
+    name: "Fair Value Gap Continuation Research Model v1",
+    text: "Buy when a bullish fair value gap forms, then enter when price closes above the previous swing high. Place a Chandelier Stop and target 2R.",
+  },
+  {
+    label: "Fibonacci 61.8% Reclaim",
+    name: "Fibonacci 61.8% Reclaim Research Model v1",
+    text: "Buy when price closes above the 61.8% Fibonacci retracement level, then enter when price closes above the previous swing high. Place a Chandelier Stop and target 2R.",
+  },
+  {
+    label: "Sweep + FVG Combo",
+    name: "Sweep + FVG Combo Research Model v1",
+    text: "Buy when a bullish liquidity sweep and a bullish fair value gap both occur, then enter when price closes above the previous swing high. Place a Chandelier Stop and target 2R.",
+  },
 ];
 
 const STATUS_TONE: Record<string, "green" | "amber" | "red"> = {

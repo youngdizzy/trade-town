@@ -70,7 +70,7 @@ export type TaskCategory =
 export type NewsCategory = "company" | "discovery" | "market";
 
 /** The eight research topics named in the v0.3 brief. */
-export type ResearchCategory = "stock" | "etf" | "index" | "economy" | "gold" | "bitcoin" | "company" | "sector";
+export type ResearchCategory = "stock" | "etf" | "index" | "economy" | "gold" | "bitcoin" | "company" | "sector" | "futures" | "fx" | "treasury";
 export type ResearchStatus = "queued" | "in_progress" | "completed";
 export type MemoryCategory =
   | "research"
@@ -1531,7 +1531,7 @@ export interface EmaPullbackResearchResult {
 // Market Analysis Completion Phase," Phase F — the English-language
 // strategy compiler + generic backtest engine. See
 // backend/app/strategy_compiler.py / backend/app/strategy_engine.py.
-export type StrategyIndicatorName = "price_close" | "price_open" | "price_high" | "price_low" | "sma" | "ema" | "rsi" | "macd_line" | "macd_signal" | "macd_histogram" | "stochastic_percent_k" | "stochastic_percent_d" | "atr" | "vwap";
+export type StrategyIndicatorName = "price_close" | "price_open" | "price_high" | "price_low" | "sma" | "ema" | "rsi" | "macd_line" | "macd_signal" | "macd_histogram" | "stochastic_percent_k" | "stochastic_percent_d" | "atr" | "vwap" | "multi_horizon_trend_score" | "liquidity_sweep_signal" | "structure_break_signal" | "choch_signal" | "fvg_signal" | "fibonacci_618_level";
 
 export interface StrategyIndicatorRef {
   indicator: StrategyIndicatorName;
@@ -1556,6 +1556,13 @@ export interface StrategySequenceStep {
   id: string;
   stepType: StrategySequenceStepType;
   condition: StrategyCondition | null;
+  /** CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+   * Engine," Phase 9 — a real AND-combination of two or more real
+   * event-pulse conditions on a trigger step (e.g. a real liquidity
+   * sweep AND a real Fair Value Gap both occurring on the same bar).
+   * Mutually exclusive with `condition` — a step carries either one
+   * `condition` or one real `allOf` list, never both. */
+  allOf: StrategyCondition[] | null;
   minConsecutiveBars: number | null;
   candleDirection: CandleDirection | null;
   detail: string;
@@ -3079,6 +3086,13 @@ export interface VolumeConfirmationRead {
   volumeState: VolumeState;
   priceMoveAtr: number;
   confirmationState: VolumeConfirmationState;
+  /** CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+   * Engine" follow-up — real per-candle dollar volume (volume * close)
+   * and its own real trailing SMA. dollarVolumeSma is null below its
+   * own real minimum history, same honesty convention as every other
+   * SMA-style read. */
+  dollarVolume: number;
+  dollarVolumeSma: number | null;
   detail: string;
 }
 
