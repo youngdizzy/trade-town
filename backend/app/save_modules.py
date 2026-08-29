@@ -100,6 +100,12 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # are real, ever-growing, never-recomputed mutated state.
         "compiled_strategy_versions",
         "quant_research_experiments",
+        # CEO directive "TradeTown — 11/10 Self-Improving Quant Agent
+        # System," Section 1 — the real Champion/Challenger core (see
+        # app/champion_challenger.py). Same real, ever-growing,
+        # never-recomputed mutated state as the two fields above.
+        "challenger_comparisons",
+        "champion_history",
         "goals",
         "strategic_reviews",
         # Design Bible Chapter 69 Part 1 — Multi-Account & Fund

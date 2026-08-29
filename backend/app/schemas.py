@@ -5517,6 +5517,94 @@ class SubmitQuantResearchExperimentResult(CamelModel):
     similar_experiments: list[QuantResearchExperimentSimilarity] = Field(default_factory=list, alias="similarExperiments")
 
 
+# CEO directive "TradeTown — 11/10 Self-Improving Quant Agent System,"
+# Section 1 (Champion vs Challenger — The Core Upgrade). A background
+# audit (before any code was written) confirmed this is a real,
+# previously-missing gap: `Strategy`/`CompiledStrategyDefinition` are
+# already really versioned (`app/strategy_registry.py`), and
+# `app/strategy_tournament.py` already runs a real N-way elimination
+# bracket — but nothing anywhere persists "which ONE version is
+# currently the live champion for this strategy family," and the
+# tournament's own comparison is elimination-by-independent-threshold,
+# never a real head-to-head A-vs-B verdict. `champion_definition_id`/
+# `champion_definition_version` + `challenger_definition_id`/
+# `challenger_definition_version` are this schema's real, disclosed
+# equivalent of the directive's own requested `parent_strategy_id`/
+# `parent_version`/`strategy_id`/`challenger_version` fields — id below
+# doubles as the directive's own `research_run_id` (this comparison IS
+# the real research run), and `generated_at` is `creation_timestamp`.
+# No redundant parallel "Challenger" object was invented on top of the
+# already-real `CompiledStrategyDefinition`.
+ChallengerVerdict = Literal["challenger_recommended", "champion_retained", "insufficient_evidence"]
+
+
+class ChallengerComparison(CamelModel):
+    """A real, permanent, never-deleted head-to-head comparison record
+    — see app/champion_challenger.py's own module docstring for the
+    exact real methodology (both sides backtested over the IDENTICAL
+    real candle window in the same request, per the directive's own
+    Section 5 Step 5; the promotion rule is a real, disclosed ECONOMIC
+    tradeoff rule over already-real metrics, deliberately NOT a
+    fabricated statistical-significance claim — see that module's own
+    docstring for the explicit, disclosed scope cut on Section 7's
+    confidence-interval/bootstrap-comparison ask). `championExpectancyR`/
+    etc. are direct, unmodified reads from each side's own real
+    `ResearchExperimentRecord.backtest.overall`
+    (`EmaPullbackStatsBucket`) — never recomputed, never a second
+    statistics implementation."""
+
+    id: str
+    strategy_family: str = Field(alias="strategyFamily")
+    champion_definition_id: str = Field(alias="championDefinitionId")
+    champion_definition_version: int = Field(alias="championDefinitionVersion")
+    challenger_definition_id: str = Field(alias="challengerDefinitionId")
+    challenger_definition_version: int = Field(alias="challengerDefinitionVersion")
+    hypothesis: str
+    proposed_by: AgentId = Field(alias="proposedBy")
+    symbols_tested: list[str] = Field(alias="symbolsTested")
+    timeframe: str
+    candles_per_symbol: int = Field(alias="candlesPerSymbol")
+    champion_trade_count: int = Field(alias="championTradeCount")
+    challenger_trade_count: int = Field(alias="challengerTradeCount")
+    champion_expectancy_r: float | None = Field(default=None, alias="championExpectancyR")
+    challenger_expectancy_r: float | None = Field(default=None, alias="challengerExpectancyR")
+    champion_profit_factor: float | None = Field(default=None, alias="championProfitFactor")
+    challenger_profit_factor: float | None = Field(default=None, alias="challengerProfitFactor")
+    champion_max_drawdown_r: float | None = Field(default=None, alias="championMaxDrawdownR")
+    challenger_max_drawdown_r: float | None = Field(default=None, alias="challengerMaxDrawdownR")
+    champion_conclusion: str = Field(alias="championConclusion")
+    challenger_conclusion: str = Field(alias="challengerConclusion")
+    verdict: ChallengerVerdict
+    reasoning: str
+    generated_at: str = Field(alias="generatedAt")
+
+
+class ChampionRecord(CamelModel):
+    """One real, permanent promotion event — the append-only log this
+    codebase's own Hall of Fame/Failed Archive precedent already
+    established (never deleted, never overwritten). The CURRENT
+    champion for a strategy family is always derived as the most
+    recent real entry for that family (see app/champion_challenger.py's
+    get_current_champion()) — no separate, driftable "current pointer"
+    field exists anywhere. `source_comparison_id` is `None` only for
+    the very first real champion ever recorded for a family (nothing
+    to have beaten yet) — never fabricated. Promotion is always an
+    explicit, real, named agent action (see app/champion_challenger.py's
+    promote_challenger()) — this record is never created automatically
+    just because a ChallengerComparison recommended it, matching the
+    directive's own Section 31 ("agents cannot... secretly change
+    production strategies")."""
+
+    id: str
+    strategy_family: str = Field(alias="strategyFamily")
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    source_comparison_id: str | None = Field(default=None, alias="sourceComparisonId")
+    promoted_by: AgentId = Field(alias="promotedBy")
+    reasoning: str
+    promoted_at: str = Field(alias="promotedAt")
+
+
 class StrategyTournamentEntry(CamelModel):
     """One real comparison row — every field a direct, unmodified read
     from that strategy's own `ResearchExperimentRecord` (see
@@ -11270,6 +11358,17 @@ class GameSaveState(CamelModel):
     # departure from this directive family's usual CAGS convention).
     quant_research_experiments: list[QuantResearchExperiment] = Field(
         default_factory=list, alias="quantResearchExperiments"
+    )
+    # CEO directive "TradeTown — 11/10 Self-Improving Quant Agent
+    # System," Section 1 — the real Champion/Challenger core. Both
+    # permanent, append-only, matching quant_research_experiments' own
+    # "never deleted, even when rejected" precedent. See
+    # app/champion_challenger.py.
+    challenger_comparisons: list[ChallengerComparison] = Field(
+        default_factory=list, alias="challengerComparisons"
+    )
+    champion_history: list[ChampionRecord] = Field(
+        default_factory=list, alias="championHistory"
     )
     hall_of_fame: list[HallOfFameEntry] = Field(
         default_factory=list, alias="hallOfFame"

@@ -19,6 +19,7 @@ and write one run's data into another's slot."""
 from __future__ import annotations
 
 import asyncio
+import uuid
 from datetime import datetime, timezone
 from typing import Callable, Literal
 
@@ -124,6 +125,8 @@ from app.schemas import (
     BlackBoxPriority,
     BlackBoxProject,
     BlackSwanRiskTier,
+    ChallengerComparison,
+    ChampionRecord,
     ClientSaveRequest,
     CompiledStrategyDefinition,
     DefensiveModeState,
@@ -158,6 +161,7 @@ from app.schemas import (
     TradingMode,
     RestrictionScope,
 )
+from app.champion_challenger import compare_champion_challenger, promote_challenger
 from app.quant_research_lab import cap_quant_research_experiments, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
@@ -2644,6 +2648,71 @@ class GameState:
             updated = cap_quant_research_experiments([*self.data.quant_research_experiments, experiment])
             self.data = self.data.model_copy(update={"quant_research_experiments": updated})
             return self.data, SubmitQuantResearchExperimentResult(experiment=experiment, similarExperiments=similar)
+
+    async def submit_champion_challenger_comparison(
+        self,
+        champion_definition: CompiledStrategyDefinition,
+        challenger_definition: CompiledStrategyDefinition,
+        *,
+        strategy_family: str,
+        hypothesis: str,
+        proposed_by: AgentId,
+        symbols: list[str] | None = None,
+        timeframe: str | None = None,
+        candles_per_symbol: int | None = None,
+    ) -> tuple[GameSaveState, ChallengerComparison]:
+        """CEO directive "TradeTown — 11/10 Self-Improving Quant Agent
+        System," Section 1 — real, permanently-persisted Champion vs
+        Challenger comparisons (see app/champion_challenger.py). Both
+        real backtests run OUTSIDE the lock (same convention
+        submit_quant_research_experiment() above already established);
+        only the append is under the shared lock. Never mutates
+        champion_history — see promote_champion_challenger() below."""
+        resolved_timeframe = timeframe if timeframe is not None else DEFAULT_TIMEFRAME
+        resolved_candles = candles_per_symbol if candles_per_symbol is not None else DEFAULT_CANDLES_PER_SYMBOL
+        # A uuid suffix (app/persistence.py's own established convention for a
+        # run-scoped id), not a list-length counter — the real backtest below
+        # runs outside the lock, so a length snapshotted beforehand could
+        # collide with a concurrent request's id by the time either appends.
+        comparison_id = f"comparison-{challenger_definition.id}-{challenger_definition.version}-{uuid.uuid4().hex[:12]}"
+        comparison = compare_champion_challenger(
+            champion_definition,
+            challenger_definition,
+            strategy_family=strategy_family,
+            hypothesis=hypothesis,
+            proposed_by=proposed_by,
+            comparison_id=comparison_id,
+            generated_at=_now_iso(),
+            symbols=symbols,
+            timeframe=resolved_timeframe,
+            candles_per_symbol=resolved_candles,
+        )
+        async with self.lock:
+            updated = [*self.data.challenger_comparisons, comparison]
+            self.data = self.data.model_copy(update={"challenger_comparisons": updated})
+            return self.data, comparison
+
+    async def promote_champion_challenger(self, *, comparison_id: str, promoted_by: AgentId, reasoning: str) -> tuple[GameSaveState, ChampionRecord]:
+        """Same directive, Section 1 — the one real, explicit action
+        that changes the current champion for a strategy family. Raises
+        ValueError (surfaced by the router as a 400) when the named
+        comparison doesn't exist or its own real verdict was not
+        "challenger_recommended" — see app/champion_challenger.py's
+        promote_challenger()."""
+        async with self.lock:
+            comparison = next((c for c in self.data.challenger_comparisons if c.id == comparison_id), None)
+            if comparison is None:
+                raise ValueError(f"No real ChallengerComparison found with id '{comparison_id}'.")
+            record = promote_challenger(
+                comparison,
+                promoted_by=promoted_by,
+                reasoning=reasoning,
+                record_id=f"champion-{comparison.strategy_family}-{len(self.data.champion_history)}",
+                promoted_at=_now_iso(),
+            )
+            updated = [*self.data.champion_history, record]
+            self.data = self.data.model_copy(update={"champion_history": updated})
+            return self.data, record
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""

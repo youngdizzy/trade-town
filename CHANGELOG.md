@@ -340,6 +340,84 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — 11/10 Self-Improving Quant Agent System," Section 1 (Champion vs Challenger — The
+  Core Upgrade) — a real, persistent Champion/Challenger framework.** A dedicated background audit
+  (run before any code was written, per the directive's own "inspect the existing implementation
+  first" process) confirmed the real, previously-missing gap: `Strategy`/`CompiledStrategyDefinition`
+  are already really versioned (`app/strategy_registry.py`), and `app/strategy_tournament.py` already
+  runs a real N-way elimination bracket — but `register_strategy_version()` is purely additive (never
+  compares anything), the tournament's own `production_candidates` is computed-fresh and never
+  persisted, and nothing anywhere recorded "which ONE version is currently the live champion for this
+  strategy family," nor did any real head-to-head A-vs-B comparison exist (the tournament eliminates
+  by independent threshold, never pairwise).
+  - New `app/champion_challenger.py::compare_champion_challenger()` — runs BOTH the champion and
+    challenger definitions through the exact same real `run_research_experiment()` pipeline over the
+    IDENTICAL real symbols/timeframe/candle window in the same call (the directive's own Section 5
+    Step 5 — "run identical historical dataset against champion and challenger"), then applies a real,
+    disclosed ECONOMIC tradeoff rule (`_decide_verdict()`) over each side's own real
+    `EmaPullbackStatsBucket` metrics (expectancy, profit factor, max drawdown, all R-multiple based).
+  - **A real, disclosed, explicit scope cut on statistical significance.** The same audit confirmed no
+    two-sample statistical-comparison utility (confidence intervals, bootstrap difference-in-means,
+    probability of superiority) exists anywhere in this codebase — the real bootstrap machinery that
+    does exist (`strategy_lab.py`'s Monte Carlo, `portfolio_monte_carlo.py`) is all single-strategy
+    resampling, not a champion-vs-challenger hypothesis test. Building one honestly is real,
+    substantial, additional work — deliberately not attempted this pass. `_decide_verdict()` is
+    instead a real, disclosed, bounded ECONOMIC tradeoff rule directly implementing the directive's own
+    two worked examples verbatim (a real expectancy gain blocked by a disproportionate drawdown
+    regression; a small expectancy giveback justified by a real drawdown improvement) — never dressed
+    up as statistical proof.
+  - **Minimum sample, reused not reinvented.** Both sides must independently clear the exact same real
+    `DEFAULT_MIN_TRADES_FOR_BUCKET_VERDICT` floor `app/backtest_primitives.py::aggregate_bucket()`
+    already applies everywhere else in this codebase before any recommend/retain verdict is possible
+    — otherwise `insufficient_evidence`, never a forced call. The challenger's own real research
+    `conclusion` (from `run_research_experiment()`) must also independently read `CREDIBLE` — a
+    FRAGILE/REJECTED/INVALID/INSUFFICIENT EVIDENCE challenger can never be recommended regardless of
+    its raw numbers, reusing the exact same real machinery `strategy_tournament.py` already relies on
+    for the same purpose, never a second red-team system.
+  - New `ChallengerComparison` (a real, permanent, never-deleted head-to-head record — even a
+    "champion_retained"/"insufficient_evidence" outcome stays on file) and `ChampionRecord` (one real
+    promotion event) schemas. The current champion for a family is always derived as the most recent
+    real `ChampionRecord` for that family (`get_current_champion()`) — no separate, driftable
+    "current pointer" field exists anywhere, matching this codebase's own Hall of Fame/Failed Archive
+    precedent.
+  - **Promotion is always a separate, explicit, named-agent action.** `compare_champion_challenger()`
+    only ever recommends; it never mutates `champion_history`. Only `promote_challenger()` does that,
+    and it refuses (raises `ValueError`, surfaced as a real `400`) unless the comparison it's given
+    actually carries `verdict == "challenger_recommended"` — directly implementing the directive's own
+    Section 31 ("agents cannot... secretly change production strategies").
+  - New `GameSaveState.challenger_comparisons`/`champion_history` fields (both permanent, append-only)
+    — correctly wired into `app/save_modules.py`'s `MODULE_FIELDS` map (a real, confirmed gotcha this
+    codebase's persistence layer enforces at import time: a new top-level field left out of that map
+    fails loudly at startup). New `POST /api/sandbox/champion-challenger/compare`,
+    `POST /api/sandbox/champion-challenger/promote`, `GET /api/sandbox/champion-challenger/{family}`
+    endpoints.
+  - Frontend: a new "CHAMPION/CHALLENGER" sub-tab (`ChampionChallengerView.tsx`) on the existing
+    Strategy Lab/Sandbox panel — no second research interface. Compiles both sides, runs the real
+    comparison, shows the verdict with a full metric-by-metric breakdown and each side's own real
+    research conclusion, and a "Promote Challenger" action that's only enabled for a real
+    `challenger_recommended` verdict. A "Current Champion" section shows the real lineage history and
+    every real comparison ever run for a family — nothing deleted, matching the directive's own
+    Section 16 ("never delete rejected versions").
+  - New tests: 20 in `test_champion_challenger.py` — `_decide_verdict()` unit-tested directly against
+    hand-picked numbers (including the directive's own two worked examples translated verbatim to this
+    codebase's real R-multiple units), plus real end-to-end integration tests
+    (`compare_champion_challenger()`, `get_current_champion()`, `promote_challenger()`'s real refusal,
+    and the persisted `GameState` wiring, including a uuid-based comparison-id fix that avoids a real
+    race a length-based counter would have introduced since the real backtest work runs outside the
+    state lock).
+  - Verified: full backend suite (3179 tests) green, `mypy`/`ruff` clean. Frontend `tsc`/lint/build
+    clean. Live-verified against the real running dev stack end to end: a real comparison with only 34
+    real trades correctly read the champion's/challenger's own real `INSUFFICIENT EVIDENCE` conclusion
+    and refused promotion regardless of the challenger's slightly better raw drawdown number (the
+    directive's own "never replace a champion simply because the challenger has a higher historical
+    return" principle, proven live, not just asserted); a real promote attempt against that
+    `champion_retained` comparison correctly returned `400` with a clear real reason; a real 6-symbol,
+    231-trade comparison still correctly read `INSUFFICIENT EVIDENCE` (walk-forward/model-validation
+    need more real history than that) and correctly retained the champion rather than approving on a
+    technicality. The new UI tab was confirmed rendering and functioning end-to-end (compile → compare
+    → verdict pill → disabled-until-eligible promote button → real family lineage) via a temporary
+    Playwright spec (removed after verification).
+
 - **"TradeTown — 11/10 Strategy Factory + Ruthless Backtesting Engine," Section 12 (Multiple-Testing
   Penalty) — a real, single-sourced "overtested" flag.** A real multiple-testing signal
   (`QuantResearchExperiment.familyExperimentCount`, counting how many prior experiments already

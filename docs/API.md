@@ -1799,6 +1799,50 @@ for one strategy name (oldest first). Returns
 registered via the endpoint above (a stateless `/compile-strategy`
 preview alone never appears here).
 
+### `POST /api/sandbox/champion-challenger/compare`
+
+CEO directive "TradeTown — 11/10 Self-Improving Quant Agent System,"
+Section 1 (Champion vs Challenger). Body: `{ "championDefinition":
+CompiledStrategyDefinition, "challengerDefinition":
+CompiledStrategyDefinition, "strategyFamily": "...", "hypothesis": "...",
+"proposedBy": "quant", "symbols": [...], "timeframe": "...",
+"candlesPerSymbol": 6000 }` (`symbols`/`timeframe`/`candlesPerSymbol`
+optional). Runs BOTH definitions through the real
+`run_research_experiment()` pipeline over the IDENTICAL real
+symbols/timeframe/candle window, then applies a real, disclosed
+ECONOMIC tradeoff rule (see `app/champion_challenger.py`'s own module
+docstring for exactly why this is not a statistical-significance test).
+Returns and permanently persists a `ChallengerComparison`:
+`championExpectancyR`/`challengerExpectancyR`/
+`championProfitFactor`/`challengerProfitFactor`/
+`championMaxDrawdownR`/`challengerMaxDrawdownR` (all real, direct reads
+from each side's own `EmaPullbackStatsBucket`, R-multiple based),
+`championConclusion`/`challengerConclusion` (each side's own real
+research conclusion), and `verdict`
+(`challenger_recommended`/`champion_retained`/`insufficient_evidence`)
+with a real, disclosed `reasoning` string. Never deleted, even a
+retained-champion or insufficient-evidence outcome.
+
+### `POST /api/sandbox/champion-challenger/promote`
+
+Same directive — the one real, explicit action that changes the
+current champion for a strategy family. Body: `{ "comparisonId": "...",
+"promotedBy": "quant", "reasoning": "..." }`. Returns a new
+`ChampionRecord`, permanently appended. `400` when the named comparison
+doesn't exist, or its own real `verdict` was not
+`"challenger_recommended"` — a champion-retained or
+insufficient-evidence comparison can never justify a promotion.
+
+### `GET /api/sandbox/champion-challenger/{strategyFamily}`
+
+Same directive — the real, full picture for one strategy family:
+`current` (the most recent real `ChampionRecord` for this family, or
+`null` if none has ever been promoted — no separate, driftable
+"current pointer" exists), `history` (every real promotion, oldest
+first, never deleted), and `comparisons` (every real
+`ChallengerComparison` ever run for this family, including ones that
+retained the champion). Read-only, computed fresh every call.
+
 ### `POST /api/sandbox/register-researchable-strategy`
 
 CEO directive "Strategy Intelligence + Live Strategy Attribution,"

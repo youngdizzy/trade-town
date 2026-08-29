@@ -14322,6 +14322,70 @@ spec running the real compile → research-experiment flow end to end
 (removed after verification); the pre-existing `sandbox.spec.ts`
 regression suite re-ran clean.
 
+**Follow-up — "TradeTown — 11/10 Self-Improving Quant Agent System,"
+Section 1 (Champion vs Challenger — The Core Upgrade).** A dedicated
+background audit (before any code was written) confirmed the real,
+previously-missing gap: real strategy versioning
+(`app/strategy_registry.py`) and the real N-way tournament
+(`app/strategy_tournament.py`) both exist, but nothing anywhere
+persisted "which ONE version is currently the live champion for this
+family," and no real pairwise A-vs-B comparison existed (the
+tournament eliminates by independent threshold, not head-to-head). New
+`app/champion_challenger.py::compare_champion_challenger()` runs BOTH
+sides through the exact same real `run_research_experiment()` pipeline
+over the IDENTICAL real candle window in one call (the directive's own
+"run identical historical dataset against champion and challenger"),
+then applies a real, disclosed ECONOMIC tradeoff rule
+(`_decide_verdict()`) over each side's own real `EmaPullbackStatsBucket`
+metrics — a deliberate, disclosed scope cut: the same audit confirmed
+no two-sample statistical-comparison utility (confidence intervals,
+bootstrap difference-in-means) exists anywhere in this codebase, and
+building one honestly is real, substantial, additional work not
+attempted this pass. The rule directly implements the directive's own
+two worked examples verbatim (a real expectancy gain blocked by a
+disproportionate drawdown regression; a small expectancy giveback
+justified by a real drawdown improvement). Both sides must clear the
+exact same real trade-count evidence floor
+`app/backtest_primitives.py::aggregate_bucket()` already applies
+everywhere else, and the challenger's own real research `conclusion`
+must independently read `CREDIBLE` — reusing the exact same real
+machinery `strategy_tournament.py` already relies on for the same
+purpose, never a second red-team system. New `ChallengerComparison`
+(permanent, never-deleted, even a retained-champion outcome) and
+`ChampionRecord` (one real promotion event) schemas — the current
+champion for a family is always derived as the most recent real record
+for that family, no separate driftable "current pointer." Promotion is
+always a separate, explicit action:
+`compare_champion_challenger()` only ever recommends;
+`promote_challenger()` refuses (real `400`) unless the comparison it's
+given actually carries `verdict == "challenger_recommended"`. New
+`GameSaveState.challenger_comparisons`/`champion_history` fields,
+correctly wired into `app/save_modules.py`'s `MODULE_FIELDS` map (a
+real, confirmed gotcha — a field left out fails loudly at import time).
+New `POST /api/sandbox/champion-challenger/compare`,
+`POST .../promote`, `GET .../{family}` endpoints. Frontend: a new
+"CHAMPION/CHALLENGER" sub-tab on the existing Sandbox panel — no
+second research interface — with a full metric-by-metric comparison,
+a promote action gated on the real verdict, and the real family
+lineage/comparison history. 20 new tests (`test_champion_challenger.py`)
+— `_decide_verdict()` unit-tested directly against hand-picked numbers
+including the directive's own two worked examples, plus real
+end-to-end integration tests through `GameState`, including a
+uuid-based comparison-id fix avoiding a real race a length-based
+counter would have introduced (the real backtest work runs outside the
+state lock). Full backend suite green (3179 passed), mypy/ruff clean;
+frontend tsc/lint/build clean. Live-verified end to end against the
+real running dev stack: a real 34-trade comparison correctly read
+`INSUFFICIENT EVIDENCE` on both sides and refused promotion regardless
+of the challenger's slightly better raw drawdown — proving the
+directive's own "never replace a champion simply because it has a
+higher historical return" principle live, not just asserted; the
+matching promote attempt correctly returned `400`; a real 6-symbol,
+231-trade comparison still correctly read insufficient evidence rather
+than approving on a technicality. The new UI tab was confirmed
+rendering and functioning end-to-end via a temporary Playwright spec
+(removed after verification).
+
 **Increment 6 — Phase 15, Knowledge Graph integration.** The research
 audit found `build_knowledge_graph()` had no awareness of
 `QuantResearchExperiment`/`ResearchExperimentRecord` at all — the

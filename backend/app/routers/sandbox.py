@@ -6,6 +6,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.champion_challenger import get_current_champion
 from app.cost_sensitivity import run_cost_sensitivity
 from app.ema_pullback_research import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, run_ema_pullback_research
 from app.evaluation_simulator import compare_evaluation_policies
@@ -19,6 +20,8 @@ from app.schemas import (
     AgentId,
     AgentStrategySurvivalScore,
     BacktestSession,
+    ChallengerComparison,
+    ChampionRecord,
     CompiledStrategyBacktestResult,
     CompiledStrategyDefinition,
     CompileStrategyRequest,
@@ -111,6 +114,35 @@ class RegisterStrategyVersionRequest(BaseModel):
     source_text: str = Field(alias="sourceText")
     timeframe: str = "1h"
     created_by: AgentId = Field(default="quant", alias="createdBy")
+
+
+class CompareChampionChallengerRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    champion_definition: CompiledStrategyDefinition = Field(alias="championDefinition")
+    challenger_definition: CompiledStrategyDefinition = Field(alias="challengerDefinition")
+    strategy_family: str = Field(alias="strategyFamily")
+    hypothesis: str
+    proposed_by: AgentId = Field(alias="proposedBy")
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
+
+
+class PromoteChallengerRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    comparison_id: str = Field(alias="comparisonId")
+    promoted_by: AgentId = Field(alias="promotedBy")
+    reasoning: str
+
+
+class ChampionChallengerFamilyRead(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    current: ChampionRecord | None
+    history: list[ChampionRecord]
+    comparisons: list[ChallengerComparison]
 
 
 class RegisterResearchableStrategyRequest(BaseModel):
@@ -476,6 +508,64 @@ async def strategy_versions(name: str = Query(..., min_length=1)) -> list[Compil
     preview alone never appears here)."""
     state = await game_state.snapshot()
     return state.compiled_strategy_versions.get(strategy_definition_slug(name), [])
+
+
+@router.post("/champion-challenger/compare", response_model=ChallengerComparison)
+async def compare_champion_challenger_endpoint(payload: CompareChampionChallengerRequest) -> ChallengerComparison:
+    """CEO directive "TradeTown — 11/10 Self-Improving Quant Agent
+    System," Section 1 — real head-to-head comparison. Both real
+    backtests run over the IDENTICAL real symbols/timeframe/candle
+    window (the directive's own Section 5 Step 5) via the same real
+    `run_research_experiment()` pipeline every other research endpoint
+    already trusts. Permanently persisted (never deleted, even a
+    "champion_retained"/"insufficient_evidence" outcome) — see
+    app/champion_challenger.py's own module docstring for the real,
+    disclosed promotion rule this does NOT auto-apply."""
+    state, comparison = await game_state.submit_champion_challenger_comparison(
+        payload.champion_definition,
+        payload.challenger_definition,
+        strategy_family=payload.strategy_family,
+        hypothesis=payload.hypothesis,
+        proposed_by=payload.proposed_by,
+        symbols=payload.symbols,
+        timeframe=payload.timeframe,
+        candles_per_symbol=payload.candles_per_symbol,
+    )
+    persist_modules(state)
+    return comparison
+
+
+@router.post("/champion-challenger/promote", response_model=ChampionRecord)
+async def promote_challenger_endpoint(payload: PromoteChallengerRequest) -> ChampionRecord:
+    """Same directive, Section 1 — the one real, explicit CEO/agent
+    action that ever changes the current champion for a strategy
+    family (matching Section 31: "agents cannot... secretly change
+    production strategies"). `400` when the named comparison doesn't
+    exist or its own real verdict was not "challenger_recommended" —
+    see app/champion_challenger.py's promote_challenger()."""
+    try:
+        state, record = await game_state.promote_champion_challenger(comparison_id=payload.comparison_id, promoted_by=payload.promoted_by, reasoning=payload.reasoning)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    persist_modules(state)
+    return record
+
+
+@router.get("/champion-challenger/{strategy_family}", response_model=ChampionChallengerFamilyRead)
+async def champion_challenger_family(strategy_family: str) -> ChampionChallengerFamilyRead:
+    """Same directive, Section 1 — the real, full picture for one
+    strategy family: the current champion (derived as the most recent
+    real promotion, never a separate driftable pointer — see
+    app/champion_challenger.py's get_current_champion()), its full real
+    promotion history, and every real comparison ever run for this
+    family (including ones that retained the champion — never deleted,
+    matching Section 16 "never delete rejected versions"). Read-only,
+    computed fresh every call."""
+    state = await game_state.snapshot()
+    current = get_current_champion(state.champion_history, strategy_family=strategy_family)
+    history = [c for c in state.champion_history if c.strategy_family == strategy_family]
+    comparisons = [c for c in state.challenger_comparisons if c.strategy_family == strategy_family]
+    return ChampionChallengerFamilyRead(current=current, history=history, comparisons=comparisons)
 
 
 @router.post("/register-researchable-strategy", response_model=RegisterResearchableStrategyResponse)
