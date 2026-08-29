@@ -10155,6 +10155,25 @@ established (no precomputed `StrategyMatch` lives on the live, per-tick
 `MarketIntelligenceReport`). Never blocks the trade, never overrides the
 CEO — purely one more disclosed field on the permanent record.
 
+**Same directive, chaos/edge-case testing addendum.** Pure testing, no
+production code changed. A dedicated audit found no module anywhere
+checks candle staleness, duplicate timestamps, chronological order, or
+a mid-series time gap — and the one existing production guard for
+malformed input (`relative_volume()`'s zero-baseline check,
+`app/volume_analysis.py:105-106`) had no dedicated test. New
+`backend/tests/test_chaos_market_data.py` (16 tests) across an honest,
+disclosed subset (`volume_analysis.py`, `technical_indicators.py`,
+`market_intelligence.py`, `technical_patterns.py`) proves the existing
+zero-volume guards fire, documents a real disclosed inconsistency
+between `relative_volume()`'s honest `None` and
+`relative_volume_series()`'s `0.0` fallback for the same undefined
+case, and confirms every tested function runs to completion (never
+raises) on duplicated/out-of-order/stale/gapped input — explicitly
+never claiming the resulting numbers are MEANINGFUL for malformed
+input, only that nothing crashes. Every other candle-consuming module
+is explicitly out of scope for this pass, not silently declared
+covered.
+
 ### Phase E: symbol_robustness
 
 `_symbol_robustness_check()` (`app/model_validation.py`) groups a

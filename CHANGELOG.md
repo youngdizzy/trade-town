@@ -193,6 +193,42 @@ development milestones, not semver releases.
     double-counting or drops; the empty-candles case reports all six as `missing`. Full backend suite
     (2986 tests), `mypy`, `ruff` clean. Frontend `tsc`/lint/build clean.
 
+- **"TradeTown — 11/10 Market Intelligence + Quant Research Engine" — chaos/edge-case test
+  coverage for the trading pipeline's candle-data consumers.** Pure testing, no production code
+  changed. A dedicated repo audit (research agent, file:line cited) found genuine, confirmed gaps
+  across the codebase: no module anywhere checks candle staleness, duplicate timestamps,
+  chronological order, or a mid-series time gap — and the one existing production guard for
+  malformed input (`relative_volume()`'s zero-baseline check, `app/volume_analysis.py:105-106`) had
+  no dedicated test anywhere despite being real, already-shipped code.
+  - New `backend/tests/test_chaos_market_data.py` (16 tests) across an honest, disclosed subset —
+    `volume_analysis.py`, `technical_indicators.py`, `market_intelligence.py`,
+    `technical_patterns.py` — the modules most directly exposed to a raw candle series with the
+    least existing indirection. Every other candle-consuming module (`strategy_engine.py`, the
+    `*_research.py` hypothesis modules, `trend_engine.py`) is explicitly NOT covered here — a
+    further, separate, still-real lift, not silently declared done.
+  - **Zero-volume**: proves `relative_volume()`'s real zero-baseline guard actually returns `None`
+    (previously untested); documents a genuine, disclosed INCONSISTENCY (not fixed, per this being
+    pure testing) — `relative_volume_series()` falls back to `0.0` for the identical undefined case
+    rather than matching `relative_volume()`'s honest `None`, a real gap for a future pass to close;
+    confirms `vwap()`'s own all-zero-volume guard and a single zero-volume candle mixed into real
+    volume both behave correctly.
+  - **Duplicate timestamps**: confirms `sma`/`ema`/`compute_market_structure`/`compute_liquidity`/
+    `compute_session_range` all run to completion (never raise) on a duplicated candle — never
+    claims the resulting number is meaningful for duplicated input, only that nothing crashes.
+  - **Out-of-order candles**: confirms the same functions don't crash on a fully-reversed or
+    partially-shuffled series — explicitly documents WHY this is safe-but-not-correct:
+    `technical_indicators.py`/`market_intelligence.py`'s swing detection both index by POSITION,
+    never real time, so unsorted input silently reads the wrong bars as "recent" rather than
+    crashing, a real, disclosed limitation.
+  - **Stale candles**: directly proves the audit's own central finding — a candle series
+    timestamped in the year 2000 computes identically to a fresh one, because no module anywhere in
+    this codebase compares a candle's timestamp to real wall-clock "now."
+  - **Gapped candles**: confirms `compute_session_range`/`compute_market_structure` don't crash
+    across a genuine 30-day mid-series gap (distinct from "too few candles," which every module
+    already handles via its own real honest-empty-state check).
+  - Verified: all 16 new tests pass, `mypy`/`ruff` clean, full backend suite green with zero
+    regressions (confirming these are additive-only — no production code in this slice was touched).
+
 - **"TradeTown — 11/10 Market Intelligence + Quant Research Engine" — a real, honestly-scoped
   regime-gated strategy warning.** The directive asks for strategy eligibility gated by regime; a Phase
   0 audit earlier this session found the natural full version architecturally non-trivial —
