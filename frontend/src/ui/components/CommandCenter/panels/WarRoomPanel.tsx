@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { EXECUTIVE_ACTION_LABEL, EXECUTIVE_STANCE_LABEL, type PositionTier, type WarRoomSession } from "@/types";
+import { EvidenceConfluenceCard } from "../EvidenceConfluenceCard";
 import { executiveActionTone, executiveStanceTone, formatMoney } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -164,35 +165,7 @@ function SessionDetail({ session }: { session: WarRoomSession }) {
         )}
       </Glass>
 
-      {session.evidenceConfluence && (
-        <Glass className="p-3">
-          <div className="mb-1.5 flex items-center justify-between">
-            <TerminalLabel>Evidence Confluence — {session.symbol}</TerminalLabel>
-            <span className="text-[9px] text-cmd-textDim">Raw signals vs. independent evidence families</span>
-          </div>
-          <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-3">
-            <DataRow label="Raw Signal Count" value={session.evidenceConfluence.rawSignalCount} />
-            <DataRow
-              label="Independent Families"
-              value={session.evidenceConfluence.independentFamilyCount}
-              valueClassName={session.evidenceConfluence.independentFamilyCount < session.evidenceConfluence.rawSignalCount ? "text-cmd-amber" : "text-cmd-green"}
-            />
-            <DataRow label="Majority Direction" value={session.evidenceConfluence.majorityDirection} />
-          </div>
-          <div className="mt-1.5 space-y-1">
-            {session.evidenceConfluence.families.map((f) => (
-              <div key={f.family} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-cmd-cyan">{f.family.replace(/_/g, " ")}</span>
-                  <span className={f.netDirection === "bullish" ? "text-cmd-green" : f.netDirection === "bearish" ? "text-cmd-red" : "text-cmd-textDim"}>{f.netDirection}</span>
-                </div>
-                <div className="mt-0.5 text-cmd-textDim">{f.signals.map((s) => s.name).join(", ")}</div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[8px] italic text-cmd-textDim">{session.evidenceConfluence.detail}</p>
-        </Glass>
-      )}
+      {session.evidenceConfluence && <EvidenceConfluenceCard confluence={session.evidenceConfluence} title={`Evidence Confluence — ${session.symbol}`} />}
 
       {session.confluenceClassification && (
         <Glass className="p-3">

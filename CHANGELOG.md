@@ -193,6 +193,35 @@ development milestones, not semver releases.
     double-counting or drops; the empty-candles case reports all six as `missing`. Full backend suite
     (2986 tests), `mypy`, `ruff` clean. Frontend `tsc`/lint/build clean.
 
+- **"TradeTown — 11/10 Market Intelligence + Quant Research Engine" Trade Inspection Panel: real
+  volume/liquidity/structure/confluence reads in `DecisionDetail.tsx`.** A repo-wide grep confirmed
+  `VolumeConfirmationRead`/`getVolumeConfirmation` had zero consumers anywhere in the frontend, and
+  `LiquidityRead`/`MarketStructureRead` were only ever read for their `zones`/BOS-sweep-marker fields
+  (via `MarketChartPanel.tsx`), never surfaced as readable data next to a specific trade decision.
+  - New "Volume & Liquidity — {symbol}" card in `DecisionDetail.tsx`: relative volume, volume state,
+    and confirmation state (fetched fresh via `getVolumeConfirmation(decision.symbol, timeframe)`, the
+    same timeframe already selected for the Chart section below it, so every market-microstructure read
+    on the panel describes the same window); liquidity score and sweep direction, and structure state /
+    last Break of Structure / Change of Character — the latter two reused directly from
+    `MarketIntelligenceState.liquidity[]`/`structure[]` (already real, already broadcast state — no
+    second fetch). Each sub-block only renders when its own real data exists; the card itself is hidden
+    entirely rather than showing an all-empty shell when none of the three reads have anything yet.
+  - New "Evidence Confluence — {symbol}" card, reusing `getEvidenceConfluence()` — already wired
+    elsewhere, now reaching a trade's own inspection panel too.
+  - **Extracted `EvidenceConfluenceCard.tsx`** rather than adding a third copy of the exact same
+    families-breakdown JSX: this card previously existed byte-for-byte duplicated in
+    `MarketIntelPanel.tsx` and `WarRoomPanel.tsx` (confirmed via direct comparison); a third copy for
+    `DecisionDetail.tsx` would have created three independently-drifting renderings of one real
+    backend read, so all three call sites now share one component instead.
+  - Verified live in the browser (both dev servers running, real save data) — clicked a real decision
+    from the Decision Log, confirmed both new cards render with real live values (`0.25x` relative
+    volume / `weak` volume state / `normal` confirmation; a real 9-signal/3-family Evidence Confluence
+    breakdown), and confirmed the Liquidity/Structure sub-fields correctly stay absent rather than
+    fabricated when that symbol has no real liquidity/structure read available at that moment — the
+    honest-absence behavior the code is meant to produce, not the fabricated-shell behavior it's meant
+    to avoid. Frontend `tsc`/lint/build clean. No backend files touched this slice — pure reuse of
+    already-real, already-tested endpoints/state.
+
 - **"TradeTown — 11/10 Market Intelligence + Quant Research Engine" Live Desk addendum: sweep +
   BOS/CHoCH chart markers.** `LiquidityRead.sweepDetected`/`sweepDirection` and
   `MarketStructureRead.lastBreakOfStructure`/`changeOfCharacter` were real and already broadcast

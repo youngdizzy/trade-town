@@ -10111,6 +10111,30 @@ marker reuses the existing "LIQUIDITY" toggle.
   never been synced to `types.ts` at all — added alongside the new
   fields.
 
+**Same directive, Trade Inspection Panel addendum: volume/liquidity/
+structure/confluence reads in `DecisionDetail.tsx`.** A repo-wide grep
+found `VolumeConfirmationRead`/`getVolumeConfirmation` had zero
+consumers anywhere in the frontend, and `LiquidityRead`/
+`MarketStructureRead` were only ever read for their marker/zone fields
+(`MarketChartPanel.tsx`), never surfaced as plain readable data next to
+a specific trade decision. New "Volume & Liquidity" card fetches
+`getVolumeConfirmation()` fresh for `decision.symbol` at the same
+`timeframe` already selected for the Chart section below it, and reuses
+`MarketIntelligenceState.liquidity[]`/`structure[]` directly (already
+real, already broadcast — no second fetch) for the liquidity
+score/sweep and structure state/BOS/CHoCH sub-fields; each sub-block
+renders only when its own real data exists, and the whole card is
+hidden rather than shown as an empty shell when none do. New "Evidence
+Confluence" card reuses `getEvidenceConfluence()`. Extracted
+`EvidenceConfluenceCard.tsx` rather than adding a third byte-for-byte
+copy of the families-breakdown JSX (it previously existed duplicated in
+`MarketIntelPanel.tsx` and `WarRoomPanel.tsx`) — all three call sites
+now share one component. Verified live in the browser against the real
+running dev stack: opened a real decision from the Decision Log,
+confirmed both cards render with real live values, and confirmed the
+liquidity/structure sub-fields correctly stay absent (never fabricated)
+when that symbol has no real read available at that moment.
+
 ### Phase E: symbol_robustness
 
 `_symbol_robustness_check()` (`app/model_validation.py`) groups a

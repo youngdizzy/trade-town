@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { ProcessAdherenceRead, TradeDecision } from "@/types";
+import type { EvidenceConfluenceRead, ProcessAdherenceRead, TradeDecision, VolumeConfirmationRead } from "@/types";
 import { CONFIDENCE_TIER_LABEL } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { CandlestickChart } from "./CandlestickChart";
 import { DecisionTimelineList } from "./DecisionTimelineList";
+import { EvidenceConfluenceCard } from "./EvidenceConfluenceCard";
 import { bearCaseVotes, buildDecisionReplay, buildReplayTimeline, bullCaseVotes, confidenceTierTone, exitOrdersForPosition, formatMoney, linkedOrderFor, marketRegimeHeuristic, voteDirection } from "./lib/derive";
 import { useCandles } from "./lib/useCandles";
 import { StrategyCertificationChecklist } from "./panels/sandbox/StrategyCertificationChecklist";
@@ -27,7 +28,7 @@ const TIMEFRAMES = ["15m", "1h", "4h", "1d"];
  * distinguishes a reduced-size trade from a normal one.
  */
 export function DecisionDetail({ decision, onClose }: { decision: TradeDecision; onClose: () => void }) {
-  const { watchlist, paperPortfolio, ceoDecisions, debates, challengeReports, disciplineReviews, caseStudies } = useGameStore();
+  const { watchlist, paperPortfolio, ceoDecisions, debates, challengeReports, disciplineReviews, caseStudies, marketIntelligence } = useGameStore();
   const regime = marketRegimeHeuristic(watchlist);
   // CEO directive "Live Desk + Trade Observability," Phase 9 — the same
   // real research -> signal -> debate -> risk -> CEO -> execution ->
@@ -75,6 +76,46 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
       cancelled = true;
     };
   }, [decision.id]);
+
+  // CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+  // Research Engine" — Trade Inspection Panel. Volume Confirmation and
+  // Evidence Confluence were both real, already-tested backend reads
+  // (app/volume_analysis.py, app/evidence_confluence.py) with zero
+  // consumers anywhere in the frontend — a repo-wide grep confirmed
+  // VolumeConfirmationRead/getVolumeConfirmation were entirely unwired.
+  // Fetched for the symbol/timeframe already selected in the Chart
+  // section below, so all market-microstructure reads on this panel
+  // describe the same window.
+  const [volumeConfirmation, setVolumeConfirmation] = useState<VolumeConfirmationRead | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getVolumeConfirmation(decision.symbol, timeframe)
+      .then((res) => !cancelled && setVolumeConfirmation(res))
+      .catch(() => !cancelled && setVolumeConfirmation(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [decision.symbol, timeframe]);
+
+  const [evidenceConfluence, setEvidenceConfluence] = useState<EvidenceConfluenceRead | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getEvidenceConfluence(decision.symbol, timeframe)
+      .then((res) => !cancelled && setEvidenceConfluence(res))
+      .catch(() => !cancelled && setEvidenceConfluence(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [decision.symbol, timeframe]);
+
+  // Liquidity/Market Structure are already real, already-broadcast state
+  // (MarketIntelligenceState.liquidity[]/structure[] — the same reads
+  // MarketChartPanel's new sweep/BOS/CHoCH markers use), so no separate
+  // fetch is needed here.
+  const liquidity = marketIntelligence.liquidity.find((l) => l.symbol === decision.symbol) ?? null;
+  const structure = marketIntelligence.structure.find((s) => s.symbol === decision.symbol) ?? null;
 
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-cmd-bg/80 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -153,6 +194,45 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
               <div className="text-cmd-text">{decision.fundamentalSummary}</div>
             </div>
           </Glass>
+
+          {(volumeConfirmation ?? liquidity ?? structure) && (
+            <Glass className="p-3">
+              <TerminalLabel>Volume & Liquidity — {decision.symbol}</TerminalLabel>
+              <div className="mt-1 grid grid-cols-2 gap-x-4 sm:grid-cols-3">
+                {volumeConfirmation && (
+                  <>
+                    <DataRow label="Relative Volume" value={`${volumeConfirmation.relativeVolume.toFixed(2)}x`} />
+                    <DataRow label="Volume State" value={volumeConfirmation.volumeState} />
+                    <DataRow label="Confirmation" value={volumeConfirmation.confirmationState.replace(/_/g, " ")} />
+                  </>
+                )}
+                {liquidity && (
+                  <>
+                    <DataRow label="Liquidity Score" value={liquidity.liquidityScore.toFixed(0)} />
+                    <DataRow
+                      label="Liquidity Sweep"
+                      value={liquidity.sweepDetected ? liquidity.sweepDirection.replace(/_/g, " ") : "none detected"}
+                      valueClassName={liquidity.sweepDetected ? "text-cmd-amber" : "text-cmd-textDim"}
+                    />
+                  </>
+                )}
+                {structure && (
+                  <>
+                    <DataRow label="Structure State" value={structure.structureState.replace(/_/g, " ")} />
+                    <DataRow label="Last Break of Structure" value={structure.lastBreakOfStructure} />
+                    {structure.changeOfCharacter !== "none" && (
+                      <DataRow label="Change of Character" value={structure.changeOfCharacter} valueClassName="text-cmd-amber" />
+                    )}
+                  </>
+                )}
+              </div>
+              {!volumeConfirmation && <div className="mt-1.5 text-[9px] text-cmd-textDim">No real volume confirmation read yet — not enough {timeframe} history for {decision.symbol}.</div>}
+            </Glass>
+          )}
+
+          {evidenceConfluence && evidenceConfluence.symbol === decision.symbol && (
+            <EvidenceConfluenceCard confluence={evidenceConfluence} title={`Evidence Confluence — ${decision.symbol}`} />
+          )}
 
           <Glass className="p-3">
             <div className="mb-2 flex items-center justify-between">

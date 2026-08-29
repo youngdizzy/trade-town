@@ -3,6 +3,7 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
 import { EXECUTIVE_ACTION_LABEL } from "@/types";
 import type { DataCategory, DataProvenanceReport, EvidenceConfluenceRead, MarketDebateSpecialist, SessionRegimeEvidence, SessionRegimeEvidenceState, SessionRegimeEvidenceSummary, TechnicalAnalysisRead } from "@/types";
+import { EvidenceConfluenceCard } from "../EvidenceConfluenceCard";
 import { executiveActionTone, latestMarketIntelligenceReport, marketQualityTone, momentumTone, newsRiskTone, recentMarketIntelligenceLearning } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -397,29 +398,7 @@ export function MarketIntelPanel() {
       </Glass>
 
       {taSymbol && evidenceConfluence && evidenceConfluence.symbol === taSymbol && (
-        <Glass className="p-3">
-          <div className="mb-1.5 flex items-center justify-between">
-            <TerminalLabel>Evidence Confluence — {taSymbol}</TerminalLabel>
-            <span className="text-[9px] text-cmd-textDim">Raw signals vs. independent evidence families</span>
-          </div>
-          <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-3">
-            <DataRow label="Raw Signal Count" value={evidenceConfluence.rawSignalCount} />
-            <DataRow label="Independent Families" value={evidenceConfluence.independentFamilyCount} valueClassName={evidenceConfluence.independentFamilyCount < evidenceConfluence.rawSignalCount ? "text-cmd-amber" : "text-cmd-green"} />
-            <DataRow label="Majority Direction" value={evidenceConfluence.majorityDirection} />
-          </div>
-          <div className="mt-1.5 space-y-1">
-            {evidenceConfluence.families.map((f) => (
-              <div key={f.family} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-cmd-cyan">{f.family.replace(/_/g, " ")}</span>
-                  <span className={f.netDirection === "bullish" ? "text-cmd-green" : f.netDirection === "bearish" ? "text-cmd-red" : "text-cmd-textDim"}>{f.netDirection}</span>
-                </div>
-                <div className="mt-0.5 text-cmd-textDim">{f.signals.map((s) => s.name).join(", ")}</div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[8px] italic text-cmd-textDim">{evidenceConfluence.detail}</p>
-        </Glass>
+        <EvidenceConfluenceCard confluence={evidenceConfluence} title={`Evidence Confluence — ${taSymbol}`} />
       )}
 
       <Glass className="p-3">
