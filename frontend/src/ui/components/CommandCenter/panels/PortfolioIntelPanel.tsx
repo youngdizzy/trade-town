@@ -148,7 +148,7 @@ export function PortfolioIntelPanel() {
                 <div className="mb-0.5 flex items-center justify-between text-cmd-textDim">
                   <span className={exposure.strategyId === null ? "italic text-cmd-textDim" : "text-cmd-cyan"}>{strategyLabel(exposure.strategyId, strategies)}</span>
                   <span className="tabular-nums">
-                    {exposure.positionCount} position{exposure.positionCount === 1 ? "" : "s"} · {exposure.pctOfEquity.toFixed(0)}%
+                    {exposure.positionCount} position{exposure.positionCount === 1 ? "" : "s"} · {exposure.pctOfEquity.toFixed(0)}% · risk {exposure.capitalAtRiskPctOfEquity.toFixed(1)}%
                   </span>
                 </div>
                 <Meter value={exposure.pctOfEquity} tone={exposure.strategyId === null ? "amber" : "cyan"} />
@@ -169,7 +169,7 @@ export function PortfolioIntelPanel() {
                 <div className="mb-0.5 flex items-center justify-between text-cmd-textDim">
                   <span className="text-cmd-cyan">{AGENT_PROFILES[exposure.agentId].name}</span>
                   <span className="tabular-nums">
-                    {exposure.positionCount} position{exposure.positionCount === 1 ? "" : "s"} · {exposure.pctOfEquity.toFixed(0)}%
+                    {exposure.positionCount} position{exposure.positionCount === 1 ? "" : "s"} · {exposure.pctOfEquity.toFixed(0)}% · risk {exposure.capitalAtRiskPctOfEquity.toFixed(1)}%
                   </span>
                 </div>
                 <Meter value={exposure.pctOfEquity} tone="cyan" />
@@ -190,7 +190,7 @@ export function PortfolioIntelPanel() {
                 <div className="mb-0.5 flex items-center justify-between text-cmd-textDim">
                   <span className="capitalize text-cmd-text">{exposure.category}</span>
                   <span className="tabular-nums">
-                    {exposure.positionCount} position{exposure.positionCount === 1 ? "" : "s"} · {exposure.pctOfEquity.toFixed(0)}%
+                    {exposure.positionCount} position{exposure.positionCount === 1 ? "" : "s"} · {exposure.pctOfEquity.toFixed(0)}% · risk {exposure.capitalAtRiskPctOfEquity.toFixed(1)}%
                   </span>
                 </div>
                 <Meter value={exposure.pctOfEquity} tone="cyan" />

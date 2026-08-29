@@ -4849,6 +4849,13 @@ export interface CategoryExposure {
   positionCount: number;
   value: number;
   pctOfEquity: number;
+  /** CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+   * 11/10 Professional Quant Implementation," Phase 8 — the real,
+   * MODELED Chandelier-Stop capital-at-risk reading grouped by asset
+   * class, distinct from `value`/`pctOfEquity` above (real notional
+   * exposure). See `PortfolioHeat.estimatedCapitalAtRiskPct`. */
+  capitalAtRiskUsd: number;
+  capitalAtRiskPctOfEquity: number;
 }
 
 /** A real Pearson correlation coefficient between two currently-held
@@ -4959,6 +4966,10 @@ export interface StrategyExposureRead {
   pctOfEquity: number;
   longValue: number;
   shortValue: number;
+  /** Same real, MODELED Chandelier-Stop capital-at-risk reading as
+   * CategoryExposure's own fields — see that field's own docstring. */
+  capitalAtRiskUsd: number;
+  capitalAtRiskPctOfEquity: number;
 }
 
 /** CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
@@ -4973,6 +4984,10 @@ export interface AgentExposureRead {
   pctOfEquity: number;
   longValue: number;
   shortValue: number;
+  /** Same real, MODELED Chandelier-Stop capital-at-risk reading as
+   * CategoryExposure's own fields — see that field's own docstring. */
+  capitalAtRiskUsd: number;
+  capitalAtRiskPctOfEquity: number;
 }
 
 export interface PortfolioIntelligence {
