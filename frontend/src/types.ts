@@ -5079,6 +5079,46 @@ export interface PretradeRiskDecision {
   detail: string;
 }
 
+// CEO directive "Portfolio Risk Engine + Cross-Trade Capital Allocation"
+// — the real Marginal Risk Test: portfolio state computed once WITHOUT
+// the candidate and once WITH it. See backend/app/portfolio_risk.py's
+// evaluate_marginal_portfolio_risk()/PortfolioMarginalRiskDecision for
+// the full real methodology and disclosed simplifications.
+export type MarginalRiskVerdict = "approved" | "approved_reduced" | "vetoed" | "data_blocked";
+export type RiskImpactLevel = "low" | "medium" | "high";
+export type LiquidityStatus = "valid" | "limited" | "data_unavailable";
+export type CorrelationRegimeState = "normal" | "elevated" | "extreme";
+
+export interface PortfolioMarginalRiskDecision {
+  decision: MarginalRiskVerdict;
+  symbol: string;
+  requestedValue: number;
+  allowedValue: number;
+  reductionFactor: number;
+  individualRiskUsd: number | null;
+  portfolioCapitalAtRiskPctBefore: number;
+  portfolioCapitalAtRiskPctAfter: number;
+  grossExposureUsdBefore: number;
+  grossExposureUsdAfter: number;
+  netExposureUsdBefore: number;
+  netExposureUsdAfter: number;
+  leverageBefore: number;
+  leverageAfter: number;
+  largestClusterPctBefore: number;
+  largestClusterPctAfter: number;
+  correlationImpact: RiskImpactLevel;
+  concentrationImpact: RiskImpactLevel;
+  correlationRegimeState: CorrelationRegimeState;
+  liquidityStatus: LiquidityStatus;
+  regimeStatus: string;
+  drawdownStatus: string;
+  dailyLossStatus: string;
+  vetoReasons: string[];
+  warnings: string[];
+  riskPolicyVersion: string;
+  computedAt: string;
+}
+
 // CEO directive "Layered Kill Switches" — backend/app/trading_restrictions.py.
 // One layer below the firm-wide Emergency Stop: halts new position-opening
 // (buy AND sell) for one symbol or one whole ResearchCategory, without

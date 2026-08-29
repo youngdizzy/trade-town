@@ -79,6 +79,7 @@ import type {
   PortfolioRiskSnapshot,
   PortfolioScenarioResult,
   PortfolioStressTestResult,
+  PortfolioMarginalRiskDecision,
   PretradeRiskDecision,
   ProjectedLossPath,
   PropFirmStatus,
@@ -1026,6 +1027,11 @@ export const api = {
   getPortfolioRiskSnapshot: () => request<PortfolioRiskSnapshot>("/risk-limits/portfolio-snapshot"),
   getPretradeRiskDecision: (symbol: string, proposedValue: number) =>
     request<PretradeRiskDecision>(`/risk-limits/pretrade-decision?symbol=${encodeURIComponent(symbol)}&proposed_value=${encodeURIComponent(proposedValue)}`),
+  // CEO directive "Portfolio Risk Engine + Cross-Trade Capital
+  // Allocation" — the real Marginal Risk Test (before/after portfolio
+  // simulation). See backend/app/portfolio_risk.py.
+  getMarginalPortfolioRiskDecision: (symbol: string, proposedValue: number) =>
+    request<PortfolioMarginalRiskDecision>(`/risk-limits/marginal-decision?symbol=${encodeURIComponent(symbol)}&proposed_value=${encodeURIComponent(proposedValue)}`),
   // CEO directive "Layered Kill Switches" — one layer below the
   // firm-wide Emergency Stop. See backend/app/trading_restrictions.py.
   getTradingRestrictions: () => request<{ tradingRestrictions: TradingRestriction[] }>("/trading-restrictions"),
