@@ -327,6 +327,89 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — 11/10 Engineering Pass: Multi-Horizon Trend Engine + AHL-Inspired Systematic Trend
+  Research" — explicit SignalState vocabulary, Fast/Medium/Slow evidence alignment, and an upfront
+  data-quality gate.** A Phase 0 audit found the overwhelming majority of this fresh 37-point directive
+  already real and shipped across roughly a dozen earlier passes this session (`app/trend_engine.py`'s
+  four horizons × six independent trend definitions, real Fast/Medium/Slow ensemble, cross-sectional
+  asset-discovery ranking, regime-conditional hit-rate breakdown, Strategy Lab/backtest/walk-forward/
+  cost-sensitivity/look-ahead-audit integration via the generic indicator pipeline, Live Desk chart
+  overlay, agent-debate evidence, inverse-vol position sizing, true cross-portfolio risk parity). This
+  pass closes the three genuinely confirmed remaining gaps rather than rebuilding any of that.
+  - **Phase 5/28/29 — explicit SignalState vocabulary.** `MultiHorizonTrendScore` carried only a raw
+    numeric `compositeScore` — no `STRONG_LONG`/`WEAK_LONG`/`NEUTRAL`/`WEAK_SHORT`/`STRONG_SHORT`/
+    `INSUFFICIENT_DATA`/`INVALID_DATA` vocabulary anywhere in the codebase (confirmed via repo-wide
+    grep). New `SignalState` literal + `signalState`/`eligibleForTrade`/`reason` fields, computed by
+    one real, disclosed threshold rule (`_signal_state_from_score()`, reusing the same `±2.0` "strong"
+    threshold `compute_trend_regime_breakdown()` already used, now a single shared constant so both
+    readings always agree). `eligibleForTrade` means only "backed by valid, sufficient real data" —
+    never a trade permission; the risk engine, gatekeeper, and position sizer remain the sole authority
+    over that, unchanged. Threaded onto `SymbolTrendRanking` too (the cross-sectional ranking already
+    computed a full score internally — this was a zero-new-computation wire-through).
+  - **Phase 5/28 — the `direction == 0` conflation.** Each horizon's `direction == 0` was the SAME
+    value for two different real situations: "the horizon genuinely shows no directional evidence" and
+    "there wasn't enough real candle history to compute anything." New `HorizonDataQuality` (`"ok"` /
+    `"insufficient_data"`) field on `HorizonTrendReading`, threaded through all six independent trend
+    definitions' own existing early-return paths (zero new detection logic — every function already
+    knew internally which case it was in, it just never reported it).
+  - **Phase 28/31 — an upfront data-quality gate.** No function in this module previously validated its
+    real candle input before computing a score — a NaN/negative/infinite price or a corrupted
+    (duplicate/reversed) real timestamp would have silently produced a numeric-looking-but-meaningless
+    composite. New `_candle_data_invalid_reason()` (mirroring `app/volume_analysis.py`'s own
+    `_is_real_volume()` convention from this session's earlier chaos-hardening pass), checked once in
+    `compute_multi_horizon_trend_score()` before any horizon math runs — an invalid sample short-circuits
+    to `signalState="invalid_data"`, `eligibleForTrade=false`, empty `horizons`, never a fabricated
+    number. An EMPTY sample is deliberately NOT invalid (that's the separate, already-handled
+    `insufficient_data` state).
+  - **Phase 4 — explicit ALIGNED/MIXED/CONFLICTED evidence alignment.** The Fast/Medium/Slow ensemble
+    already computed three independently-inspectable composites but never classified whether they
+    agree — the directive's own explicit ask. New `EvidenceAlignment` literal + `evidenceAlignment`/
+    `evidenceAlignmentDetail` fields on `TrendEnsembleReading`, computed by one real, disclosed rule
+    (`_evidence_alignment()`): every band with real directional evidence agreeing → `aligned`; some
+    bands directional, others showing none → `mixed`; a band net long and a band net short at the same
+    time → `conflicted`. Never a silent merge into `combinedScore` — a second, separate, clearly-labeled
+    view, matching this directive's own explicit "never collapse Fast/Medium/Slow into one mysterious
+    score" requirement.
+  - **A real, honest test-fixture bug this pass's own new validation exposed, fixed, not hidden.**
+    `test_trend_engine.py`'s candle-timestamp fixture used `f"2026-01-{(i % 28) + 1:02d}..."`, wrapping
+    backward to day 1 every 28 candles — real market data never does this — which the new invalid-data
+    gate correctly flagged as corrupted. Fixed the fixture to walk a real `datetime` sequence instead
+    (never loosened the new check). A second, more subtle instance: `test_executive.py`'s
+    `_uptrend_candles()`/`_flat_candles()` used a bare `f"t{i}"` timestamp, which is NOT
+    lexicographically ordered past `i=9` (`"t10" < "t9"` as strings) — this silently degraded (not
+    crashed) the real Multi-Horizon Trend Engine evidence line in the Technical Analyst's own vote to
+    an always-empty `"+0/0 ()"` reading for any candle count above 9, caught by one test
+    (`test_uptrend_composite_is_positive_and_downtrend_composite_is_negative`) that happened to assert
+    on the actual value rather than just the evidence line's presence. Fixed both fixtures to real,
+    zero-padding-safe hourly timestamps.
+  - New "FAST/MED/SLOW/EVIDENCE" badge row in `MarketChartPanel.tsx`'s TREND overlay (using the
+    already-shared color/label convention now factored into `lib/derive.ts`'s new
+    `SIGNAL_STATE_TONE`/`SIGNAL_STATE_LABEL`, reused by `OpportunitiesPanel.tsx`'s Asset Discovery
+    cards, which also gained a `signalState` badge).
+  - Verified: 27 new backend tests (`TestHorizonDataQuality`, `TestSignalStateClassification`,
+    `TestInvalidCandleDataGate`, `TestEvidenceAlignment`, `TestSymbolTrendRankingSignalState` in
+    `test_trend_engine.py`), full backend suite, `mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+    Live-verified in the browser against the real running dev stack: AAPL's real downtrend rendered
+    FAST/MED "STRONG SHORT" (red), SLOW "WEAK SHORT" (cyan), EVIDENCE "ALIGNED" (green) — matching the
+    visible chart shape. The Asset Discovery `signalState` badge's wiring is unit-test-verified
+    (`TestSymbolTrendRankingSignalState`) rather than live-screenshotted this pass — the current dev
+    save's discovery pool had zero eligible candidates at verification time, an honest empty state, not
+    a bug.
+  - **Confirmed still genuinely covered by a more general, reusable mechanism, not a gap**: Phase 18's
+    "ALPHA_DECAY_SUSPECTED" ask is already served by the existing, strategy-agnostic
+    `app/performance_attribution.py::compute_strategy_degradation()` (`normal_variation`/
+    `possible_degradation`/`critical_degradation`/`not_enough_data`), which will apply to any
+    Multi-Horizon Trend strategy the moment it trades, with zero new code needed — building a
+    trend-engine-specific decay tracker here would have been exactly the duplicate system this
+    project's own conventions forbid.
+  - **Not attempted this pass, no new gap found requiring it**: hierarchical hard risk BUDGETS (a
+    distinct concept from exposure/capital-at-risk readings, already covered by the separate Portfolio
+    Risk Engine directive's own disclosed scope boundary); a real factor-model taxonomy (no GICS/factor
+    data source exists in this codebase); DATA_BLOCKED asset-class marking (this codebase's synthetic
+    market data already covers every supported asset class — stocks, ETFs, futures, FX, treasuries —
+    so nothing is currently actually blocked; the honest answer is "not applicable today," not a built
+    placeholder state).
+
 - **"TradeTown — 11/10 Market Intelligence + Quant Research Engine" Phase 7: explicit
   supporting/conflicting/neutral/missing Confluence Classification.** The directive's own Confluence
   Engine spec explicitly rejects naive "N indicators bullish → buy" scoring in favor of a named

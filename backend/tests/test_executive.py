@@ -6,7 +6,7 @@ outcome for a trade that was never actually placed.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -64,16 +64,26 @@ def _research_item(symbol: str = "NEXA", confidence: float = 90.0) -> ResearchIt
     )
 
 
+def _hourly_timestamp(i: int) -> str:
+    # Real timestamps must be strictly increasing (app/market_data.py's
+    # own real candle generation always is — see app/trend_engine.py's
+    # `_candle_data_invalid_reason()` gate, which now enforces exactly
+    # that). A bare f"t{i}" is NOT lexicographically ordered past i=9
+    # ("t10" < "t9" as strings), which silently tripped that gate for
+    # any fixture with 10+ candles.
+    return (datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _uptrend_candles() -> list[Candle]:
     return [
-        Candle(symbol="NEXA", timeframe="1h", timestamp=f"t{i}", open=100 + i, high=101 + i, low=99 + i, close=100 + i, volume=1000, data_status="simulated")
+        Candle(symbol="NEXA", timeframe="1h", timestamp=_hourly_timestamp(i), open=100 + i, high=101 + i, low=99 + i, close=100 + i, volume=1000, data_status="simulated")
         for i in range(30)
     ]
 
 
 def _flat_candles() -> list[Candle]:
     return [
-        Candle(symbol="NEXA", timeframe="1h", timestamp=f"t{i}", open=100, high=100.2, low=99.8, close=100, volume=1000, data_status="simulated")
+        Candle(symbol="NEXA", timeframe="1h", timestamp=_hourly_timestamp(i), open=100, high=100.2, low=99.8, close=100, volume=1000, data_status="simulated")
         for i in range(30)
     ]
 
@@ -113,7 +123,7 @@ class TestTechnicalVoteTrendEngineEvidence:
         up_vote = _technical_vote(_research_item(), _uptrend_candles())
         down_candles = list(reversed(_uptrend_candles()))
         for i, c in enumerate(down_candles):
-            down_candles[i] = Candle(symbol=c.symbol, timeframe=c.timeframe, timestamp=f"t{i}", open=c.open, high=c.high, low=c.low, close=c.close, volume=c.volume, data_status=c.data_status)
+            down_candles[i] = Candle(symbol=c.symbol, timeframe=c.timeframe, timestamp=_hourly_timestamp(i), open=c.open, high=c.high, low=c.low, close=c.close, volume=c.volume, data_status=c.data_status)
         down_vote = _technical_vote(_research_item(), down_candles)
         up_line = next(e for e in up_vote.evidence if "Multi-Horizon Trend Engine composite" in e)
         down_line = next(e for e in down_vote.evidence if "Multi-Horizon Trend Engine composite" in e)

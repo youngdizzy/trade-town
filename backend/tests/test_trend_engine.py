@@ -6,8 +6,12 @@ index, never a bar that comes after it (see TestPointInTimeCorrectness).
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
+import math
+
 from app.market_data import Candle
-from app.schemas import ResearchCategory
+from app.schemas import MultiHorizonTrendScore, ResearchCategory
 from app.strategy_compiler import compile_strategy_text
 from app.strategy_engine import SUPPORTED_INDICATORS, _build_series_cache, _detect_generic_setups
 from app.trend_engine import (
@@ -16,6 +20,9 @@ from app.trend_engine import (
     DEFAULT_MEDIUM_HORIZONS,
     DEFAULT_SLOW_HORIZONS,
     TREND_ENGINE_METHODOLOGY_VERSION,
+    _candle_data_invalid_reason,
+    _evidence_alignment,
+    _signal_state_from_score,
     compute_horizon_trend,
     compute_multi_horizon_trend_score,
     compute_trend_ensemble,
@@ -26,7 +33,16 @@ from app.trend_engine import (
 )
 
 
-def _candles(closes: list[float], *, symbol: str = "TEST", high_low_spread_pct: float = 0.3, volume: float = 100_000.0) -> list[Candle]:
+def _candles(closes: list[float], *, symbol: str = "TEST", high_low_spread_pct: float = 0.3, volume: float = 100_000.0, start_day: int = 0) -> list[Candle]:
+    # Real timestamps must be strictly increasing (app/market_data.py's
+    # own real candle generation always is — see this module's new
+    # `_candle_data_invalid_reason()` gate, which now enforces exactly
+    # that). Built from a real `datetime` walk rather than a mod-28
+    # day-of-month string so this fixture never wraps back to day 1 for
+    # a series longer than 28 candles. `start_day` lets a caller build
+    # two segments that concatenate into one still-monotonic series
+    # (see `_uptrend()`/`_downtrend()`'s own `start_day` passthrough).
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(days=start_day)
     candles = []
     for i, close in enumerate(closes):
         spread = close * (high_low_spread_pct / 100)
@@ -34,7 +50,7 @@ def _candles(closes: list[float], *, symbol: str = "TEST", high_low_spread_pct: 
             Candle(
                 symbol=symbol,
                 timeframe="1d",
-                timestamp=f"2026-01-{(i % 28) + 1:02d}T00:00:00Z",
+                timestamp=(base + timedelta(days=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 open=close,
                 high=close + spread,
                 low=close - spread,
@@ -46,18 +62,18 @@ def _candles(closes: list[float], *, symbol: str = "TEST", high_low_spread_pct: 
     return candles
 
 
-def _uptrend(n: int = 80, start: float = 100.0, step_pct: float = 0.6) -> list[Candle]:
+def _uptrend(n: int = 80, start: float = 100.0, step_pct: float = 0.6, start_day: int = 0) -> list[Candle]:
     closes = [start]
     for _ in range(n - 1):
         closes.append(closes[-1] * (1 + step_pct / 100))
-    return _candles(closes)
+    return _candles(closes, start_day=start_day)
 
 
-def _downtrend(n: int = 80, start: float = 100.0, step_pct: float = 0.6) -> list[Candle]:
+def _downtrend(n: int = 80, start: float = 100.0, step_pct: float = 0.6, start_day: int = 0) -> list[Candle]:
     closes = [start]
     for _ in range(n - 1):
         closes.append(closes[-1] * (1 - step_pct / 100))
-    return _candles(closes)
+    return _candles(closes, start_day=start_day)
 
 
 def _flat(n: int = 80, price: float = 100.0) -> list[Candle]:
@@ -169,7 +185,7 @@ class TestFastMediumSlowEnsembleNeverSilentlyMerged:
         """A market that whipsaws late (fast disagrees with slow) must
         show that disagreement, never collapse into one number that
         hides it — the CEO directive's own explicit requirement."""
-        candles = _uptrend(n=70, step_pct=1.0) + _downtrend(n=10, step_pct=1.2)
+        candles = _uptrend(n=70, step_pct=1.0) + _downtrend(n=10, step_pct=1.2, start_day=70)
         ensemble = compute_trend_ensemble(candles, "TEST", "1d")
         # Not asserting a specific sign combination (depends on the exact
         # synthetic shape) — asserting the three bands are independently
@@ -198,7 +214,7 @@ class TestPointInTimeCorrectness:
 
     def test_series_values_are_unchanged_by_appending_future_candles(self) -> None:
         base = _uptrend(n=90)
-        extended = base + _downtrend(n=20, start=base[-1].close)
+        extended = base + _downtrend(n=20, start=base[-1].close, start_day=90)
         base_series = multi_horizon_trend_score_series(base, "TEST", "1d")
         extended_series = multi_horizon_trend_score_series(extended, "TEST", "1d")
         for i in range(len(base_series)):
@@ -312,3 +328,203 @@ class TestStrategyLabIntegration:
         assert setups, "A strong, sustained real uptrend should trigger at least one real setup once the trend score clears its threshold"
         for s in setups:
             assert s.direction == "long"
+
+
+class TestHorizonDataQuality:
+    """Phase 5/28's structural distinction: `direction == 0` alone must
+    never be the only way to tell "insufficient real history" apart
+    from "the horizon genuinely shows no directional evidence.\""""
+
+    def test_ok_when_a_horizon_has_enough_real_history(self) -> None:
+        reading = compute_horizon_trend(_uptrend(n=90), "test", 40, "endpoint_slope")
+        assert reading.data_quality == "ok"
+
+    def test_insufficient_when_a_horizon_lacks_real_history(self) -> None:
+        for method in ("endpoint_slope", "regression_slope", "normalized_slope", "price_vs_ma", "volatility_normalized", "breakout_channel"):
+            reading = compute_horizon_trend(_candles([100.0]), "test", 40, method)  # type: ignore[arg-type]
+            assert reading.data_quality == "insufficient_data"
+
+    def test_flat_market_is_ok_quality_but_neutral_direction(self) -> None:
+        """A genuinely flat market has PLENTY of real history — the
+        `direction == 0` reading there means "no trend," not "no data,"
+        and `data_quality` must say so."""
+        reading = compute_horizon_trend(_flat(n=90), "test", 40, "endpoint_slope")
+        assert reading.direction == 0
+        assert reading.data_quality == "ok"
+
+
+class TestSignalStateClassification:
+    """Phase 5/28/29's explicit qualitative vocabulary — see
+    `_signal_state_from_score()`'s own docstring for the one real,
+    disclosed threshold rule."""
+
+    def test_strong_uptrend_is_strong_long(self) -> None:
+        score = compute_multi_horizon_trend_score(_uptrend(n=90, step_pct=1.0), "TEST", "1d", horizons=DEFAULT_HORIZONS)
+        assert score.signal_state == "strong_long"
+        assert score.eligible_for_trade is True
+
+    def test_strong_downtrend_is_strong_short(self) -> None:
+        score = compute_multi_horizon_trend_score(_downtrend(n=90, step_pct=1.0), "TEST", "1d", horizons=DEFAULT_HORIZONS)
+        assert score.signal_state == "strong_short"
+        assert score.eligible_for_trade is True
+
+    def test_flat_market_is_neutral_and_still_eligible(self) -> None:
+        """Neutral is a real EVIDENCE state (the horizons genuinely show
+        no net direction), never a data problem — `eligible_for_trade`
+        stays true; the risk engine, not this module, decides what to
+        do with a neutral read."""
+        score = compute_multi_horizon_trend_score(_flat(n=90), "TEST", "1d", horizons=DEFAULT_HORIZONS)
+        assert score.signal_state == "neutral"
+        assert score.eligible_for_trade is True
+
+    def test_empty_candles_is_insufficient_data_and_ineligible(self) -> None:
+        score = compute_multi_horizon_trend_score([], "TEST", "1d")
+        assert score.signal_state == "insufficient_data"
+        assert score.eligible_for_trade is False
+
+    def test_too_little_history_for_every_horizon_is_insufficient_data(self) -> None:
+        # A single real candle is too little for even the shortest
+        # (2-point) endpoint-slope math, let alone the full DEFAULT_
+        # HORIZONS window — unlike a 2-candle sample, which is already
+        # enough real data for a real (if noisy) 2-point slope.
+        score = compute_multi_horizon_trend_score(_candles([100.0]), "TEST", "1d", horizons=DEFAULT_HORIZONS)
+        assert score.signal_state == "insufficient_data"
+        assert score.eligible_for_trade is False
+
+    def test_pure_threshold_rule_boundaries(self) -> None:
+        """Direct unit coverage of the threshold rule itself, isolated
+        from any real candle-shape engineering."""
+        ok_horizon = compute_horizon_trend(_uptrend(n=90), "test", 40, "endpoint_slope")
+        assert _signal_state_from_score(4.0, [ok_horizon])[0] == "strong_long"
+        assert _signal_state_from_score(2.0, [ok_horizon])[0] == "strong_long"
+        assert _signal_state_from_score(1.0, [ok_horizon])[0] == "weak_long"
+        assert _signal_state_from_score(0.0, [ok_horizon])[0] == "neutral"
+        assert _signal_state_from_score(-1.0, [ok_horizon])[0] == "weak_short"
+        assert _signal_state_from_score(-2.0, [ok_horizon])[0] == "strong_short"
+        assert _signal_state_from_score(-4.0, [ok_horizon])[0] == "strong_short"
+
+    def test_deterministic_replay_of_signal_state(self) -> None:
+        candles = _uptrend(n=90, step_pct=1.0)
+        first = compute_multi_horizon_trend_score(candles, "TEST", "1d")
+        second = compute_multi_horizon_trend_score(candles, "TEST", "1d")
+        assert first.signal_state == second.signal_state
+        assert first.eligible_for_trade == second.eligible_for_trade
+        assert first.reason == second.reason
+
+
+class TestInvalidCandleDataGate:
+    """Phase 28/31 — a real, upfront data-quality gate that runs BEFORE
+    any horizon math, so corrupted real candle data can never quietly
+    produce a numeric-looking-but-meaningless composite score."""
+
+    def test_clean_data_passes(self) -> None:
+        assert _candle_data_invalid_reason(_uptrend(n=20)) is None
+
+    def test_empty_candles_is_not_invalid(self) -> None:
+        """Empty is the separate, already-handled `insufficient_data`
+        state, never `invalid_data`."""
+        assert _candle_data_invalid_reason([]) is None
+
+    def test_nan_close_is_invalid(self) -> None:
+        candles = _uptrend(n=20)
+        candles[-1] = Candle(symbol="TEST", timeframe="1d", timestamp=candles[-1].timestamp, open=100.0, high=101.0, low=99.0, close=math.nan, volume=1000.0, data_status="simulated")
+        assert _candle_data_invalid_reason(candles) is not None
+
+    def test_infinite_close_is_invalid(self) -> None:
+        candles = _uptrend(n=20)
+        candles[-1] = Candle(symbol="TEST", timeframe="1d", timestamp=candles[-1].timestamp, open=100.0, high=101.0, low=99.0, close=math.inf, volume=1000.0, data_status="simulated")
+        assert _candle_data_invalid_reason(candles) is not None
+
+    def test_negative_price_is_invalid(self) -> None:
+        candles = _uptrend(n=20)
+        candles[-1] = Candle(symbol="TEST", timeframe="1d", timestamp=candles[-1].timestamp, open=100.0, high=101.0, low=99.0, close=-5.0, volume=1000.0, data_status="simulated")
+        assert _candle_data_invalid_reason(candles) is not None
+
+    def test_zero_price_is_invalid(self) -> None:
+        candles = _uptrend(n=20)
+        candles[-1] = Candle(symbol="TEST", timeframe="1d", timestamp=candles[-1].timestamp, open=100.0, high=101.0, low=99.0, close=0.0, volume=1000.0, data_status="simulated")
+        assert _candle_data_invalid_reason(candles) is not None
+
+    def test_impossible_high_below_low_is_invalid(self) -> None:
+        candles = _uptrend(n=20)
+        candles[-1] = Candle(symbol="TEST", timeframe="1d", timestamp=candles[-1].timestamp, open=100.0, high=90.0, low=95.0, close=100.0, volume=1000.0, data_status="simulated")
+        assert _candle_data_invalid_reason(candles) is not None
+
+    def test_duplicate_timestamp_is_invalid(self) -> None:
+        candles = _uptrend(n=20)
+        candles[-1] = Candle(symbol="TEST", timeframe="1d", timestamp=candles[-2].timestamp, open=100.0, high=101.0, low=99.0, close=100.0, volume=1000.0, data_status="simulated")
+        assert _candle_data_invalid_reason(candles) is not None
+
+    def test_reversed_timestamp_is_invalid(self) -> None:
+        candles = _uptrend(n=20)
+        candles[-1], candles[-2] = candles[-2], candles[-1]
+        assert _candle_data_invalid_reason(candles) is not None
+
+    def test_compute_multi_horizon_trend_score_short_circuits_on_invalid_data(self) -> None:
+        candles = _uptrend(n=20)
+        candles[-1] = Candle(symbol="TEST", timeframe="1d", timestamp=candles[-1].timestamp, open=100.0, high=101.0, low=99.0, close=math.nan, volume=1000.0, data_status="simulated")
+        score = compute_multi_horizon_trend_score(candles, "TEST", "1d")
+        assert score.signal_state == "invalid_data"
+        assert score.eligible_for_trade is False
+        assert score.horizons == []
+        assert score.composite_score == 0.0
+        assert "corruption" in score.reason.lower() or "impossible" in score.reason.lower() or "non-increasing" in score.reason.lower()
+
+
+class TestEvidenceAlignment:
+    """Phase 4's explicit ALIGNED/MIXED/CONFLICTED ask — unit-tested as
+    a pure function of three composite scores, isolated from real
+    candle-shape engineering (which real bands land where is already
+    covered by TestFastMediumSlowEnsembleNeverSilentlyMerged)."""
+
+    def _score(self, composite: float) -> MultiHorizonTrendScore:
+        horizon = compute_horizon_trend(_uptrend(n=90), "test", 40, "endpoint_slope")
+        return MultiHorizonTrendScore(
+            symbol="TEST",
+            timeframe="1d",
+            evaluatedAtIndex=89,
+            evaluatedAtTimestamp="2026-03-01T00:00:00Z",
+            method="endpoint_slope",
+            methodologyVersion=TREND_ENGINE_METHODOLOGY_VERSION,
+            horizons=[horizon],
+            compositeScore=composite,
+            compositeScoreNormalized=composite / 4,
+            aggregationDetail="test fixture",
+            signalState="neutral",
+            eligibleForTrade=True,
+            reason="test fixture",
+        )
+
+    def test_all_bullish_is_aligned(self) -> None:
+        alignment, _ = _evidence_alignment(self._score(2.0), self._score(4.0), self._score(1.0))
+        assert alignment == "aligned"
+
+    def test_all_bearish_is_aligned(self) -> None:
+        alignment, _ = _evidence_alignment(self._score(-2.0), self._score(-4.0), self._score(-1.0))
+        assert alignment == "aligned"
+
+    def test_all_neutral_is_aligned(self) -> None:
+        alignment, _ = _evidence_alignment(self._score(0.0), self._score(0.0), self._score(0.0))
+        assert alignment == "aligned"
+
+    def test_bullish_and_bearish_together_is_conflicted(self) -> None:
+        alignment, _ = _evidence_alignment(self._score(2.0), self._score(1.0), self._score(-2.0))
+        assert alignment == "conflicted"
+
+    def test_directional_plus_neutral_is_mixed(self) -> None:
+        alignment, _ = _evidence_alignment(self._score(2.0), self._score(0.0), self._score(1.0))
+        assert alignment == "mixed"
+
+    def test_ensemble_wires_alignment_end_to_end(self) -> None:
+        ensemble = compute_trend_ensemble(_uptrend(n=90, step_pct=1.0), "TEST", "1d")
+        assert ensemble.evidence_alignment in ("aligned", "mixed", "conflicted")
+        assert ensemble.evidence_alignment_detail
+
+
+class TestSymbolTrendRankingSignalState:
+    def test_ranking_carries_the_same_signal_state_as_the_underlying_score(self) -> None:
+        symbol_candles = {"UP": _uptrend(n=90, step_pct=1.0)}
+        category: dict[str, ResearchCategory] = {"UP": "stock"}
+        rankings = rank_symbols_by_trend(symbol_candles, category)
+        score = compute_multi_horizon_trend_score(symbol_candles["UP"], "UP", "1d")
+        assert rankings[0].signal_state == score.signal_state

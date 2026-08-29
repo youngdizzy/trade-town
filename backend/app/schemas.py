@@ -4710,6 +4710,38 @@ TrendDefinitionMethod = Literal["endpoint_slope", "regression_slope", "normalize
 TrendWeightingMethod = Literal["equal", "horizon_weighted", "volatility_weighted"]
 TrendDirection = Literal[1, 0, -1]
 
+# "Multi-Horizon Trend Engine" follow-up (Phase 5/28) — whether ONE
+# horizon's own real window had enough real candle history to produce a
+# trustworthy read. Kept structurally distinct from `direction == 0`,
+# which is ALSO the real, correct read for "the horizon genuinely shows
+# no directional evidence" — conflating the two would silently hide a
+# real data gap behind what looks like a real neutral signal.
+HorizonDataQuality = Literal["ok", "insufficient_data"]
+
+# "Multi-Horizon Trend Engine" follow-up (Phase 5/28/29) — the explicit
+# qualitative vocabulary that directive asks for so the CEO, risk
+# engine, UI, and agents can all reason about WHY a composite score
+# exists, not just its raw number. `insufficient_data`/`invalid_data`
+# are real, structural DATA states (never a directional claim);
+# `neutral` is a real, disclosed EVIDENCE state ("the horizons disagree
+# or show no net direction" — a valid research finding, not a data
+# gap). See `_signal_state_from_score()` in app/trend_engine.py for the
+# one real, disclosed threshold that produces this classification —
+# never a claim of statistical confidence (see NO FALSE CONFIDENCE,
+# that same module's own docstring).
+SignalState = Literal["strong_long", "weak_long", "neutral", "weak_short", "strong_short", "insufficient_data", "invalid_data"]
+
+# "Multi-Horizon Trend Engine" follow-up (Phase 4) — whether the real
+# Fast/Medium/Slow bands agree, partially agree, or directly disagree on
+# direction. See `_evidence_alignment()` in app/trend_engine.py for the
+# one real, disclosed rule that produces this — never a silent merge of
+# the three bands into one number (that's exactly what this directive's
+# own "never collapse Fast/Medium/Slow into one mysterious score"
+# requirement forbids; `TrendEnsembleReading.combined_score` already
+# exists as one additional clearly-labeled view, and this is a second,
+# separate one, not a replacement for either).
+EvidenceAlignment = Literal["aligned", "mixed", "conflicted"]
+
 
 class HorizonTrendReading(CamelModel):
     """One horizon's own real, independently-computed directional read —
@@ -4726,6 +4758,10 @@ class HorizonTrendReading(CamelModel):
     raw_value: float = Field(alias="rawValue")
     direction: TrendDirection
     detail: str
+    # "Multi-Horizon Trend Engine" follow-up (Phase 5/28) — see
+    # HorizonDataQuality's own docstring for why this is structurally
+    # distinct from `direction == 0`.
+    data_quality: HorizonDataQuality = Field(alias="dataQuality")
 
 
 # CEO directive "Professional Quant Trading Core," Phase B P2 item —
@@ -4773,6 +4809,15 @@ class MultiHorizonTrendScore(CamelModel):
     composite_score: float = Field(alias="compositeScore")
     composite_score_normalized: float = Field(alias="compositeScoreNormalized")
     aggregation_detail: str = Field(alias="aggregationDetail")
+    # "Multi-Horizon Trend Engine" follow-up (Phase 5/28/29) — see
+    # SignalState's own docstring. `eligible_for_trade` means only "this
+    # reading is backed by valid, sufficient real data" — it is NEVER a
+    # trade permission (app/risk_engine.py / app/gatekeeper.py /
+    # app/position_sizing.py remain the sole authority over that, per
+    # this module's own "TREND ENGINE NEVER OVERRIDES RISK" discipline).
+    signal_state: SignalState = Field(alias="signalState")
+    eligible_for_trade: bool = Field(alias="eligibleForTrade")
+    reason: str
 
 
 class TrendEnsembleReading(CamelModel):
@@ -4792,6 +4837,10 @@ class TrendEnsembleReading(CamelModel):
     weighting_method: TrendWeightingMethod = Field(alias="weightingMethod")
     combined_score: float = Field(alias="combinedScore")
     combined_score_detail: str = Field(alias="combinedScoreDetail")
+    # "Multi-Horizon Trend Engine" follow-up (Phase 4) — see
+    # EvidenceAlignment's own docstring.
+    evidence_alignment: EvidenceAlignment = Field(alias="evidenceAlignment")
+    evidence_alignment_detail: str = Field(alias="evidenceAlignmentDetail")
 
 
 class VolatilityScaledExposureResearch(CamelModel):
@@ -4867,6 +4916,11 @@ class SymbolTrendRanking(CamelModel):
     trend_persistence_bars: int = Field(alias="trendPersistenceBars")
     volatility_pct: float = Field(alias="volatilityPct")
     risk_adjusted_score: float = Field(alias="riskAdjustedScore")
+    # "Multi-Horizon Trend Engine" follow-up (Phase 5/10) — the same
+    # real SignalState classification `MultiHorizonTrendScore` itself
+    # carries, threaded through so cross-sectional ranking never forces
+    # a researcher to recompute it from the raw composite score.
+    signal_state: SignalState = Field(alias="signalState")
 
 
 class TrendRegimeBucket(CamelModel):

@@ -16274,6 +16274,111 @@ existing, already-verified `detail` string rendering.
 `types.ts`, `panels/sandbox/StrategyCompilerView.tsx`. Docs:
 `CHANGELOG.md`.
 
+**Follow-up — "11/10 Engineering Pass" re-ask: explicit SignalState,
+Fast/Medium/Slow evidence alignment, an upfront data-quality gate.** A
+fresh 37-point re-ask of this same directive's Multi-Horizon Trend
+Engine concept. A Phase 0 audit found the overwhelming majority already
+real and shipped (see every subsection above) — this pass closes the
+three genuinely confirmed remaining gaps.
+
+*Phase 5/28/29 — explicit SignalState vocabulary.*
+`MultiHorizonTrendScore` carried only a raw numeric `compositeScore` —
+a repo-wide grep confirmed no `STRONG_LONG`/`WEAK_LONG`/`NEUTRAL`/
+`WEAK_SHORT`/`STRONG_SHORT`/`INSUFFICIENT_DATA`/`INVALID_DATA`
+vocabulary existed anywhere. New `SignalState` literal +
+`signalState`/`eligibleForTrade`/`reason` fields, computed by one real,
+disclosed threshold rule (`_signal_state_from_score()`), reusing the
+same `±2.0` "strong" threshold `compute_trend_regime_breakdown()`
+already used — now one shared `_STRONG_SIGNAL_THRESHOLD` constant so
+both readings always agree. `eligibleForTrade` means only "backed by
+valid, sufficient real data," never a trade permission — the risk
+engine/gatekeeper/position sizer remain the sole authority over that,
+unchanged. Also threaded onto `SymbolTrendRanking` (zero new
+computation — the cross-sectional ranking already computed a full
+score internally). A related, narrower gap: `direction == 0` was the
+same value for "no directional evidence" AND "insufficient real
+history" — new `HorizonDataQuality` field on `HorizonTrendReading`
+(`"ok"` / `"insufficient_data"`) disambiguates, threaded through all
+six trend definitions' own existing early-return paths with zero new
+detection logic.
+
+*Phase 28/31 — an upfront data-quality gate.* No function in this
+module previously validated its real candle input before computing a
+score. New `_candle_data_invalid_reason()` (mirrors `app/
+volume_analysis.py`'s own `_is_real_volume()` convention from this
+session's earlier chaos-hardening pass — non-finite/non-positive OHLC,
+an impossible high/low ordering, non-increasing real timestamps),
+checked once in `compute_multi_horizon_trend_score()` before any
+horizon math runs. An invalid sample short-circuits to
+`signalState="invalid_data"`, never a fabricated number; an EMPTY
+sample is deliberately NOT invalid (that stays the separate
+`insufficient_data` state).
+
+*Phase 4 — explicit ALIGNED/MIXED/CONFLICTED evidence alignment.* The
+Fast/Medium/Slow ensemble already computed three independently-
+inspectable composites but never classified whether they agree. New
+`EvidenceAlignment` literal + `evidenceAlignment`/
+`evidenceAlignmentDetail` fields on `TrendEnsembleReading`
+(`_evidence_alignment()`): every band with real directional evidence
+agreeing → `aligned`; some directional, others showing none → `mixed`;
+a band net long and a band net short simultaneously → `conflicted`.
+Never merged into `combinedScore` — a second, separate, clearly-labeled
+view, matching this directive's own "never collapse Fast/Medium/Slow
+into one mysterious score" requirement.
+
+**A real, honest test-fixture bug this pass's own new validation
+exposed, fixed rather than worked around.** `test_trend_engine.py`'s
+candle fixture wrapped its timestamp back to day 1 every 28 candles —
+real market data never does this — correctly flagged by the new
+invalid-data gate; fixed by walking a real `datetime` sequence instead
+of loosening the check. A second, more subtle instance:
+`test_executive.py`'s uptrend/flat candle fixtures used a bare `f"t{i}"`
+timestamp, not lexicographically ordered past `i=9`
+(`"t10" < "t9"` as strings) — this silently degraded (never crashed)
+the real Multi-Horizon Trend Engine evidence line in the Technical
+Analyst's own vote to an always-empty reading for any sample above 9
+candles, caught by the one test that happened to assert on the actual
+value rather than just the evidence line's presence. Both fixtures
+fixed to real, zero-padding-safe timestamps.
+
+**Frontend.** New "FAST/MED/SLOW/EVIDENCE" `SignalState`/
+`EvidenceAlignment` badge row in `MarketChartPanel.tsx`'s TREND
+overlay legend; `OpportunitiesPanel.tsx`'s Asset Discovery cards
+gained a matching `signalState` badge. Both reuse one shared
+`SIGNAL_STATE_TONE`/`SIGNAL_STATE_LABEL` convention factored into
+`lib/derive.ts` (not duplicated per-component) so every surface colors
+and labels the same real states identically.
+
+**Verification.** 27 new backend tests (`TestHorizonDataQuality`,
+`TestSignalStateClassification`, `TestInvalidCandleDataGate`,
+`TestEvidenceAlignment`, `TestSymbolTrendRankingSignalState` in
+`test_trend_engine.py`), full backend suite, `mypy`/`ruff` clean.
+Frontend `tsc`/lint/build clean. Live-verified against the real running
+dev stack: AAPL's real downtrend rendered FAST/MED "STRONG SHORT",
+SLOW "WEAK SHORT", EVIDENCE "ALIGNED" — matching the visible chart
+shape. The Asset Discovery badge's wiring is unit-test-verified rather
+than live-screenshotted (the dev save's discovery pool had zero
+eligible candidates at verification time, an honest empty state).
+
+**Confirmed already covered by a more general mechanism, not a gap.**
+Phase 18's "ALPHA_DECAY_SUSPECTED" ask is already served by the
+existing, strategy-agnostic `app/performance_attribution.py::
+compute_strategy_degradation()`, which applies to any Multi-Horizon
+Trend strategy the moment it trades with zero new code — a
+trend-engine-specific decay tracker would have duplicated it.
+
+**Not attempted, no new gap found requiring it.** Hierarchical hard
+risk budgets (a distinct concept already scoped under the separate
+Portfolio Risk Engine directive); a real factor-model taxonomy (no
+GICS/factor data source exists); DATA_BLOCKED asset-class marking
+(this codebase's synthetic market data already covers every supported
+asset class, so nothing is currently actually blocked).
+
+**Files changed.** Backend: `app/schemas.py`, `app/trend_engine.py`,
+`tests/test_trend_engine.py`, `tests/test_executive.py`. Frontend:
+`types.ts`, `MarketChartPanel.tsx`, `panels/OpportunitiesPanel.tsx`,
+`lib/derive.ts`. Docs: `CHANGELOG.md`.
+
 ## CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
 
 A 37-phase directive asking for a canonical portfolio-wide risk layer
