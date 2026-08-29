@@ -443,6 +443,7 @@ export class NexusManager {
     heat: { totalCapitalAtRiskPct: 0, unrealizedDrawdownPct: 0, largestPositionPct: 0, hottestCategory: null, hottestCategoryPct: 0, tier: "cool", estimatedCapitalAtRiskPct: 0, capitalAtRiskDetail: "" },
     exposure: { longValue: 0, shortValue: 0, netExposure: 0, grossExposure: 0, netExposurePct: 0, grossExposurePct: 0, longPositionCount: 0, shortPositionCount: 0 },
     strategyExposure: [],
+    agentExposure: [],
     capitalEfficiency: { profitPerDollar: 0, profitPerDollarHour: 0, tradesMeasured: 0 },
     opportunityCost: "No data yet.",
     updatedAt: new Date().toISOString(),

@@ -4961,6 +4961,20 @@ export interface StrategyExposureRead {
   shortValue: number;
 }
 
+/** CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+ * 11/10 Professional Quant Implementation," Phase 8/21 — the AGENT
+ * level of the FIRM -> ASSET CLASS -> STRATEGY -> AGENT -> POSITION
+ * exposure hierarchy. Mirrors StrategyExposureRead exactly; agentId is
+ * never null (PaperPosition.openedBy is a required field). */
+export interface AgentExposureRead {
+  agentId: AgentId;
+  positionCount: number;
+  value: number;
+  pctOfEquity: number;
+  longValue: number;
+  shortValue: number;
+}
+
 export interface PortfolioIntelligence {
   equity: number;
   cashBalance: number;
@@ -4972,6 +4986,7 @@ export interface PortfolioIntelligence {
   heat: PortfolioHeat;
   exposure: ExposureSummary;
   strategyExposure: StrategyExposureRead[];
+  agentExposure: AgentExposureRead[];
   capitalEfficiency: CapitalEfficiency;
   opportunityCost: string;
   updatedAt: string;

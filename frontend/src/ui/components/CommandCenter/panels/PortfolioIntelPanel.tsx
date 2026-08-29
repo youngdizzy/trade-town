@@ -1,4 +1,5 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { EventBus } from "@/game/systems/EventBus";
 import { computePeriodFinancials } from "../lib/financials";
 import { formatMoney, riskLevel } from "../lib/derive";
@@ -151,6 +152,27 @@ export function PortfolioIntelPanel() {
                   </span>
                 </div>
                 <Meter value={exposure.pctOfEquity} tone={exposure.strategyId === null ? "amber" : "cyan"} />
+              </div>
+            ))}
+          </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
+        <TerminalLabel>Agent Exposure — live, open positions only</TerminalLabel>
+        {pi.agentExposure.length === 0 ? (
+          <EmptyState>No open positions — nothing to break down by agent yet.</EmptyState>
+        ) : (
+          <div className="space-y-1.5">
+            {pi.agentExposure.map((exposure) => (
+              <div key={exposure.agentId} className="text-[9px]">
+                <div className="mb-0.5 flex items-center justify-between text-cmd-textDim">
+                  <span className="text-cmd-cyan">{AGENT_PROFILES[exposure.agentId].name}</span>
+                  <span className="tabular-nums">
+                    {exposure.positionCount} position{exposure.positionCount === 1 ? "" : "s"} · {exposure.pctOfEquity.toFixed(0)}%
+                  </span>
+                </div>
+                <Meter value={exposure.pctOfEquity} tone="cyan" />
               </div>
             ))}
           </div>
