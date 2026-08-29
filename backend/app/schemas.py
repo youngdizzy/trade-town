@@ -4723,6 +4723,40 @@ class CompiledStrategyDefinition(CamelModel):
     detail: str
 
 
+StrategyComplexityBand = Literal["simple", "moderate", "complex"]
+
+
+class StrategyComplexityScore(CamelModel):
+    """CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+    Backtesting Engine," Section 13 (Simplicity/Complexity Score) —
+    "Prefer strategies with HIGH ROBUSTNESS, LOW COMPLEXITY when
+    performance is otherwise comparable." A real, structural count over
+    the strategy's own compiled rule sequence (`CompiledStrategyDefinition.
+    sequence`/`stop`/`target`) — sequence steps, real evaluable
+    `StrategyCondition`s (including every condition inside a `trigger`
+    step's `allOf` list), distinct indicators referenced, and numeric
+    parameters (indicator periods, condition thresholds, consecutive-bar
+    counts, stop/target params) — never a subjective judgment of "how
+    complicated this looks." `band` is a real, disclosed, additive
+    threshold (see app/strategy_complexity.py's own module docstring for
+    the exact constants), one independently-chosen convention among
+    several valid ones, same honesty idiom this codebase's other
+    per-module thresholds already use. Advisory only in this pass: not
+    yet wired into any promotion gate or ranking formula — see
+    ResearchExperimentRecord.complexity's own field comment."""
+
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    step_count: int = Field(alias="stepCount")
+    condition_count: int = Field(alias="conditionCount")
+    distinct_indicator_count: int = Field(alias="distinctIndicatorCount")
+    parameter_count: int = Field(alias="parameterCount")
+    complexity_score: int = Field(alias="complexityScore")
+    band: StrategyComplexityBand
+    detail: str
+    generated_at: str = Field(alias="generatedAt")
+
+
 # CEO directive "Professional Quant Trading Core," Phase B P2 item —
 # strategy-compliance-at-execution wiring. Real, checkable ONLY for a
 # `fixed_percent` stop: the paper broker never places a real stop-loss
@@ -5317,6 +5351,16 @@ class ResearchExperimentRecord(CamelModel):
     parameter_sensitivity: ParameterSensitivityResult = Field(alias="parameterSensitivity")
     cost_sensitivity: CostSensitivityResult = Field(alias="costSensitivity")
     look_ahead_audit: LookAheadAuditResult = Field(alias="lookAheadAudit")
+    # CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+    # Backtesting Engine," Section 13 — a real structural complexity
+    # count, packaged alongside the other real axes above rather than
+    # folded into `conclusion`'s pass/fail synthesis: the directive's
+    # own Section 5 is explicit that its hard gates are performance
+    # gates, and complexity is advisory context ("prefer... when
+    # performance is otherwise comparable"), not itself a promotion
+    # gate. Reusing this field's own real structural count for ranking
+    # or gating is real, tractable future work, not done in this pass.
+    complexity: StrategyComplexityScore
     # CEO directive "Professional Quant Firm Phase," Feature 39 — the
     # unified overfitting-diagnostic classification (see
     # app/overfitting_diagnostics.py), packaged alongside `conclusion`

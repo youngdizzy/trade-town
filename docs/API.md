@@ -1693,6 +1693,41 @@ Returns a `LookAheadAuditResult` (`setupsChecked`, `violations: [{
 entryIndex, entryTimestamp, direction, detail }]`, `verdict`
 (`clean`/`violations_found`/`insufficient_data`)).
 
+### `POST /api/sandbox/complexity-score`
+
+CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+Backtesting Engine," Section 13 (Simplicity/Complexity Score). Body: a
+`CompiledStrategyDefinition`. Needs no market data — a pure structural
+count over the definition's own real rule sequence
+(`app/strategy_complexity.py::compute_strategy_complexity()`). Returns
+a `StrategyComplexityScore`:
+
+```json
+{
+  "definitionId": "...",
+  "definitionVersion": 1,
+  "stepCount": 3,
+  "conditionCount": 1,
+  "distinctIndicatorCount": 2,
+  "parameterCount": 5,
+  "complexityScore": 11,
+  "band": "moderate",
+  "detail": "...",
+  "generatedAt": "..."
+}
+```
+
+`distinctIndicatorCount` deduplicates by indicator TYPE only (two
+differently-parametrized EMAs still count as one) — period variation
+is counted separately via `parameterCount`. `band`
+(`simple`/`moderate`/`complex`) uses real, disclosed threshold
+constants, one convention among several valid ones. Advisory only:
+never wired into any promotion gate, the Gatekeeper, or
+`strategy_tournament.py`'s ranking. The identical real number is also
+packaged as `ResearchExperimentRecord.complexity` by
+`POST /api/sandbox/research-experiment` below — same computation, not
+a second one.
+
 ### `GET /api/sandbox/survivorship-bias?symbol=...`
 
 Same directive, item 8. Read-only. Always returns
@@ -1725,6 +1760,12 @@ five verdicts above relabeled into a real, deterministic
 `oos_failure`/`pending_validation` classification (see
 `app/overfitting_diagnostics.py`'s own module docstring for the exact
 priority rule). Alongside `conclusion`, not a replacement for it.
+
+`ResearchExperimentRecord.complexity` (CEO directive "TradeTown —
+11/10 Strategy Factory + Ruthless Backtesting Engine," Section 13) —
+the same real `StrategyComplexityScore`
+`POST /api/sandbox/complexity-score` above returns, packaged alongside
+the other five axes. Advisory only, never wired into `conclusion`.
 
 `ResearchExperimentRecord.buyAndHoldBaseline` (CEO directive "Quant
 Research Factory / Strategy Discovery Engine," Phase 5) — one

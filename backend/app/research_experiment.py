@@ -67,6 +67,7 @@ from app.leakage_audit import audit_definition_for_look_ahead
 from app.overfitting_diagnostics import classify_overfitting_risk
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.schemas import CompiledStrategyDefinition, ResearchExperimentRecord
+from app.strategy_complexity import compute_strategy_complexity
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, run_compiled_strategy_backtest
 from app.walk_forward import run_walk_forward_validation
 from app.watchlist import SEED_SYMBOLS
@@ -135,6 +136,7 @@ def run_research_experiment(
     cost_sensitivity = run_cost_sensitivity(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
     look_ahead_audit = audit_definition_for_look_ahead(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
     buy_and_hold_baseline = compute_buy_and_hold_baseline(symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
+    complexity = compute_strategy_complexity(definition)
 
     model_validation_verdict = backtest.model_validation.verdict if backtest.model_validation is not None else None
     conclusion = _synthesize_conclusion((model_validation_verdict, walk_forward.verdict, parameter_sensitivity.verdict, cost_sensitivity.verdict, look_ahead_audit.verdict))
@@ -154,6 +156,7 @@ def run_research_experiment(
         parameterSensitivity=parameter_sensitivity,
         costSensitivity=cost_sensitivity,
         lookAheadAudit=look_ahead_audit,
+        complexity=complexity,
         overfittingDiagnosis=overfitting_diagnosis,
         conclusion=conclusion,
         buyAndHoldBaseline=buy_and_hold_baseline,

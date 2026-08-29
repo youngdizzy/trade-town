@@ -35,6 +35,7 @@ from app.schemas import (
     ResearchExperimentRecord,
     Strategy,
     StrategyCertification,
+    StrategyComplexityScore,
     StrategyDossier,
     StrategyExecutiveDashboard,
     StrategyExecutiveReview,
@@ -50,6 +51,7 @@ from app.schemas import (
 )
 from app.state import game_state
 from app.strategy_compiler import compile_strategy_text, strategy_definition_slug
+from app.strategy_complexity import compute_strategy_complexity
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL as ENGINE_DEFAULT_CANDLES_PER_SYMBOL
 from app.strategy_engine import run_compiled_strategy_backtest
 from app.strategy_lab import compute_agent_strategy_survival, compute_strategy_certification, compute_strategy_executive_dashboard, generate_strategy_dossier
@@ -410,6 +412,19 @@ async def look_ahead_audit(
     truncate-and-re-detect methodology; see app/leakage_audit.py's own
     module docstring)."""
     return audit_definition_for_look_ahead(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol)
+
+
+@router.post("/complexity-score", response_model=StrategyComplexityScore)
+async def complexity_score(definition: CompiledStrategyDefinition) -> StrategyComplexityScore:
+    """CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+    Backtesting Engine," Section 13 — a real structural complexity
+    count over the definition's own compiled rule sequence, needing no
+    market data at all (see app/strategy_complexity.py's
+    compute_strategy_complexity()). Same already-real number
+    `POST /research-experiment` below packages into its own record;
+    exposed standalone too for a caller that only wants this one axis.
+    Stateless, computed fresh every call, nothing persisted."""
+    return compute_strategy_complexity(definition)
 
 
 @router.get("/survivorship-bias", response_model=SurvivorshipBiasRead)

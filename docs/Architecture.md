@@ -14236,6 +14236,54 @@ from real seeded first/last closes, not fabricated); and a fresh
 `sandbox.spec.ts` re-run with a new assertion confirming the
 "Buy-and-hold context:" line renders in the live UI. 1/1 passed.
 
+**Follow-up — "TradeTown — 11/10 Strategy Factory + Ruthless
+Backtesting Engine," Section 13 (Simplicity/Complexity Score).** This
+30-section directive overlaps almost entirely with strategy-research
+infrastructure already documented throughout this file (the compiler,
+generic backtest engine, walk-forward, cost sensitivity, look-ahead
+audit, Monte Carlo, regime testing, Hall of Fame/Failed Archive, the
+9-stage gate, the tournament, buy-and-hold benchmarking above,
+"don't rediscover garbage" experiment-similarity search) — Section 13
+was the one genuine, confirmed gap: no structural complexity count
+existed anywhere. New `app/strategy_complexity.py::
+compute_strategy_complexity()` — a pure count over a
+`CompiledStrategyDefinition`'s own real sequence, needing no candle
+data: sequence steps, real `StrategyCondition`s (every condition
+inside a trigger's `allOf` list counted individually), distinct
+indicator TYPES referenced (deduplicated by name only — period
+variation is a separate, real `parameterCount` signal), and real
+tunable numeric parameters (periods, literal thresholds,
+`minConsecutiveBars`, stop/target params). `complexityScore` is a
+simple disclosed sum, banded `simple`/`moderate`/`complex` at real,
+disclosed threshold constants — one convention among several valid
+ones. New `StrategyComplexityScore` schema, new standalone
+`POST /api/sandbox/complexity-score`, and wired into
+`ResearchExperimentRecord.complexity` alongside the other five real
+axes `run_research_experiment()` already bundles — pure orchestration,
+no new backtest math, matching that module's own stated scope. Advisory
+only: not wired into `_synthesize_conclusion()`, the Gatekeeper, the
+sandbox stage machine, or the tournament's ranking — the directive's
+own Section 5 separates hard performance gates from Section 13's own
+"prefer... when performance is otherwise comparable" tie-breaker
+framing; wiring it into an actual tie-break rule is real future work.
+13 new tests (`test_strategy_complexity.py`) covering every real count
+independently (minimal definition, indicator-type dedup vs. parameter
+counting, `allOf` multi-condition counting, requirement/threshold
+parameters, both real stop methods, the real zero floor, band-boundary
+arithmetic). Full backend suite green, mypy/ruff clean; frontend
+tsc/lint/build clean. Live-verified: `POST /api/sandbox/complexity-score`
+against the CEO's own worked example (50-EMA trigger, 2-bearish-candle
+requirement, swing-high entry, Chandelier stop, 2R target) returned
+`stepCount: 3, conditionCount: 1, distinctIndicatorCount: 2,
+parameterCount: 5, complexityScore: 11, band: "moderate"` — identical
+to the same field inside `POST /api/sandbox/research-experiment`'s own
+response, confirming one real computation, not two. The new
+"Complexity Score" card on `StrategyCompilerView.tsx`'s STRATEGY
+COMPILER sub-tab was confirmed rendering via a temporary Playwright
+spec running the real compile → research-experiment flow end to end
+(removed after verification); the pre-existing `sandbox.spec.ts`
+regression suite re-ran clean.
+
 **Increment 6 — Phase 15, Knowledge Graph integration.** The research
 audit found `build_knowledge_graph()` had no awareness of
 `QuantResearchExperiment`/`ResearchExperimentRecord` at all — the

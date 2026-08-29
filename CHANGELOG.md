@@ -340,6 +340,56 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — 11/10 Strategy Factory + Ruthless Backtesting Engine," Section 13 (Simplicity/
+  Complexity Score) — a real structural complexity count for every compiled strategy.** This
+  30-section directive overlaps almost entirely with the strategy-research audits already run this
+  session — its own Sections 1-12/14-30 map onto real, already-built infrastructure (a compiler,
+  generic backtest engine, walk-forward validation, cost/slippage sensitivity, look-ahead audit,
+  Monte Carlo, regime testing, a real Hall of Fame/Failed Archive, a 9-stage gated pipeline, a
+  9-round tournament, buy-and-hold benchmarking, "don't rediscover garbage" experiment-similarity
+  search) — Section 13 (complexity scoring) was the one genuine, previously-confirmed gap this pass
+  closes: "Give every strategy a complexity score... Prefer strategies with HIGH ROBUSTNESS, LOW
+  COMPLEXITY when performance is otherwise comparable."
+  - New `app/strategy_complexity.py::compute_strategy_complexity()` — a pure structural count over a
+    `CompiledStrategyDefinition`'s own already-real rule sequence, needing no candle data at all: real
+    sequence steps, real evaluable `StrategyCondition`s (every condition inside a `trigger` step's
+    `allOf` list counts individually), distinct indicator TYPES referenced (deduplicated by name, not
+    period — a real, disclosed choice; period variation is counted separately via `parameterCount`),
+    and real tunable numeric parameters (indicator periods, literal thresholds, consecutive-bar
+    counts, stop/target params). `complexityScore` is a simple, disclosed additive sum, banded
+    `simple`/`moderate`/`complex` at real, disclosed threshold constants
+    (`COMPLEXITY_SIMPLE_MAX`/`COMPLEXITY_MODERATE_MAX`) — one independently-chosen convention among
+    several valid ones, the same honesty idiom this codebase's other per-module thresholds use.
+  - New `StrategyComplexityScore` schema, new standalone `POST /api/sandbox/complexity-score`
+    endpoint, and wired as a new `complexity` field into the existing `ResearchExperimentRecord`
+    bundle (`app/research_experiment.py::run_research_experiment()`) alongside the other five real
+    research axes it already packages — pure orchestration, zero new backtest math added to that
+    module, matching its own "computes NO new backtest math of its own" convention.
+  - **Deliberately advisory only, disclosed not fabricated**: this score is NOT wired into
+    `_synthesize_conclusion()`'s pass/fail rule, the Gatekeeper, the sandbox stage machine, or
+    `strategy_tournament.py`'s ranking. The directive's own Section 5 draws a clear line between hard
+    performance gates (none of which this is) and Section 13's own framing of complexity as a
+    tie-breaker ("when performance is otherwise comparable"), not a gate — wiring it into an actual
+    tie-breaking rule is real, tractable future work, not attempted in this pass.
+  - New tests: 13 in `test_strategy_complexity.py` — a minimal two-step strategy's exact real counts,
+    two differently-parametrized instances of the same indicator TYPE correctly counting as one
+    distinct indicator (while both real periods still count as parameters), two different indicator
+    types counting as two, every condition inside a real `allOf` trigger counted individually, a
+    requirement step's `minConsecutiveBars` and a condition's literal `rightValue` each counted as a
+    real parameter, a Chandelier stop's two real params vs. a swing-level stop's zero, a real empty
+    floor, and the real band-boundary arithmetic.
+  - Verified: full backend suite green, `mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+    Live-verified against the real running dev stack: `POST /api/sandbox/complexity-score` against the
+    CEO's own worked example (a 50-EMA trigger, a 2-bearish-candle requirement, a swing-high entry, a
+    Chandelier stop, a 2R target) returned `stepCount: 3, conditionCount: 1, distinctIndicatorCount: 2,
+    parameterCount: 5, complexityScore: 11, band: "moderate"` — the identical real numbers also came
+    back inside `POST /api/sandbox/research-experiment`'s own bundled `complexity` field, confirming
+    the same real computation, not a second one. The new "Complexity Score" card on the STRATEGY
+    COMPILER sub-tab was confirmed rendering (band pill, detail sentence, and the "advisory only" note)
+    via a temporary Playwright spec running the real compile → research-experiment flow end to end
+    (removed after verification); the pre-existing `sandbox.spec.ts` regression suite (which already
+    exercises this exact same real flow) re-run clean, confirming no regression.
+
 - **"TradeTown — Next Phase: Professional Quant Portfolio Intelligence + Alpha Research Engine,"
   Phase 6 (Agent Talent System) — per-agent strategy survival tracking.** A background audit against
   this directive's own scope found the overwhelming majority of its strategy-research asks already
