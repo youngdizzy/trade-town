@@ -4867,6 +4867,13 @@ export interface PositionSizingResult {
    * CrossPortfolioRiskParityRead's own doc comment. Null under the
    * same honesty convention as the other volatility-based reads above. */
   crossPortfolioRiskSizing: CrossPortfolioRiskParityRead | null;
+  /** CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-Firm
+   * Implementation" — the real correlation/concentration-cluster
+   * reduction wired in as a narrowing-only cap (see backend/app/
+   * position_sizing.py's own comment for why this deliberately never
+   * inherits Sentinel's own critical hard gates). Null only in the same
+   * degenerate zero-ceiling case every field above can also skip. */
+  marginalRiskDecision: PortfolioMarginalRiskDecision | null;
   detail: string;
 }
 

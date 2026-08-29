@@ -322,6 +322,48 @@ function SessionDetail({ session }: { session: WarRoomSession }) {
               <p className="text-[9px] text-cmd-textDim">Not enough real candle history yet for a volatility estimate.</p>
             )}
           </div>
+
+          {/* CEO directive "Portfolio Risk Engine, 11/10 Professional
+              Quant-Firm Implementation" — the real correlation/
+              concentration-cluster reduction, now actually wired into
+              this narrowing-only cap chain (not just shown as advisory
+              evidence elsewhere). Deliberately never shows a "vetoed"
+              state here caused by a Sentinel/emergency-stop violation —
+              see backend/app/portfolio_risk.py::
+              compute_correlation_concentration_cap()'s own docstring for
+              why that stays exclusively the Gatekeeper's job. */}
+          <div className="mt-2 border-t border-cmd-border/50 pt-2">
+            <div className="mb-1 flex items-center justify-between">
+              <TerminalLabel>Marginal Risk Test — real correlation/concentration cluster cap</TerminalLabel>
+              <StatusPill tone={session.positionSizing.marginalRiskDecision ? "cyan" : "neutral"}>
+                {session.positionSizing.marginalRiskDecision ? "AVAILABLE" : "UNAVAILABLE"}
+              </StatusPill>
+            </div>
+            {session.positionSizing.marginalRiskDecision ? (
+              <>
+                <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+                  <DataRow label="Requested" value={`$${session.positionSizing.marginalRiskDecision.requestedValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                  <DataRow
+                    label="Allowed"
+                    value={`$${session.positionSizing.marginalRiskDecision.allowedValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+                    valueClassName={session.positionSizing.marginalRiskDecision.allowedValue < session.positionSizing.marginalRiskDecision.requestedValue ? "text-cmd-amber" : undefined}
+                  />
+                  <DataRow label="Its Own Cluster" value={`${session.positionSizing.marginalRiskDecision.largestClusterPctAfter.toFixed(1)}%`} />
+                  <DataRow label="Correlation Impact" value={session.positionSizing.marginalRiskDecision.correlationImpact.toUpperCase()} />
+                </div>
+                {session.positionSizing.marginalRiskDecision.warnings.map((w) => (
+                  <p key={w} className="mt-1 text-[9px] text-cmd-amber">
+                    ⚠ {w}
+                  </p>
+                ))}
+                {session.positionSizing.marginalRiskDecision.decision === "data_blocked" && (
+                  <p className="mt-1 text-[9px] text-cmd-textDim">{session.positionSizing.marginalRiskDecision.vetoReasons[0]}</p>
+                )}
+              </>
+            ) : (
+              <p className="text-[9px] text-cmd-textDim">Not enough real candle history yet for a portfolio-impact read.</p>
+            )}
+          </div>
         </Glass>
       )}
 
