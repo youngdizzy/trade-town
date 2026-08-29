@@ -133,6 +133,7 @@ import type {
   TrendWeightingMethod,
   TradePipelineHealthSnapshot,
   BrierCalibrationSummary,
+  AgentBrierCalibration,
   OpportunityFeed,
   WatchlistEligibilitySummary,
   TradingSession,
@@ -322,6 +323,11 @@ export const api = {
   // CEO directive "Professional Quant Trading Core," Phase B P2 item —
   // see backend/app/prediction_tracking.py's compute_brier_calibration().
   getBrierCalibration: () => request<BrierCalibrationSummary>("/predictions/calibration/brier"),
+  // CEO directive "Professional Quant Portfolio Intelligence + Alpha
+  // Research Engine," Phase 7 — the same real Brier methodology broken
+  // out per real named agent. See backend/app/prediction_tracking.py's
+  // compute_agent_brier_calibration().
+  getAgentBrierCalibration: () => request<AgentBrierCalibration[]>("/predictions/calibration/brier/by-agent"),
   // CEO directive "Command Center + Professional Quant Trading Firm
   // Upgrade," Phase 2 — every real agent's current trading-relevant
   // state. Read-only, computed fresh per request; not WS-broadcast.

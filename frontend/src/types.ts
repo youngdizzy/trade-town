@@ -3829,6 +3829,15 @@ export interface BrierCalibrationSummary {
   updatedAt: string;
 }
 
+// CEO directive "Professional Quant Portfolio Intelligence + Alpha
+// Research Engine," Phase 7 (Agent Calibration) — the same real Brier
+// methodology above, broken out per real named agent. See
+// backend/app/prediction_tracking.py's compute_agent_brier_calibration().
+export interface AgentBrierCalibration {
+  agentId: AgentId;
+  calibration: BrierCalibrationSummary;
+}
+
 // CEO directive "Features 26-30," Feature 30 — one real
 // FailureClassification per closed, losing trade (backend/app/
 // failure_review.py's classify_failure()).
