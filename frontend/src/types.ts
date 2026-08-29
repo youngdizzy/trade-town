@@ -3211,6 +3211,22 @@ export interface AgentVoteAccuracyScore {
   evaluationState: ExecutiveEvidenceState;
 }
 
+// CEO directive "Professional Quant Portfolio Intelligence + Alpha
+// Research Engine," Phase 6 (Agent Talent System) — the same real
+// evidence shape as AgentVoteAccuracyScore above, one level up: does
+// this agent's own real Strategy tend to survive to the Strategy Hall
+// of Fame or end up in the Failed Archive. See backend/app/
+// strategy_lab.py's compute_agent_strategy_survival().
+export interface AgentStrategySurvivalScore {
+  agentId: AgentId;
+  strategiesCreated: number;
+  resolvedCount: number;
+  survivedCount: number;
+  failedCount: number;
+  survivalRatePct: number | null;
+  evaluationState: ExecutiveEvidenceState;
+}
+
 export const EXECUTIVE_DEPARTMENT_LABEL: Record<ExecutiveDepartmentRole, string> = {
   research: "Research",
   quant: "Quant",

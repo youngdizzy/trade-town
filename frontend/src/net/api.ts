@@ -3,6 +3,7 @@ import type {
   AccountType,
   AgentEnergy,
   AgentId,
+  AgentStrategySurvivalScore,
   AgentTradingStatusRead,
   AgentVoteAccuracyScore,
   AlertSeverity,
@@ -423,6 +424,10 @@ export const api = {
   // CEO directive "Professional Quant Trading Core," Phase B's per-agent
   // learning follow-up — the same accuracy read per individual agent.
   getAgentVoteAccuracy: () => request<AgentVoteAccuracyScore[]>("/executive/agent-accuracy"),
+  // CEO directive "Professional Quant Portfolio Intelligence + Alpha
+  // Research Engine," Phase 6 (Agent Talent System) — the same real
+  // evidence-floor read one level up, over real Strategy outcomes.
+  getAgentStrategySurvival: () => request<AgentStrategySurvivalScore[]>("/sandbox/agent-survival"),
   // Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine.
   // `profile` optionally previews a profile without persisting it.
   getWeightedDecision: (proposalId: string, profile?: WeightProfile) =>

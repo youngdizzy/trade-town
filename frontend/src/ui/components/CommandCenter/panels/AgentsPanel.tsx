@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_IDS } from "@/types";
-import type { AgentTradingStatus, AgentTradingStatusRead, AgentVoteAccuracyScore } from "@/types";
+import type { AgentStrategySurvivalScore, AgentTradingStatus, AgentTradingStatusRead, AgentVoteAccuracyScore } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
 import { EmptyState, Glass, Meter, StatusPill } from "../ui";
@@ -26,11 +26,17 @@ const ACCURACY_TONE: Record<AgentVoteAccuracyScore["evaluationState"], "green" |
   not_enough_evidence: "neutral",
 };
 
+// CEO directive "Professional Quant Portfolio Intelligence + Alpha
+// Research Engine," Phase 6 (Agent Talent System) — the exact same
+// evaluationState shape as ACCURACY_TONE above, reused as-is.
+const SURVIVAL_TONE = ACCURACY_TONE;
+
 /** The nine-agent roster as a real status board — only fields TradeTown's backend actually tracks per agent (see AgentState in types.ts); no fabricated activity feed. */
 export function AgentsPanel() {
   const { agents, tasks, research } = useGameStore();
   const [tradingStatus, setTradingStatus] = useState<Record<string, AgentTradingStatusRead>>({});
   const [voteAccuracy, setVoteAccuracy] = useState<Record<string, AgentVoteAccuracyScore>>({});
+  const [strategySurvival, setStrategySurvival] = useState<Record<string, AgentStrategySurvivalScore>>({});
 
   // CEO directive "Command Center + Professional Quant Trading Firm
   // Upgrade," Phase 2 — real per-agent trading-status explainability
@@ -53,6 +59,17 @@ export function AgentsPanel() {
       .catch(() => undefined);
   }, []);
 
+  // CEO directive "Professional Quant Portfolio Intelligence + Alpha
+  // Research Engine," Phase 6 (Agent Talent System) — the same real
+  // evidence read one level up, over real Strategy survival
+  // (backend/app/strategy_lab.py's compute_agent_strategy_survival()).
+  useEffect(() => {
+    api
+      .getAgentStrategySurvival()
+      .then((reads) => setStrategySurvival(Object.fromEntries(reads.map((r) => [r.agentId, r]))))
+      .catch(() => undefined);
+  }, []);
+
   if (!agents) return <EmptyState>Agent state hasn&apos;t loaded yet.</EmptyState>;
 
   return (
@@ -65,6 +82,7 @@ export function AgentsPanel() {
         const idle = state.location === "lobby" || state.location === "break-room";
         const trading = tradingStatus[id];
         const accuracy = voteAccuracy[id];
+        const survival = strategySurvival[id];
 
         return (
           <Glass key={id} className="p-3">
@@ -93,6 +111,15 @@ export function AgentsPanel() {
                   Vote Accuracy ({accuracy.correctCount}/{accuracy.decisionsTracked})
                 </span>
                 <StatusPill tone={ACCURACY_TONE[accuracy.evaluationState]}>{accuracy.accuracyPct?.toFixed(0)}%</StatusPill>
+              </div>
+            )}
+
+            {survival && survival.resolvedCount > 0 && (
+              <div className="mb-1.5 flex items-center justify-between gap-2 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                <span className="text-cmd-textDim">
+                  Strategy Survival ({survival.survivedCount}/{survival.resolvedCount})
+                </span>
+                <StatusPill tone={SURVIVAL_TONE[survival.evaluationState]}>{survival.survivalRatePct?.toFixed(0)}%</StatusPill>
               </div>
             )}
 
