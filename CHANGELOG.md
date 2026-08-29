@@ -340,6 +340,41 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"You are now entering the NEXT major TradeTown build phase," Phase 10 — session-suitability
+  sizing: the CEO's own real SESSION x REGIME evidence stops being read-only analytics.** A
+  background audit against the remaining scope of this 15-phase directive (Hard Risk Gates, Stress
+  Testing, Live Desk, Multi-Trade Visualization, Decision Audit, Trading Sessions) found the
+  overwhelming majority already real and enforced from earlier passes — the one genuinely buildable,
+  highest-leverage gap: `app/session_evidence.py` already computes real SESSION x REGIME win-rate
+  evidence over this company's own closed trades (`compute_session_regime_evidence()`, backed by
+  `DecisionVaultEntry`'s own real session/regime stamps at trade close), and
+  `app/market_intelligence.py` already stamps the real current session every tick — but nothing fed
+  that evidence forward into a live sizing decision. Right now the company paid zero real cost for
+  trading a session x regime combination its own history says is unfavorable.
+  - New `app/position_sizing.py::_session_suitability_sizing()`, mirroring
+    `_regime_suitability_sizing()`'s own design exactly (see the Marginal Risk Test entry above) on a
+    second, independently real evidence axis: looks up the real (session, regime) bucket for the
+    current tick, and — only when it has at least `MIN_SESSION_REGIME_SAMPLE` real closed trades on
+    record — scales the candidate size down proportionally below a 50% real historical win-rate floor.
+    Never `None` (unlike the regime cap, this reads only already-resolved in-memory arguments, no
+    candle fetch that can fail) — `available=False` is itself the honest "insufficient evidence" read.
+  - New `SessionSuitabilityRead` schema and `PositionSizingResult.sessionSuitabilitySizing` field,
+    with the same real default-for-backward-compat convention every sibling `*SizingRead` field
+    already follows.
+  - `build_position_sizing()` gained three new required parameters (`session`, `regime`,
+    `decision_vault`) — `app/nexus.py`'s one real call site now passes
+    `market_intelligence.session.current`, `market_intelligence.regime` (both already real, freshly
+    computed every tick), and the real `decision_vault` list already in scope there.
+  - New "Session Suitability" section in `WarRoomPanel.tsx`, mirroring the "Regime Suitability"
+    section's own `available`-flag rendering pattern. Live-verified against the real running dev
+    stack, including the honest backward-compat default on a pre-existing persisted session.
+  - New `TestSessionSuitabilitySizing` and `TestBuildPositionSizingSessionSuitabilityCap` (8 tests) in
+    `test_position_sizing.py`, including a real weak-evidence case (1 real win, 4 real losses) that
+    exactly matches the disclosed 50%-floor scaling formula.
+  - Verified: full backend suite (3101 tests) green, `mypy`/`ruff` clean (a stale `.mypy_cache` briefly
+    masked the missing-argument error at the `nexus.py` call site — cleared and re-verified). Frontend
+    `tsc`/lint/build clean.
+
 - **"Portfolio Risk Engine, 11/10 Professional Quant-Firm Implementation," Phase 2 — regime-aware
   capital allocation: a strategy no longer receives capital simply because it passed a backtest.**
   A repo audit against this directive's own Phase 2 ("determine which strategies are historically

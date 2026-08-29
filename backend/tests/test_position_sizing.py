@@ -23,14 +23,18 @@ from app.position_sizing import (
     _cross_portfolio_inverse_vol_sizing,
     _inverse_vol_sizing,
     _regime_suitability_sizing,
+    _session_suitability_sizing,
     _tier_for_sizing_score,
     _volatility_sizing,
     build_position_sizing,
 )
 from app.risk_engine import SIM_MINUTES_PER_DAY, portfolio_equity
+from app.session_evidence import MIN_SESSION_REGIME_SAMPLE
 from app.schemas import (
     DecisionScoreBreakdown,
+    DecisionVaultEntry,
     ExpectedValueAnalysis,
+    LiquidityRead,
     PaperPortfolio,
     PaperPosition,
     PaperTrade,
@@ -290,6 +294,9 @@ class TestBuildPositionSizing:
             risk_warnings=[],
             sim_day=1,
             provider=_FakeProvider(),
+            session="closed",
+            regime="transitional",
+            decision_vault=[],
         )
         defaults.update(overrides)
         return build_position_sizing(**defaults)
@@ -457,6 +464,9 @@ class TestBuildPositionSizingInverseVolCap:
             risk_warnings=[],
             sim_day=1,
             provider=_FakeProvider(),
+            session="closed",
+            regime="transitional",
+            decision_vault=[],
         )
         defaults.update(overrides)
         return build_position_sizing(**defaults)
@@ -593,6 +603,9 @@ class TestBuildPositionSizingVolatility:
             risk_warnings=[],
             sim_day=1,
             provider=_FakeProvider(),
+            session="closed",
+            regime="transitional",
+            decision_vault=[],
         )
         defaults.update(overrides)
         return build_position_sizing(**defaults)
@@ -811,6 +824,9 @@ class TestBuildPositionSizingCrossPortfolioCap:
             risk_warnings=[],
             sim_day=1,
             provider=_FakeProvider(),
+            session="closed",
+            regime="transitional",
+            decision_vault=[],
         )
         defaults.update(overrides)
         return build_position_sizing(**defaults)
@@ -894,6 +910,9 @@ class TestBuildPositionSizingMarginalRiskCap:
             risk_warnings=[],
             sim_day=1,
             provider=_FakeProvider(),
+            session="closed",
+            regime="transitional",
+            decision_vault=[],
         )
         defaults.update(overrides)
         return build_position_sizing(**defaults)
@@ -997,6 +1016,9 @@ class TestMarginalRiskCapNeverInheritsSentinelVeto:
             risk_warnings=[],
             sim_day=1,
             provider=_FakeProvider(),
+            session="closed",
+            regime="transitional",
+            decision_vault=[],
         )
         defaults.update(overrides)
         return build_position_sizing(**defaults)
@@ -1110,6 +1132,9 @@ class TestBuildPositionSizingRegimeSuitabilityCap:
             risk_warnings=[],
             sim_day=1,
             provider=_FakeProvider(),
+            session="closed",
+            regime="transitional",
+            decision_vault=[],
         )
         defaults.update(overrides)
         return build_position_sizing(**defaults)
@@ -1139,3 +1164,151 @@ class TestBuildPositionSizingRegimeSuitabilityCap:
         assert result.reduced_from_ceiling is True
         assert "regime" in result.detail.lower()
         assert result.marginal_risk_decision.decision != "vetoed"
+
+
+def _vault_entry(*, entry_id: str, session: str = "new_york", market_regime: str = "sideways_range", pnl_pct: float = 1.0) -> DecisionVaultEntry:
+    """Minimal real DecisionVaultEntry fixture — mirrors
+    tests/test_session_evidence.py's own `_vault_entry()` builder (same
+    required fields, same honest test-double conventions), duplicated
+    here rather than imported since it's a private test helper local to
+    that file."""
+    return DecisionVaultEntry(
+        id=entry_id,
+        tradeId=f"trade-{entry_id}",
+        decisionId=f"decision-{entry_id}",
+        symbol="NEXA",
+        simDay=1,
+        session=session,  # type: ignore[arg-type]
+        strategyId=None,
+        marketRegime=market_regime,  # type: ignore[arg-type]
+        marketRegimeLabel="test regime",
+        liquidityContext=LiquidityRead(symbol="NEXA", zones=[], sweepDetected=False, sweepDirection="none", liquidityScore=50.0, detail="test"),
+        evidenceScore=70.0,
+        confidenceScore=70.0,
+        confidenceTier="strong",  # type: ignore[arg-type]
+        capitalAllocationGrade="B",  # type: ignore[arg-type]
+        decisionGrade="B",  # type: ignore[arg-type]
+        decisionGradeScore=80.0,
+        disciplineTier="sound",  # type: ignore[arg-type]
+        disciplineScore=75.0,
+        patienceGrade="B",  # type: ignore[arg-type]
+        positionSize=10.0,
+        entryPrice=100.0,
+        exitPrice=100.0 + pnl_pct,
+        pnl=pnl_pct * 10.0,
+        pnlPct=pnl_pct,
+        holdDurationMinutes=60,
+        rMultiple=None,
+        caseStudyId=None,
+        caseStudyCategory=None,
+        executiveNotes=None,
+        lessonsLearned="test lesson",
+        companyDnaChange=None,
+        ceoOverride=False,
+        createdAt="2026-01-01T00:00:00+00:00",
+    )
+
+
+class TestSessionSuitabilitySizing:
+    """CEO directive "You are now entering the NEXT major TradeTown
+    build phase," Phase 10 — promotes app/session_evidence.py's own
+    real, previously read-only SESSION x REGIME win-rate evidence into a
+    real, narrowing-only cap. See _session_suitability_sizing()'s own
+    docstring."""
+
+    def test_unavailable_with_empty_decision_vault(self) -> None:
+        read = _session_suitability_sizing("london", "sideways_range", [], 10.0)
+        assert read.available is False
+        assert read.session_cap_quantity is None
+        assert "Insufficient" in read.detail
+
+    def test_unavailable_below_the_real_minimum_sample(self) -> None:
+        entries = [_vault_entry(entry_id=f"e{i}", session="london", market_regime="sideways_range", pnl_pct=1.0) for i in range(MIN_SESSION_REGIME_SAMPLE - 1)]
+        read = _session_suitability_sizing("london", "sideways_range", entries, 10.0)
+        assert read.available is False
+        assert read.sample_size == MIN_SESSION_REGIME_SAMPLE - 1
+
+    def test_a_different_session_or_regime_pairing_is_not_matched(self) -> None:
+        entries = [_vault_entry(entry_id=f"e{i}", session="london", market_regime="sideways_range", pnl_pct=1.0) for i in range(MIN_SESSION_REGIME_SAMPLE)]
+        read = _session_suitability_sizing("asian", "sideways_range", entries, 10.0)
+        assert read.available is False
+        assert read.sample_size == 0
+
+    def test_favorable_real_evidence_does_not_reduce_below_the_ceiling(self) -> None:
+        # 100% real historical win rate for this exact (session, regime)
+        # pairing — at or above the 50% real floor, no reduction.
+        entries = [_vault_entry(entry_id=f"e{i}", session="london", market_regime="sideways_range", pnl_pct=1.0) for i in range(MIN_SESSION_REGIME_SAMPLE)]
+        read = _session_suitability_sizing("london", "sideways_range", entries, 10.0)
+        assert read.available is True
+        assert read.win_rate_pct == 100.0
+        assert read.suitability_scale == 1.0
+        assert read.session_cap_quantity == 10.0
+
+    def test_weak_real_evidence_reduces_the_cap(self) -> None:
+        # 1 real win, 4 real losses — a real 20% historical win rate,
+        # well under the 50% real floor.
+        entries = [_vault_entry(entry_id="win", session="asian", market_regime="high_volatility", pnl_pct=1.0)] + [
+            _vault_entry(entry_id=f"loss{i}", session="asian", market_regime="high_volatility", pnl_pct=-1.0) for i in range(4)
+        ]
+        read = _session_suitability_sizing("asian", "high_volatility", entries, 10.0)
+        assert read.available is True
+        assert read.win_rate_pct == 20.0
+        assert read.suitability_scale == pytest.approx(0.4)
+        assert read.session_cap_quantity == pytest.approx(4.0)
+
+
+class TestBuildPositionSizingSessionSuitabilityCap:
+    """CEO directive "You are now entering the NEXT major TradeTown
+    build phase," Phase 10 — the session-suitability cap wired into
+    build_position_sizing()'s own real min(...) cap chain, isolated with
+    this module's own established wide_open + maxed decision_score
+    convention (see TestBuildPositionSizingVolatility's own _build)."""
+
+    def _build(self, **overrides):
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+            maxPositionPct=100.0,
+            maxSectorConcentrationPct=100.0,
+        )
+        defaults = dict(
+            proposal=_Proposal(),
+            ceiling_quantity=10.0,
+            expected_value=_expected_value(),
+            decision_score=_decision_score(95.0, passed=True),
+            portfolio=_portfolio(),
+            portfolio_heat=_heat(),
+            risk_limits=wide_open,
+            risk_warnings=[],
+            sim_day=1,
+            provider=_FakeProvider(),
+            session="closed",
+            regime="transitional",
+            decision_vault=[],
+        )
+        defaults.update(overrides)
+        return build_position_sizing(**defaults)
+
+    def test_default_empty_vault_never_narrows(self) -> None:
+        result = self._build()
+        assert result.session_suitability_sizing.available is False
+        assert result.final_quantity == 10.0
+
+    def test_weak_session_evidence_narrows_final_quantity(self) -> None:
+        entries = [_vault_entry(entry_id="win", session="asian", market_regime="high_volatility", pnl_pct=1.0)] + [
+            _vault_entry(entry_id=f"loss{i}", session="asian", market_regime="high_volatility", pnl_pct=-1.0) for i in range(4)
+        ]
+        result = self._build(ceiling_quantity=10.0, session="asian", regime="high_volatility", decision_vault=entries)
+        assert result.session_suitability_sizing.available is True
+        assert result.session_suitability_sizing.suitability_scale == pytest.approx(0.4)
+        assert result.reduced_from_ceiling is True
+        assert result.final_quantity == round(10.0 * 0.4, 4)
+
+    def test_binding_constraint_names_the_session_cap_when_it_is_tightest(self) -> None:
+        entries = [_vault_entry(entry_id="win", session="asian", market_regime="high_volatility", pnl_pct=1.0)] + [
+            _vault_entry(entry_id=f"loss{i}", session="asian", market_regime="high_volatility", pnl_pct=-1.0) for i in range(4)
+        ]
+        result = self._build(ceiling_quantity=10.0, session="asian", regime="high_volatility", decision_vault=entries)
+        assert result.reduced_from_ceiling is True
+        assert "session" in result.detail.lower()

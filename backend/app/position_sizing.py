@@ -70,7 +70,9 @@ from app.risk_engine import SIM_MINUTES_PER_DAY, portfolio_equity
 from app.schemas import (
     CrossPortfolioRiskParityRead,
     DecisionScoreBreakdown,
+    DecisionVaultEntry,
     ExpectedValueAnalysis,
+    MarketIntelligenceRegime,
     PaperPortfolio,
     PositionSizingResult,
     PositionTier,
@@ -78,10 +80,13 @@ from app.schemas import (
     RegimeSuitabilityRead,
     RiskLimits,
     RiskWarning,
+    SessionSuitabilityRead,
     TradeProposal,
+    TradingSession,
     VolatilitySizingRead,
     VolatilityScaledExposureResearch,
 )
+from app.session_evidence import MIN_SESSION_REGIME_SAMPLE, compute_session_regime_evidence, lookup_session_regime_evidence
 from app.technical_indicators import atr, ema_series
 from app.trend_engine import compute_trend_regime_breakdown, research_volatility_scaled_exposure
 
@@ -129,6 +134,18 @@ _MIN_BARS_FOR_REGIME_EVIDENCE = 5
 # narrows, never rewards a strong regime fit with MORE than the
 # ceiling already allows).
 _REGIME_SUITABILITY_HIT_RATE_FLOOR_PCT = 50.0
+
+# CEO directive "You are now entering the NEXT major TradeTown build
+# phase," Phase 10 — the same real, disclosed 50%-floor narrowing
+# formula as _REGIME_SUITABILITY_HIT_RATE_FLOOR_PCT above, applied to
+# app/session_evidence.py's own independently-real SESSION x REGIME win
+# rate rather than the regime-only forward-return hit rate. Kept as its
+# own separate constant (not shared with the one above) since it scales
+# a different, independently-computed real evidence axis — deliberately
+# NOT the same number as session_evidence.py's own 60%/40% favorable/
+# unfavorable qualitative labels, which classify a bucket for human
+# reporting, not for a capital-narrowing formula.
+_SESSION_SUITABILITY_HIT_RATE_FLOOR_PCT = 50.0
 
 TIER_LABEL: dict[PositionTier, str] = {
     "exploratory": "Exploratory",
@@ -448,6 +465,63 @@ def _regime_suitability_sizing(proposal: TradeProposal, provider: MarketDataProv
     )
 
 
+def _session_suitability_sizing(
+    session: TradingSession,
+    regime: MarketIntelligenceRegime,
+    decision_vault: list[DecisionVaultEntry],
+    candidate_quantity: float,
+) -> SessionSuitabilityRead:
+    """Promotes app/session_evidence.py's own real, previously read-only
+    SESSION x REGIME win-rate evidence (computed over this company's own
+    real closed trades — app/decision_vault.py's DecisionVaultEntry) into
+    a real, narrowing-only cap — CEO directive "You are now entering the
+    NEXT major TradeTown build phase," Phase 10's own explicit warning
+    against assuming "a session automatically creates an edge" without
+    it being "researched/backtested." A repo audit found the evidence
+    already real and already displayed, but never fed forward into a
+    live sizing decision — this closes exactly that gap, nothing more.
+
+    Never `None`: unlike _regime_suitability_sizing() above (which can
+    fail to even fetch candle history), this reads only already-resolved
+    in-memory arguments, so it always returns a real, honest read —
+    `available=False` is that honest read whenever this exact
+    (session, regime) pairing has fewer than MIN_SESSION_REGIME_SAMPLE
+    real closed trades on record, never a fabricated conclusion from an
+    empty or thin sample."""
+    summary = compute_session_regime_evidence(decision_vault)
+    bucket = lookup_session_regime_evidence(summary, session, regime)
+    if bucket is None or bucket.sample_size < MIN_SESSION_REGIME_SAMPLE or bucket.win_rate_pct is None:
+        return SessionSuitabilityRead(
+            available=False,
+            session=session,
+            regime=regime,
+            sampleSize=bucket.sample_size if bucket else 0,
+            evidenceState=bucket.evidence_state if bucket else "not_enough_evidence",
+            detail=(
+                f"Insufficient real closed-trade history for the '{session}' session under the '{regime}' regime "
+                f"specifically ({bucket.sample_size if bucket else 0} real closed trade(s) on record, need "
+                f"{MIN_SESSION_REGIME_SAMPLE}+) — no real session-suitability reduction applied."
+            ),
+        )
+    scale = 1.0 if bucket.win_rate_pct >= _SESSION_SUITABILITY_HIT_RATE_FLOOR_PCT else bucket.win_rate_pct / _SESSION_SUITABILITY_HIT_RATE_FLOOR_PCT
+    return SessionSuitabilityRead(
+        available=True,
+        session=session,
+        regime=regime,
+        sampleSize=bucket.sample_size,
+        winRatePct=bucket.win_rate_pct,
+        avgPnlPct=bucket.avg_pnl_pct,
+        evidenceState=bucket.evidence_state,
+        suitabilityScale=round(scale, 4),
+        sessionCapQuantity=round(candidate_quantity * scale, 6),
+        detail=(
+            f"{bucket.sample_size} real closed trade(s) in the '{session}' session under the '{regime}' regime won "
+            f"{bucket.win_rate_pct:.1f}% of the time (avg P&L {bucket.avg_pnl_pct:+.2f}%, evidence state {bucket.evidence_state.upper()})."
+            + (f" Scaled to {scale * 100:.0f}% of the pre-session candidate size." if scale < 1.0 else " At or above the 50% real floor — no reduction.")
+        ),
+    )
+
+
 def build_position_sizing(
     proposal: TradeProposal,
     *,
@@ -460,6 +534,9 @@ def build_position_sizing(
     risk_warnings: list[RiskWarning],
     sim_day: int,
     provider: MarketDataProvider,
+    session: TradingSession,
+    regime: MarketIntelligenceRegime,
+    decision_vault: list[DecisionVaultEntry],
 ) -> PositionSizingResult:
     """The engine's one real entry point — evidence-and-confidence-
     weighted sizing that only ever narrows `ceiling_quantity`
@@ -473,7 +550,10 @@ def build_position_sizing(
     order to force a same-tick recompute. `provider` (CEO directive
     "Portfolio Construction, Capital Allocation & Execution Realism,"
     Phase 3) feeds the real ATR-based volatility cap — see
-    _volatility_sizing()'s own docstring."""
+    _volatility_sizing()'s own docstring. `session`/`regime`/
+    `decision_vault` (CEO directive "You are now entering the NEXT major
+    TradeTown build phase," Phase 10) feed the real session-suitability
+    cap — see _session_suitability_sizing()'s own docstring."""
     equity = portfolio_equity(portfolio)
     price = proposal.price
     volatility_sizing = _volatility_sizing(proposal, provider, equity, risk_limits)
@@ -597,6 +677,19 @@ def build_position_sizing(
         else candidate_quantity
     )
 
+    # CEO directive "You are now entering the NEXT major TradeTown build
+    # phase," Phase 10 — the real session-suitability cap. See
+    # _session_suitability_sizing()'s own docstring for the full
+    # provenance. Only ever narrows (never below `available=True` real
+    # evidence, and never a fabricated cap when this exact session/
+    # regime pairing has too few real closed trades on record).
+    session_suitability_sizing = _session_suitability_sizing(session, regime, decision_vault, candidate_quantity)
+    session_suitability_cap_quantity = (
+        session_suitability_sizing.session_cap_quantity
+        if session_suitability_sizing.available and session_suitability_sizing.session_cap_quantity is not None
+        else candidate_quantity
+    )
+
     final_quantity = max(
         0.0,
         min(
@@ -609,6 +702,7 @@ def build_position_sizing(
             cross_portfolio_cap_quantity,
             marginal_risk_cap_quantity,
             regime_suitability_cap_quantity,
+            session_suitability_cap_quantity,
         ),
     )
     final_quantity = round(final_quantity, 4)
@@ -620,6 +714,18 @@ def build_position_sizing(
     )
     if final_quantity < candidate_quantity - 1e-9:
         if (
+            session_suitability_cap_quantity <= weekly_cap_quantity
+            and session_suitability_cap_quantity <= heat_cap_quantity
+            and session_suitability_cap_quantity <= cash_cap_quantity
+            and session_suitability_cap_quantity <= volatility_cap_quantity
+            and session_suitability_cap_quantity <= inverse_vol_cap_quantity
+            and session_suitability_cap_quantity <= cross_portfolio_cap_quantity
+            and session_suitability_cap_quantity <= marginal_risk_cap_quantity
+            and session_suitability_cap_quantity <= regime_suitability_cap_quantity
+            and session_suitability_cap_quantity < candidate_quantity - 1e-9
+        ):
+            binding_constraint = session_suitability_sizing.detail
+        elif (
             regime_suitability_cap_quantity <= weekly_cap_quantity
             and regime_suitability_cap_quantity <= heat_cap_quantity
             and regime_suitability_cap_quantity <= cash_cap_quantity
@@ -692,6 +798,7 @@ def build_position_sizing(
         crossPortfolioRiskSizing=cross_portfolio_risk_sizing,
         marginalRiskDecision=marginal_risk_decision,
         regimeSuitabilitySizing=regime_suitability_sizing or RegimeSuitabilityRead(),
+        sessionSuitabilitySizing=session_suitability_sizing,
         weeklyDeploymentPct=round(weekly_deployed_before_pct + capital_deployed_pct, 2),
         weeklyDeploymentCapPct=risk_limits.max_weekly_deployment_pct,
         cashReserveOk=cash_reserve_ok,

@@ -7852,6 +7852,33 @@ class RegimeSuitabilityRead(CamelModel):
     detail: str = "Not computed — this position sizing result predates real regime-suitability sizing."
 
 
+# CEO directive "You are now entering the NEXT major TradeTown build
+# phase," Phase 10 — closes the gap a repo audit found: app/
+# session_evidence.py already computes real SESSION x REGIME evidence
+# (win rate, sample size, favorable/unfavorable/mixed/not_enough_
+# evidence) over this company's own closed trades, and
+# app/market_intelligence.py already stamps the real current session
+# every tick — but nothing fed that evidence forward into a live
+# sizing decision; it was read-only analytics. Mirrors
+# RegimeSuitabilityRead's own real, narrowing-only design exactly (see
+# that class's own docstring) applied to a second, independently real
+# evidence axis. `available=False` whenever this exact (session,
+# regime) pairing has fewer than app/session_evidence.py's own real
+# MIN_SESSION_REGIME_SAMPLE observations — an honest "insufficient
+# evidence" state, never a fabricated conclusion.
+class SessionSuitabilityRead(CamelModel):
+    available: bool = False
+    session: str = Field(default="", alias="session")
+    regime: str = Field(default="", alias="regime")
+    sample_size: int = Field(default=0, alias="sampleSize")
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    avg_pnl_pct: float | None = Field(default=None, alias="avgPnlPct")
+    evidence_state: str = Field(default="not_enough_evidence", alias="evidenceState")
+    suitability_scale: float = Field(default=1.0, alias="suitabilityScale")
+    session_cap_quantity: float | None = Field(default=None, alias="sessionCapQuantity")
+    detail: str = "Not computed — this position sizing result predates real session-suitability sizing."
+
+
 # CEO directive "Portfolio Construction, Capital Allocation & Execution
 # Realism," Phase 3 — "POSITION SIZE ~ RISK BUDGET / DISTANCE TO STOP."
 # `available=False` (never a fabricated stop distance) when this symbol
@@ -7948,6 +7975,11 @@ class PositionSizingResult(CamelModel):
     # save to still validate on load (see VolatilitySizingRead's own
     # docstring for the fuller reasoning).
     regime_suitability_sizing: RegimeSuitabilityRead = Field(default_factory=RegimeSuitabilityRead, alias="regimeSuitabilitySizing")
+    # CEO directive "You are now entering the NEXT major TradeTown build
+    # phase," Phase 10 — see SessionSuitabilityRead's own docstring.
+    # Same non-optional-with-`available`-flag, backward-compat-default
+    # convention as regime_suitability_sizing above.
+    session_suitability_sizing: SessionSuitabilityRead = Field(default_factory=SessionSuitabilityRead, alias="sessionSuitabilitySizing")
     detail: str
 
 

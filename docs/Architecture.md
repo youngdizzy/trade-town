@@ -16842,6 +16842,60 @@ trend-following signals) and `TestBuildPositionSizingRegimeSuitabilityCap`
 Full backend suite green (3093 tests), `mypy`/`ruff` clean. Frontend
 `tsc`/lint/build clean.
 
+### Follow-up: "You are now entering the NEXT major TradeTown build phase," Phase 10 — session-suitability sizing
+
+A background audit against the directive's remaining scope (Phase 3
+Hard Risk Gates, Phase 4 Stress Testing, Phase 7 Live Desk, Phase 8
+Multi-Trade Visualization, Phase 9 Decision Audit, Phase 10 Trading
+Sessions) found the overwhelming majority already real and enforced
+from earlier passes — see each phase's own real implementation
+elsewhere in this file (Sentinel/Guardian gate waterfall,
+`black_swan.py`/`portfolio_monte_carlo.py`, `LiveDeskPanel.tsx`,
+`ActiveTradesPanel.tsx`, `decision_vault.py`/`DecisionDetail.tsx`,
+`compute_session()`). The one genuinely buildable, highest-leverage gap
+found: `app/session_evidence.py` already computes real SESSION x REGIME
+win-rate evidence over this company's own real closed trades
+(`compute_session_regime_evidence()`, backed by `DecisionVaultEntry`'s
+own real session/regime stamps at trade close), and
+`app/market_intelligence.py` already stamps the real current session
+every tick — but nothing fed that evidence forward into a live sizing
+decision; it was read-only analytics, exactly the kind of unenforced
+edge Phase 10 warns against assuming exists.
+
+New `app/position_sizing.py::_session_suitability_sizing()`, mirroring
+`_regime_suitability_sizing()`'s own design exactly on a second,
+independently real evidence axis: looks up the real (session, regime)
+bucket for the current tick, and — only when it has at least
+`MIN_SESSION_REGIME_SAMPLE` real closed trades on record — scales the
+candidate size down proportionally below a 50% real historical win-rate
+floor. Never `None` (unlike the regime cap, this reads only
+already-resolved in-memory arguments, no candle fetch that can fail) —
+`available=False` is itself the honest "insufficient evidence" read.
+
+New `SessionSuitabilityRead` schema and
+`PositionSizingResult.sessionSuitabilitySizing` field, same real
+default-for-backward-compat convention every sibling `*SizingRead`
+field already follows. `build_position_sizing()` gained three new
+required parameters (`session`, `regime`, `decision_vault`) —
+`app/nexus.py`'s one real call site now passes
+`market_intelligence.session.current`, `market_intelligence.regime`
+(both already real, freshly computed every tick), and the real
+`decision_vault` list already in scope there.
+
+New "Session Suitability" section in `WarRoomPanel.tsx`, mirroring the
+"Regime Suitability" section's own rendering pattern. Live-verified
+against the real running dev stack, including the honest backward-
+compat default on a pre-existing persisted session.
+
+New `TestSessionSuitabilitySizing` and
+`TestBuildPositionSizingSessionSuitabilityCap` (8 tests) in
+`test_position_sizing.py`, including a real weak-evidence case (1 real
+win, 4 real losses) that exactly matches the disclosed 50%-floor
+scaling formula. Full backend suite green (3101 tests), `mypy`/`ruff`
+clean (a stale `.mypy_cache` briefly masked the missing-argument error
+at the new `nexus.py` call site — cleared and re-verified). Frontend
+`tsc`/lint/build clean.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
