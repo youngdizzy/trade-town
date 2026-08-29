@@ -4839,6 +4839,30 @@ export interface CrossPortfolioRiskParityRead {
   detail: string;
 }
 
+/** CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-Firm
+ * Implementation," Phase 2 — promotes backend/app/trend_engine.py's own
+ * real, previously-unconsumed regime-conditional hit-rate evidence
+ * (compute_trend_regime_breakdown()) into a real, narrowing-only cap:
+ * "a strategy should not receive capital simply because it passed a
+ * backtest... determine which strategies are historically appropriate
+ * for the CURRENT regime." `available: false` (never a fabricated
+ * conclusion) when there isn't yet enough real historical evidence for
+ * the CURRENT regime specifically. `suitabilityScale` is 1.0 (no
+ * reduction) at or above a real 50% historical hit rate in this regime,
+ * flooring toward (never below) 0.0 as that real hit rate approaches
+ * 0% — this cap only ever narrows, it never rewards a strong regime fit
+ * with MORE than the ceiling already allows. */
+export interface RegimeSuitabilityRead {
+  available: boolean;
+  currentRegime: string;
+  barsObserved: number;
+  hitRatePct: number | null;
+  meanForwardReturnPct: number | null;
+  suitabilityScale: number;
+  regimeCapQuantity: number | null;
+  detail: string;
+}
+
 export interface PositionSizingResult {
   tier: PositionTier;
   tierLabel: string;
@@ -4874,6 +4898,13 @@ export interface PositionSizingResult {
    * inherits Sentinel's own critical hard gates). Null only in the same
    * degenerate zero-ceiling case every field above can also skip. */
   marginalRiskDecision: PortfolioMarginalRiskDecision | null;
+  /** CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-Firm
+   * Implementation," Phase 2 — see RegimeSuitabilityRead's own doc
+   * comment. Non-optional with its own `available` flag (matching
+   * volatilitySizing above), not `| null`, since this result is
+   * persisted inside a war_room_sessions save — every field needs a
+   * real default for an old save to still validate on load. */
+  regimeSuitabilitySizing: RegimeSuitabilityRead;
   detail: string;
 }
 
