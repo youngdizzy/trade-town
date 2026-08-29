@@ -66,6 +66,7 @@ from app.ema_pullback_research import CHANDELIER_ATR_MULTIPLIER, CHANDELIER_ATR_
 from app.market_data import MarketDataProvider
 from app.risk_engine import SIM_MINUTES_PER_DAY, portfolio_equity
 from app.schemas import (
+    CrossPortfolioRiskParityRead,
     DecisionScoreBreakdown,
     ExpectedValueAnalysis,
     PaperPortfolio,
@@ -265,6 +266,99 @@ def _inverse_vol_sizing(proposal: TradeProposal, provider: MarketDataProvider, e
     )
 
 
+def _cross_portfolio_inverse_vol_sizing(
+    proposal: TradeProposal,
+    provider: MarketDataProvider,
+    portfolio: PaperPortfolio,
+    equity: float,
+    risk_limits: RiskLimits,
+    decision_score: DecisionScoreBreakdown,
+) -> CrossPortfolioRiskParityRead | None:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine" follow-up — closes the honesty gap `_inverse_vol_sizing()`
+    above explicitly discloses: THIS candidate's own real volatility is
+    weighed against every OTHER real symbol currently held, a naive
+    (uncorrelated) inverse-volatility risk-parity read, not a
+    single-position-only one.
+
+    For each real symbol currently held (deduped — multiple lots in the
+    same symbol are one real volatility read, not counted twice) plus
+    this candidate, computes `1 / volatility_pct` via the same real
+    `research_volatility_scaled_exposure()` this module already uses
+    for `_inverse_vol_sizing()` (an already-open position is read at
+    signal_strength=1.0 — it is a live, fully-committed bet, not a
+    candidate being sized). Normalizing those weights gives this
+    candidate's own real fair SHARE of a total risk budget
+    (`risk_limits.risk_per_trade_pct * position_count`, a real, disclosed
+    choice picked specifically so this fair share is IDENTICAL to
+    `risk_per_trade_pct` — today's existing single-position risk budget —
+    whenever this candidate is the only real position). That fair-share
+    risk budget is then run back through `research_volatility_scaled_
+    exposure()` itself as its own real `target_risk_pct` argument to
+    produce `final_exposure` — reusing its exact real formula AND real
+    hard exposure ceiling verbatim, never a hand-rolled second division,
+    so at `position_count == 1` this is the exact same function call
+    `_inverse_vol_sizing()` itself makes.
+
+    STILL NOT full covariance-based Equal Risk Contribution — real
+    correlation between held symbols is not incorporated (see
+    CrossPortfolioRiskParityRead's own docstring for the exact,
+    disclosed remaining gap). `None` (never a fabricated cap) under the
+    same minimum-real-candle-history convention every volatility-based
+    read in this module already follows."""
+    if equity <= 0 or proposal.price <= 0:
+        return None
+    try:
+        candidate_candles = provider.get_candles(proposal.symbol, VOLATILITY_TIMEFRAME, VOLATILITY_CANDLE_COUNT)
+    except ValueError:
+        return None
+    if len(candidate_candles) < 2:
+        return None
+    candidate_signal = max(0.0, min(1.0, decision_score.overall / 100.0))
+    candidate_reading = research_volatility_scaled_exposure(candidate_candles, proposal.symbol, signal_strength=1.0, target_risk_pct=risk_limits.risk_per_trade_pct)
+    inverse_vol_weights: dict[str, float] = {proposal.symbol: 1.0 / candidate_reading.volatility_estimate_pct}
+    other_symbols = sorted({p.symbol for p in portfolio.positions if p.symbol != proposal.symbol})
+    for symbol in other_symbols:
+        try:
+            held_candles = provider.get_candles(symbol, VOLATILITY_TIMEFRAME, VOLATILITY_CANDLE_COUNT)
+        except ValueError:
+            continue
+        if len(held_candles) < 2:
+            continue
+        held_reading = research_volatility_scaled_exposure(held_candles, symbol, signal_strength=1.0, target_risk_pct=risk_limits.risk_per_trade_pct)
+        inverse_vol_weights[symbol] = 1.0 / held_reading.volatility_estimate_pct
+
+    position_count = len(inverse_vol_weights)
+    total_weight = sum(inverse_vol_weights.values())
+    candidate_weight = inverse_vol_weights[proposal.symbol]
+    candidate_weight_pct = (candidate_weight / total_weight * 100) if total_weight > 0 else 100.0
+    total_risk_budget_pct = risk_limits.risk_per_trade_pct * position_count
+    fair_share_risk_pct = candidate_weight_pct / 100 * total_risk_budget_pct
+    # Reuses the exact real formula AND real hard exposure ceiling
+    # research_volatility_scaled_exposure() already enforces — never a
+    # hand-rolled second division that would silently skip that cap.
+    final_exposure = research_volatility_scaled_exposure(candidate_candles, proposal.symbol, signal_strength=candidate_signal, target_risk_pct=fair_share_risk_pct)
+
+    other_note = f" against {position_count - 1} other real currently-held symbol(s)" if position_count > 1 else " — the only real position, so this collapses to today's single-position formula"
+    detail = (
+        f"Naive cross-portfolio inverse-vol risk parity{other_note}: this candidate's real volatility "
+        f"({candidate_reading.volatility_estimate_pct:.3f}%) earns it {candidate_weight_pct:.1f}% of a "
+        f"{total_risk_budget_pct:.2f}% total risk budget ({risk_limits.risk_per_trade_pct:.2f}% x {position_count} real symbols) = "
+        f"{fair_share_risk_pct:.3f}% fair-share risk. {final_exposure.detail} "
+        "Correlation between held symbols is NOT incorporated — a real, disclosed, still-larger lift."
+    )
+    return CrossPortfolioRiskParityRead(
+        symbol=proposal.symbol,
+        positionCount=position_count,
+        candidateVolatilityPct=round(candidate_reading.volatility_estimate_pct, 4),
+        candidateWeightPct=round(candidate_weight_pct, 2),
+        fairShareRiskPct=round(fair_share_risk_pct, 4),
+        totalRiskBudgetPct=round(total_risk_budget_pct, 4),
+        finalExposure=final_exposure,
+        detail=detail,
+    )
+
+
 def build_position_sizing(
     proposal: TradeProposal,
     *,
@@ -365,7 +459,20 @@ def build_position_sizing(
     inverse_vol_sizing = _inverse_vol_sizing(proposal, provider, equity, risk_limits, decision_score)
     inverse_vol_cap_quantity = (equity * inverse_vol_sizing.capped_exposure_pct / 100 / price) if inverse_vol_sizing is not None else candidate_quantity
 
-    final_quantity = max(0.0, min(candidate_quantity, weekly_cap_quantity, heat_cap_quantity, cash_cap_quantity, volatility_cap_quantity, inverse_vol_cap_quantity))
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" follow-up — the real, naive cross-portfolio inverse-vol
+    # risk-parity cap, narrowing-only like every cap here. Only ever
+    # binds when real candle evidence exists for this candidate (see
+    # _cross_portfolio_inverse_vol_sizing()'s own docstring for the
+    # exact formula and its own remaining honesty boundary against full
+    # covariance-based Equal Risk Contribution).
+    cross_portfolio_risk_sizing = _cross_portfolio_inverse_vol_sizing(proposal, provider, portfolio, equity, risk_limits, decision_score)
+    cross_portfolio_cap_quantity = (equity * cross_portfolio_risk_sizing.final_exposure.capped_exposure_pct / 100 / price) if cross_portfolio_risk_sizing is not None else candidate_quantity
+
+    final_quantity = max(
+        0.0,
+        min(candidate_quantity, weekly_cap_quantity, heat_cap_quantity, cash_cap_quantity, volatility_cap_quantity, inverse_vol_cap_quantity, cross_portfolio_cap_quantity),
+    )
     final_quantity = round(final_quantity, 4)
     capital_deployed_pct = round(final_quantity * price / equity * 100, 2) if equity > 0 else 0.0
     reduced_from_ceiling = final_quantity < round(ceiling_quantity, 4)
@@ -375,6 +482,15 @@ def build_position_sizing(
     )
     if final_quantity < candidate_quantity - 1e-9:
         if (
+            cross_portfolio_cap_quantity <= weekly_cap_quantity
+            and cross_portfolio_cap_quantity <= heat_cap_quantity
+            and cross_portfolio_cap_quantity <= cash_cap_quantity
+            and cross_portfolio_cap_quantity <= volatility_cap_quantity
+            and cross_portfolio_cap_quantity <= inverse_vol_cap_quantity
+            and cross_portfolio_cap_quantity < candidate_quantity - 1e-9
+        ):
+            binding_constraint = "the real cross-portfolio inverse-volatility risk-parity budget (this symbol's own real volatility relative to every other real currently-held symbol's own volatility)"
+        elif (
             inverse_vol_cap_quantity <= weekly_cap_quantity
             and inverse_vol_cap_quantity <= heat_cap_quantity
             and inverse_vol_cap_quantity <= cash_cap_quantity
@@ -406,6 +522,7 @@ def build_position_sizing(
         capitalDeployedPct=capital_deployed_pct,
         volatilitySizing=volatility_sizing,
         inverseVolSizing=inverse_vol_sizing,
+        crossPortfolioRiskSizing=cross_portfolio_risk_sizing,
         weeklyDeploymentPct=round(weekly_deployed_before_pct + capital_deployed_pct, 2),
         weeklyDeploymentCapPct=risk_limits.max_weekly_deployment_pct,
         cashReserveOk=cash_reserve_ok,

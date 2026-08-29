@@ -94,6 +94,62 @@ class TestTechnicalVote:
         assert vote.choice == "wait"
 
 
+class TestTechnicalVoteTrendEngineEvidence:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine" follow-up — the Technical Analyst's vote now carries one
+    more real evidence line from app/trend_engine.py's own Multi-
+    Horizon Trend Engine, reused verbatim by app/debate.py's AI Debate
+    Room. Never a second decision input — `choice`/`reasoning` stay
+    driven only by the pre-existing trend_pct/volatility_pct read."""
+
+    def test_evidence_gains_a_multi_horizon_trend_engine_line(self) -> None:
+        vote = _technical_vote(_research_item(), _uptrend_candles())
+        assert any("Multi-Horizon Trend Engine composite" in e for e in vote.evidence)
+        # The pre-existing two evidence lines are still present, unchanged.
+        assert any(e.startswith("Trend:") for e in vote.evidence)
+        assert any(e.startswith("Volatility:") for e in vote.evidence)
+
+    def test_uptrend_composite_is_positive_and_downtrend_composite_is_negative(self) -> None:
+        up_vote = _technical_vote(_research_item(), _uptrend_candles())
+        down_candles = list(reversed(_uptrend_candles()))
+        for i, c in enumerate(down_candles):
+            down_candles[i] = Candle(symbol=c.symbol, timeframe=c.timeframe, timestamp=f"t{i}", open=c.open, high=c.high, low=c.low, close=c.close, volume=c.volume, data_status=c.data_status)
+        down_vote = _technical_vote(_research_item(), down_candles)
+        up_line = next(e for e in up_vote.evidence if "Multi-Horizon Trend Engine composite" in e)
+        down_line = next(e for e in down_vote.evidence if "Multi-Horizon Trend Engine composite" in e)
+        assert "+3/3" in up_line or "+2/3" in up_line or "+1/3" in up_line
+        assert "-3/3" in down_line or "-2/3" in down_line or "-1/3" in down_line
+
+    def test_does_not_change_the_vote_decision(self) -> None:
+        """The trend-engine reading is additional evidence only — the
+        real trend_pct/volatility_pct-driven choice is untouched."""
+        item = _research_item()
+        candles = _uptrend_candles()
+        with_evidence = _technical_vote(item, candles)
+        # Same candles, so the decision-driving trend/volatility read is
+        # identical regardless of whether the new evidence line is
+        # present — this just confirms the addition didn't fork the
+        # decision path.
+        assert with_evidence.choice == "buy"
+
+    def test_no_symbol_skips_trend_engine_evidence_without_crashing(self) -> None:
+        item = _research_item(symbol="NEXA")
+        item = item.model_copy(update={"symbol": None})
+        vote = _technical_vote(item, _uptrend_candles())
+        assert not any("Multi-Horizon Trend Engine composite" in e for e in vote.evidence)
+
+    def test_debate_room_opening_turn_quotes_the_new_evidence(self) -> None:
+        """app/debate.py's AI Debate Room reuses AnalystVote.evidence
+        verbatim in each analyst's opening turn — proves the new line
+        actually reaches the agents' own debate flow, not just the
+        vote object itself."""
+        from app.debate import _opening_turn
+
+        vote = _technical_vote(_research_item(), _uptrend_candles())
+        turn = _opening_turn(vote)
+        assert "Multi-Horizon Trend Engine composite" in turn.text
+
+
 class TestSentimentVote:
     def test_no_alerts_waits(self) -> None:
         vote = _sentiment_vote("NEXA", [])

@@ -158,6 +158,60 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: true cross-portfolio
+  inverse-volatility risk parity.** Closes the honesty gap `_inverse_vol_sizing()`'s own docstring
+  explicitly disclosed: that cap scales ONE candidate's exposure inversely to its OWN volatility only,
+  never accounting for every OTHER currently-open position's own real volatility.
+  - New `app/position_sizing.py::_cross_portfolio_inverse_vol_sizing()`: for every real symbol currently
+    held (deduped — multiple lots in one symbol are one real volatility read, not counted twice) plus this
+    candidate, computes `1 / volatility_pct` via the same real `research_volatility_scaled_exposure()`
+    this module already uses (an already-open position is read at signal_strength=1.0 — a live,
+    fully-committed bet, not a candidate being sized). Normalizing those weights gives the candidate's own
+    real fair SHARE of a total risk budget (`risk_limits.risk_per_trade_pct * position_count`, chosen
+    specifically so this fair share is identical to today's plain `risk_per_trade_pct` whenever the
+    candidate is the only real position). That fair-share risk budget is then run back through
+    `research_volatility_scaled_exposure()` itself as its own real `target_risk_pct` argument — reusing its
+    exact real formula AND real hard exposure ceiling verbatim, never a hand-rolled second division — so at
+    `position_count == 1` this is the exact same function call `_inverse_vol_sizing()` itself makes,
+    confirmed by a dedicated convergence test.
+  - Folds into `build_position_sizing()`'s existing narrowing-only `min(...)` cap chain as one more real
+    cap (`cross_portfolio_cap_quantity`), checked FIRST in the binding-constraint naming logic (the most
+    portfolio-aware, most specific real reason) ahead of the existing single-position inverse-vol cap.
+  - New `CrossPortfolioRiskParityRead` schema (`app/schemas.py`), reusing `VolatilityScaledExposureResearch`
+    verbatim as its own `final_exposure` sub-field rather than duplicating the exposure math a second time.
+    New `crossPortfolioRiskSizing` field on `PositionSizingResult`.
+  - **STILL NOT full covariance-based Equal Risk Contribution, disclosed in both the function's and the
+    schema's own docstrings**: real pairwise correlation between held symbols
+    (`app/portfolio_intelligence.py`'s own Pearson reads) is NOT incorporated — a genuinely
+    correlation-adjusted risk-parity weighting would need to solve for weights against a real covariance
+    matrix, a further, real, disclosed, still-larger lift, not attempted here either.
+  - Verified: 12 new backend tests (`TestCrossPortfolioInverseVolSizing` [8],
+    `TestBuildPositionSizingCrossPortfolioCap` [4]), full backend suite, `mypy`/`ruff` clean.
+
+- **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: real trend-engine evidence in
+  the agents' own research/debate flow.** The directive's Phase 11 asked for structured TREND_ENGINE
+  evidence to reach agents' own research/debate flow. A repo audit found the natural, non-invasive
+  extension point: `app/executive.py::_technical_vote()` (Echo, the Technical Analyst) already receives
+  real candles at proposal-generation time, and `AnalystVote.evidence` is the exact real substance
+  `app/debate.py`'s AI Debate Room quotes verbatim in every opening turn — reaching agents' own debate flow
+  requires no new plumbing through the separate Executive Department Opinions call sites (7+ existing call
+  sites across `nexus.py`/`state.py`/`routers/executive.py`/`war_room.py`, none of which carry a
+  `MarketDataProvider` today).
+  - `_technical_vote()` now also computes `app/trend_engine.py::compute_multi_horizon_trend_score()` over
+    the same real candles already in hand, appended as one more real evidence line — never a second
+    decision input; `choice`/`reasoning` stay driven only by the pre-existing `trend_pct`/`volatility_pct`
+    read.
+  - New `PROPOSAL_TREND_HORIZONS = [("6h", 6), ("12h", 12), ("24h", 24)]`: `trend_engine.py`'s own
+    `DEFAULT_HORIZONS` labels ("1_week"/"2_month"/etc.) assume a DAILY-timeframe series per that module's
+    own docstring, but this proposal's real candles are hourly and bounded to 30 bars — reusing the daily
+    labels here would misdescribe what was actually measured, so this is a small, honestly-scoped, locally
+    labeled horizon set that fits inside the existing 30-bar sample with no second candle fetch.
+  - No frontend changes — `ExecutiveVoting.tsx`'s `vote.evidence.map(...)` and the Debate Room's turn text
+    both already render every evidence string generically; discovered, not built.
+  - Verified: 5 new backend tests in `tests/test_executive.py` (including one asserting the new evidence
+    line actually reaches `app/debate.py::_opening_turn()`'s rendered text, not just the vote object),
+    full backend suite, `mypy`/`ruff` clean.
+
 - **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: inverse-volatility position
   sizing + agent exposure labeling.** Closes the remaining two deferred pieces from this directive's own
   Phase 0 audit — both real, both narrowing-only, both reuse an existing real calculator/field rather than

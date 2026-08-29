@@ -4695,6 +4695,48 @@ class VolatilityScaledExposureResearch(CamelModel):
     detail: str
 
 
+class CrossPortfolioRiskParityRead(CamelModel):
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine" follow-up — closes the honesty gap `VolatilityScaledExposure
+    Research` above (via app/position_sizing.py's `_inverse_vol_sizing()`)
+    explicitly disclosed: that reading scales ONE candidate's exposure
+    inversely to its OWN volatility only, never accounting for every
+    OTHER currently-open position's own real volatility. This reading
+    does: a real, NAIVE (uncorrelated) inverse-volatility risk-parity
+    read across every real symbol currently held plus this candidate —
+    `candidate_weight_pct` is this candidate's own share of the total
+    1/volatility weight across all `position_count` real symbols (so a
+    calmer candidate next to volatile existing holdings earns a larger
+    fair share, and vice versa). `fair_share_risk_pct` applies that
+    share to a real total risk budget (`risk_limits.risk_per_trade_pct *
+    position_count`, chosen so this reading collapses to exactly today's
+    single-position risk budget when `position_count == 1`).
+    `fair_share_risk_pct` is then run back through `research_volatility_
+    scaled_exposure()` itself (as that function's own `target_risk_pct`
+    argument) to become `final_exposure` — reusing its exact real
+    formula AND real hard exposure ceiling verbatim rather than
+    hand-rolling a second division, so at `position_count == 1` this
+    reading's `final_exposure` is the exact same function call
+    `_inverse_vol_sizing()` itself makes, not a second, disconnected
+    number.
+
+    STILL NOT full covariance-based Equal Risk Contribution — real
+    pairwise correlation between held symbols (app/portfolio_
+    intelligence.py's own Pearson reads) is NOT incorporated here; a
+    genuinely correlation-adjusted risk-parity weighting would need to
+    solve for weights against a real covariance matrix, a further, real,
+    disclosed, still-larger lift, not attempted here either."""
+
+    symbol: str
+    position_count: int = Field(alias="positionCount")
+    candidate_volatility_pct: float = Field(alias="candidateVolatilityPct")
+    candidate_weight_pct: float = Field(alias="candidateWeightPct")
+    fair_share_risk_pct: float = Field(alias="fairShareRiskPct")
+    total_risk_budget_pct: float = Field(alias="totalRiskBudgetPct")
+    final_exposure: VolatilityScaledExposureResearch = Field(alias="finalExposure")
+    detail: str
+
+
 class SymbolTrendRanking(CamelModel):
     """One row of the Research Desk's real cross-sectional read — "which
     symbols currently show the strongest trend agreement," evidence for
@@ -7658,6 +7700,16 @@ class PositionSizingResult(CamelModel):
     # larger, separate lift — see app/position_sizing.py's own
     # docstring for the exact boundary).
     inverse_vol_sizing: VolatilityScaledExposureResearch | None = Field(default=None, alias="inverseVolSizing")
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" follow-up — closes the honesty gap `inverse_vol_sizing`
+    # above explicitly disclosed: a real, naive (uncorrelated)
+    # cross-portfolio inverse-volatility risk-parity read across every
+    # currently-open real position plus this candidate (see
+    # CrossPortfolioRiskParityRead's own docstring for the exact
+    # formula and its own remaining honesty boundary against full
+    # covariance-based Equal Risk Contribution). `None` under the same
+    # honesty convention as the other volatility-based reads above.
+    cross_portfolio_risk_sizing: CrossPortfolioRiskParityRead | None = Field(default=None, alias="crossPortfolioRiskSizing")
     detail: str
 
 

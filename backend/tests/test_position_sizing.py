@@ -16,12 +16,13 @@ from app.position_sizing import (
     VOLATILITY_CANDLE_COUNT,
     WEEKLY_DEPLOYMENT_WINDOW_DAYS,
     _capital_deployed_pct_in_window,
+    _cross_portfolio_inverse_vol_sizing,
     _inverse_vol_sizing,
     _tier_for_sizing_score,
     _volatility_sizing,
     build_position_sizing,
 )
-from app.risk_engine import SIM_MINUTES_PER_DAY
+from app.risk_engine import SIM_MINUTES_PER_DAY, portfolio_equity
 from app.schemas import (
     DecisionScoreBreakdown,
     ExpectedValueAnalysis,
@@ -617,3 +618,172 @@ class TestBuildPositionSizingVolatility:
         # already-established caps exactly as it did before this feature.
         assert result.final_quantity == 10.0
         assert result.reduced_from_ceiling is False
+
+
+class _PerSymbolProvider(MarketDataProvider):
+    """Unlike _FakeProvider (same closes for every symbol requested),
+    this test double gives each real symbol its OWN real close series —
+    needed to construct genuinely different per-symbol volatility reads
+    for the cross-portfolio risk-parity tests below. Falls back to
+    `default_closes` for any symbol not explicitly listed."""
+
+    def __init__(self, closes_by_symbol: dict[str, list[float]], *, default_closes: list[float] | None = None) -> None:
+        self._closes_by_symbol = closes_by_symbol
+        self._default_closes = default_closes if default_closes is not None else [100.0 + (i % 2) for i in range(VOLATILITY_CANDLE_COUNT)]
+
+    def get_quote(self, symbol: str) -> Quote:
+        raise NotImplementedError
+
+    def get_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
+        closes = self._closes_by_symbol.get(symbol, self._default_closes)
+        if not closes:
+            raise ValueError(f"no fixture data for {symbol!r}")
+        return [
+            Candle(symbol=symbol, timeframe=timeframe, timestamp=f"2026-01-01T{i % 24:02d}:00:00Z", open=c, high=c + 0.5, low=c - 0.5, close=c, volume=1000.0, data_status="simulated")
+            for i, c in enumerate(closes)
+        ]
+
+
+class TestCrossPortfolioInverseVolSizing:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine" follow-up — closes the honesty gap _inverse_vol_sizing()
+    explicitly discloses: this candidate's own exposure now also
+    depends on every OTHER real currently-open position's own real
+    volatility, a naive (uncorrelated) inverse-vol risk-parity read
+    across the whole real portfolio."""
+
+    def test_none_with_zero_equity(self) -> None:
+        result = _cross_portfolio_inverse_vol_sizing(_Proposal(), _FakeProvider(), _portfolio(), 0.0, RiskLimits(), _decision_score(60.0))
+        assert result is None
+
+    def test_none_with_zero_price(self) -> None:
+        result = _cross_portfolio_inverse_vol_sizing(_Proposal(price=0.0), _FakeProvider(), _portfolio(), 100_000.0, RiskLimits(), _decision_score(60.0))
+        assert result is None
+
+    def test_none_with_no_real_candle_history_for_the_candidate(self) -> None:
+        result = _cross_portfolio_inverse_vol_sizing(_Proposal(), _FakeProvider(closes=[]), _portfolio(), 100_000.0, RiskLimits(), _decision_score(60.0))
+        assert result is None
+
+    def test_only_position_collapses_to_the_single_position_formula(self) -> None:
+        """position_count == 1 (no other real open positions) must give
+        a final_exposure numerically IDENTICAL to _inverse_vol_sizing()'s
+        own real reading — the exact convergence this function's own
+        docstring promises, since both end up calling the exact same
+        research_volatility_scaled_exposure() with the exact same real
+        arguments (fair_share_risk_pct == risk_per_trade_pct at n=1)."""
+        provider = _FakeProvider()
+        risk_limits = RiskLimits()
+        decision_score = _decision_score(60.0)
+        single = _inverse_vol_sizing(_Proposal(), provider, 100_000.0, risk_limits, decision_score)
+        cross = _cross_portfolio_inverse_vol_sizing(_Proposal(), provider, _portfolio(positions=[]), 100_000.0, risk_limits, decision_score)
+        assert single is not None and cross is not None
+        assert cross.position_count == 1
+        assert cross.candidate_weight_pct == 100.0
+        assert cross.fair_share_risk_pct == pytest.approx(risk_limits.risk_per_trade_pct)
+        assert cross.final_exposure.raw_exposure_pct == pytest.approx(single.raw_exposure_pct)
+        assert cross.final_exposure.capped_exposure_pct == pytest.approx(single.capped_exposure_pct)
+
+    def test_a_calmer_candidate_next_to_a_volatile_holding_earns_a_larger_share(self) -> None:
+        # volatility_pct is a FIXED +-0.5 range as a % of close price, so
+        # a real volatility difference here comes from the real PRICE
+        # LEVEL (a lower close makes the same $0.5 range a much bigger
+        # %), the same convention TestBuildPositionSizingInverseVolCap's
+        # own "tiny_price_provider"/"high_vol_provider" fixtures already
+        # use above — never from the close-to-close jump pattern.
+        calm = [100.0] * VOLATILITY_CANDLE_COUNT
+        volatile = [1.0] * VOLATILITY_CANDLE_COUNT
+        provider = _PerSymbolProvider({"AAPL": calm, "MSFT": volatile}, default_closes=calm)
+        portfolio = _portfolio(positions=[_position(symbol="MSFT", quantity=5.0, entry_price=1.0)])
+        result = _cross_portfolio_inverse_vol_sizing(_Proposal(symbol="AAPL"), provider, portfolio, 100_000.0, RiskLimits(), _decision_score(60.0))
+        assert result is not None
+        assert result.position_count == 2
+        # AAPL (calm, high price) has much lower real volatility_pct than
+        # MSFT (volatile, low price), so its real 1/volatility weight —
+        # and therefore its fair share of the total risk budget — must
+        # be the larger one.
+        assert result.candidate_weight_pct > 50.0
+
+    def test_a_volatile_candidate_next_to_a_calm_holding_earns_a_smaller_share(self) -> None:
+        calm = [100.0] * VOLATILITY_CANDLE_COUNT
+        volatile = [1.0] * VOLATILITY_CANDLE_COUNT
+        provider = _PerSymbolProvider({"AAPL": volatile, "MSFT": calm}, default_closes=calm)
+        portfolio = _portfolio(positions=[_position(symbol="MSFT", quantity=5.0, entry_price=100.0)])
+        result = _cross_portfolio_inverse_vol_sizing(_Proposal(symbol="AAPL", price=1.0), provider, portfolio, 100_000.0, RiskLimits(), _decision_score(60.0))
+        assert result is not None
+        assert result.candidate_weight_pct < 50.0
+
+    def test_multiple_lots_in_the_same_held_symbol_count_once(self) -> None:
+        provider = _FakeProvider()
+        portfolio_one_lot = _portfolio(positions=[_position(symbol="MSFT", quantity=5.0)])
+        portfolio_two_lots = _portfolio(positions=[_position(symbol="MSFT", quantity=5.0), _position(symbol="MSFT", quantity=3.0)])
+        one = _cross_portfolio_inverse_vol_sizing(_Proposal(symbol="AAPL"), provider, portfolio_one_lot, 100_000.0, RiskLimits(), _decision_score(60.0))
+        two = _cross_portfolio_inverse_vol_sizing(_Proposal(symbol="AAPL"), provider, portfolio_two_lots, 100_000.0, RiskLimits(), _decision_score(60.0))
+        assert one is not None and two is not None
+        assert one.position_count == two.position_count == 2
+
+    def test_candidate_symbol_already_held_is_not_double_counted(self) -> None:
+        provider = _FakeProvider()
+        portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=5.0)])
+        result = _cross_portfolio_inverse_vol_sizing(_Proposal(symbol="AAPL"), provider, portfolio, 100_000.0, RiskLimits(), _decision_score(60.0))
+        assert result is not None
+        assert result.position_count == 1
+
+
+class TestBuildPositionSizingCrossPortfolioCap:
+    def _build(self, **overrides):
+        defaults = dict(
+            proposal=_Proposal(),
+            ceiling_quantity=10.0,
+            expected_value=_expected_value(),
+            decision_score=_decision_score(60.0),
+            portfolio=_portfolio(),
+            portfolio_heat=_heat(),
+            risk_limits=RiskLimits(),
+            risk_warnings=[],
+            sim_day=1,
+            provider=_FakeProvider(),
+        )
+        defaults.update(overrides)
+        return build_position_sizing(**defaults)
+
+    def test_cross_portfolio_risk_sizing_is_populated_when_available(self) -> None:
+        result = self._build()
+        assert result.cross_portfolio_risk_sizing is not None
+
+    def test_cross_portfolio_risk_sizing_is_none_when_history_unavailable(self) -> None:
+        result = self._build(provider=_FakeProvider(closes=[]))
+        assert result.cross_portfolio_risk_sizing is None
+
+    def test_final_quantity_never_exceeds_the_cross_portfolio_cap(self) -> None:
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+        )
+        calm = [100.0] * VOLATILITY_CANDLE_COUNT
+        volatile = [1.0] * VOLATILITY_CANDLE_COUNT
+        provider = _PerSymbolProvider({"AAPL": volatile, "MSFT": calm}, default_closes=calm)
+        portfolio = _portfolio(positions=[_position(symbol="MSFT", quantity=5.0, entry_price=100.0)])
+        result = self._build(ceiling_quantity=1_000.0, risk_limits=wide_open, provider=provider, portfolio=portfolio, proposal=_Proposal(symbol="AAPL", price=1.0))
+        assert result.cross_portfolio_risk_sizing is not None
+        equity = portfolio_equity(portfolio)
+        cap_quantity = equity * result.cross_portfolio_risk_sizing.final_exposure.capped_exposure_pct / 100 / 1.0
+        assert result.final_quantity <= cap_quantity + 1e-6
+
+    def test_binding_constraint_names_cross_portfolio_cap_when_it_is_tightest(self) -> None:
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+        )
+        # AAPL is dramatically more volatile (low real price) than the
+        # already-held MSFT (high real price), so its real fair share of
+        # the shared risk budget — and therefore this cap — is far
+        # tighter than every other cap here.
+        calm = [100.0] * VOLATILITY_CANDLE_COUNT
+        volatile = [0.5] * VOLATILITY_CANDLE_COUNT
+        provider = _PerSymbolProvider({"AAPL": volatile, "MSFT": calm}, default_closes=calm)
+        portfolio = _portfolio(positions=[_position(symbol="MSFT", quantity=5.0, entry_price=100.0)])
+        result = self._build(ceiling_quantity=1_000.0, risk_limits=wide_open, provider=provider, portfolio=portfolio, proposal=_Proposal(symbol="AAPL", price=0.5), decision_score=_decision_score(5.0))
+        assert result.reduced_from_ceiling is True
+        assert "cross-portfolio inverse-volatility risk-parity budget" in result.detail

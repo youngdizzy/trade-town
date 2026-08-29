@@ -50,6 +50,7 @@ from app.market_data import MarketDataProvider
 from app.market_data import trend_pct, volatility_pct
 from app.portfolio import open_position
 from app.risk_engine import portfolio_equity, recommended_quantity
+from app.trend_engine import compute_multi_horizon_trend_score
 from app.schemas import (
     AgentId,
     AgentVote,
@@ -91,6 +92,18 @@ MAX_PENDING_PROPOSALS = 5
 MAX_CEO_DECISIONS = 200
 PROPOSAL_TIMEFRAME = "1h"
 PROPOSAL_CANDLE_COUNT = 30
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine" follow-up — a locally-scoped horizon set for the Technical
+# Analyst's multi-horizon evidence below. app/trend_engine.py's own
+# DEFAULT_HORIZONS labels ("1_week"/"2_month"/etc.) assume a
+# DAILY-timeframe candle series (its own module docstring says so
+# explicitly); this proposal's real candles are hourly
+# (PROPOSAL_TIMEFRAME) and bounded to PROPOSAL_CANDLE_COUNT=30 bars, so
+# reusing those daily labels here would misdescribe what was actually
+# measured. These three horizons are honestly labeled in hours and all
+# fit inside the existing 30-bar sample — no second, larger candle
+# fetch needed.
+PROPOSAL_TREND_HORIZONS: list[tuple[str, int]] = [("6h", 6), ("12h", 12), ("24h", 24)]
 # A proposal the CEO never acts on doesn't sit forever — after this many
 # in-game minutes it's auto-resolved as "wait" (see expire_stale_proposals),
 # freeing its slot for a fresh opportunity rather than blocking the desk
@@ -188,12 +201,30 @@ def _technical_vote(item: ResearchItem, candles: list[ProviderCandle]) -> Analys
     else:
         choice = "sell"
         reasoning = f"{item.symbol} is in a real downtrend ({trend:+.1f}% over the sample) relative to its own volatility."
+    evidence = [f"Trend: {trend:+.1f}% over the last {PROPOSAL_CANDLE_COUNT} {PROPOSAL_TIMEFRAME} bars.", f"Volatility: {volatility:.1f}% average bar range."]
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" follow-up — real, structured Multi-Horizon Trend Engine
+    # evidence (app/trend_engine.py, same real formula the Strategy Lab
+    # already validates) reused as ONE MORE piece of evidence for the
+    # Technical Analyst, never a second decision input: `choice`/
+    # `reasoning` above are unchanged, still driven only by the
+    # existing trend_pct/volatility_pct read. Because AnalystVote is
+    # the exact real substance app/debate.py's AI Debate Room quotes
+    # verbatim, this is the one real, non-invasive place this evidence
+    # reaches agents' own research/debate flow — no new plumbing
+    # through the Executive Department Opinions call sites, which would
+    # need a MarketDataProvider threaded through 7+ existing call sites
+    # for the same real data this vote already has in hand.
+    if len(candles) >= 2 and item.symbol is not None:
+        trend_score = compute_multi_horizon_trend_score(candles, item.symbol, PROPOSAL_TIMEFRAME, horizons=PROPOSAL_TREND_HORIZONS, method="endpoint_slope")
+        horizon_summary = ", ".join(f"{h.horizon_label}: {'up' if h.direction > 0 else 'down' if h.direction < 0 else 'flat'}" for h in trend_score.horizons)
+        evidence.append(f"Multi-Horizon Trend Engine composite: {trend_score.composite_score:+.0f}/{len(trend_score.horizons)} ({horizon_summary}).")
     return AnalystVote(
         role="technical",
         agentId="echo",
         choice=choice,
         reasoning=reasoning,
-        evidence=[f"Trend: {trend:+.1f}% over the last {PROPOSAL_CANDLE_COUNT} {PROPOSAL_TIMEFRAME} bars.", f"Volatility: {volatility:.1f}% average bar range."],
+        evidence=evidence,
     )
 
 
