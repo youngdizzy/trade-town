@@ -3026,6 +3026,25 @@ export interface SessionRangeRead {
 export type TrendDefinitionMethod = "endpoint_slope" | "regression_slope" | "normalized_slope" | "price_vs_ma" | "volatility_normalized" | "breakout_channel";
 export type TrendWeightingMethod = "equal" | "horizon_weighted" | "volatility_weighted";
 
+/** Whether ONE horizon's own real window had enough real candle
+ * history to produce a trustworthy read — kept structurally distinct
+ * from `direction === 0`, which is ALSO the real, correct read for "no
+ * directional evidence." */
+export type HorizonDataQuality = "ok" | "insufficient_data";
+
+/** The explicit qualitative vocabulary so the CEO, risk engine, UI, and
+ * agents can all reason about WHY a composite score exists, not just
+ * its raw number. `insufficient_data`/`invalid_data` are real,
+ * structural DATA states, never a directional claim; `neutral` is a
+ * real, disclosed EVIDENCE state (the horizons disagree or show no net
+ * direction), not a data gap. Never a claim of statistical confidence. */
+export type SignalState = "strong_long" | "weak_long" | "neutral" | "weak_short" | "strong_short" | "insufficient_data" | "invalid_data";
+
+/** Whether the real Fast/Medium/Slow bands agree, partially agree, or
+ * directly disagree on direction — a second, separate view alongside
+ * `combinedScore`, never a replacement for looking at all three bands. */
+export type EvidenceAlignment = "aligned" | "mixed" | "conflicted";
+
 export interface HorizonTrendReading {
   horizonLabel: string;
   lookbackBars: number;
@@ -3033,6 +3052,7 @@ export interface HorizonTrendReading {
   rawValue: number;
   direction: 1 | 0 | -1;
   detail: string;
+  dataQuality: HorizonDataQuality;
 }
 
 export interface MultiHorizonTrendScore {
@@ -3046,6 +3066,13 @@ export interface MultiHorizonTrendScore {
   compositeScore: number;
   compositeScoreNormalized: number;
   aggregationDetail: string;
+  /** `eligibleForTrade` means only "this reading is backed by valid,
+   * sufficient real data" — it is NEVER a trade permission. The risk
+   * engine, gatekeeper, and position sizer remain the sole authority
+   * over whether a trade actually happens. */
+  signalState: SignalState;
+  eligibleForTrade: boolean;
+  reason: string;
 }
 
 /** Fast/Medium/Slow shown DECOMPOSED — never collapse these into
@@ -3062,6 +3089,8 @@ export interface TrendEnsembleReading {
   weightingMethod: TrendWeightingMethod;
   combinedScore: number;
   combinedScoreDetail: string;
+  evidenceAlignment: EvidenceAlignment;
+  evidenceAlignmentDetail: string;
 }
 
 /** A RESEARCH candidate exposure only — never a live position size. See
@@ -3087,6 +3116,7 @@ export interface SymbolTrendRanking {
   trendPersistenceBars: number;
   volatilityPct: number;
   riskAdjustedScore: number;
+  signalState: SignalState;
 }
 
 // CEO directive "AHL-Inspired Systematic Trend & Momentum Research

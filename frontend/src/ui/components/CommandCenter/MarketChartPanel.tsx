@@ -3,9 +3,9 @@ import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { Candle, LiquidityRead, MarketStructureRead, MultiHorizonTrendScore, PaperPosition, SessionRangeRead, TechnicalAnalysisRead, TrendEnsembleReading } from "@/types";
 import { CandlestickChart, type ChartOverlayLine, type ChartOverlayMarker, type ChartOverlayPolyline, type ChartOverlayZone } from "./CandlestickChart";
-import { marketTickerStats } from "./lib/derive";
+import { SIGNAL_STATE_LABEL, SIGNAL_STATE_TONE, marketTickerStats } from "./lib/derive";
 import { useCandles } from "./lib/useCandles";
-import { Glass, TerminalLabel } from "./ui";
+import { Glass, StatusPill, TerminalLabel } from "./ui";
 
 const FALLBACK_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
@@ -435,6 +435,23 @@ export function MarketChartPanel({
           </button>
         ))}
       </div>
+      {activeOverlays.trendEngine && trend?.symbol === symbol && (
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-cmd-textDim" title={trend.evidenceAlignmentDetail}>
+          <span>
+            FAST <StatusPill tone={SIGNAL_STATE_TONE[trend.fast.signalState]}>{SIGNAL_STATE_LABEL[trend.fast.signalState]}</StatusPill>
+          </span>
+          <span>
+            MED <StatusPill tone={SIGNAL_STATE_TONE[trend.medium.signalState]}>{SIGNAL_STATE_LABEL[trend.medium.signalState]}</StatusPill>
+          </span>
+          <span>
+            SLOW <StatusPill tone={SIGNAL_STATE_TONE[trend.slow.signalState]}>{SIGNAL_STATE_LABEL[trend.slow.signalState]}</StatusPill>
+          </span>
+          <span>
+            EVIDENCE{" "}
+            <StatusPill tone={trend.evidenceAlignment === "aligned" ? "green" : trend.evidenceAlignment === "conflicted" ? "red" : "cyan"}>{trend.evidenceAlignment.toUpperCase()}</StatusPill>
+          </span>
+        </div>
+      )}
       <CandlestickChart candles={candles} loading={loading} error={error} dataStatus={dataStatus} height={220} overlays={tradeOverlays} />
     </Glass>
   );

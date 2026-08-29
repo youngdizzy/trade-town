@@ -3,7 +3,7 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { OpportunityFeed, OpportunityFeedEntry, OpportunityFeedStatus, SymbolTrendRanking, TradeDecision, WatchlistEligibilitySummary, WatchlistTier } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
-import { voteDirection } from "../lib/derive";
+import { SIGNAL_STATE_LABEL, SIGNAL_STATE_TONE, voteDirection } from "../lib/derive";
 import { EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const STATUS_TONE: Record<OpportunityFeedStatus, "green" | "cyan" | "red" | "neutral"> = {
@@ -157,6 +157,9 @@ function AssetDiscoverySection() {
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="font-cmdmono text-cmd-cyan">{r.symbol}</span>
               <span className="text-[9px] uppercase tracking-wide text-cmd-textDim">{r.category}</span>
+            </div>
+            <div className="mb-1">
+              <StatusPill tone={SIGNAL_STATE_TONE[r.signalState]}>{SIGNAL_STATE_LABEL[r.signalState]}</StatusPill>
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[9px] text-cmd-textDim">
               <span>Composite: <span className={r.compositeScore >= 0 ? "text-cmd-green" : "text-cmd-red"}>{r.compositeScore.toFixed(1)}</span></span>

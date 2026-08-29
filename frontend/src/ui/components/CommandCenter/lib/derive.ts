@@ -54,6 +54,7 @@ import type {
   ResearchItem,
   RiskLimits,
   RiskWarning,
+  SignalState,
   SimulationResult,
   Strategy,
   StrategyExecutiveAction,
@@ -1842,3 +1843,28 @@ export function recentStrategyHealthByStrategy(assessments: StrategyHealthAssess
   }
   return [...latestByStrategy.values()].sort((a, b) => b.recentAvgReturnPct - a.recentAvgReturnPct);
 }
+
+/** "Multi-Horizon Trend Engine" follow-up (Phase 5/28/29) — the
+ * explicit qualitative vocabulary backend/app/trend_engine.py's
+ * SignalState now carries, shared here so every surface that renders
+ * it (OpportunitiesPanel.tsx's Asset Discovery cards,
+ * MarketChartPanel.tsx's TREND overlay legend) uses the same real
+ * color/label convention, never two different ones for one enum. */
+export const SIGNAL_STATE_TONE: Record<SignalState, "green" | "cyan" | "red" | "neutral"> = {
+  strong_long: "green",
+  weak_long: "cyan",
+  neutral: "neutral",
+  weak_short: "cyan",
+  strong_short: "red",
+  insufficient_data: "neutral",
+  invalid_data: "red",
+};
+export const SIGNAL_STATE_LABEL: Record<SignalState, string> = {
+  strong_long: "STRONG LONG",
+  weak_long: "WEAK LONG",
+  neutral: "NEUTRAL",
+  weak_short: "WEAK SHORT",
+  strong_short: "STRONG SHORT",
+  insufficient_data: "INSUFFICIENT DATA",
+  invalid_data: "INVALID DATA",
+};
