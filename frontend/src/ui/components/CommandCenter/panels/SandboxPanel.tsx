@@ -17,8 +17,22 @@ import { StrategyCompilerView } from "./sandbox/StrategyCompilerView";
 import { QuantResearchLabView } from "./sandbox/QuantResearchLabView";
 import { LiveStrategyEligibilityCard } from "./sandbox/LiveStrategyEligibilityCard";
 import { StrategyTradingDiagnosticsView } from "./sandbox/StrategyTradingDiagnosticsView";
+import { ChampionChallengerView } from "./sandbox/ChampionChallengerView";
 
-const SUB_TABS = ["PIPELINE", "LIBRARY", "CERTIFICATION", "HEALTH", "EVOLUTION", "HALL OF FAME", "FAILED ARCHIVE", "DASHBOARD", "50 EMA RESEARCH", "STRATEGY COMPILER", "QUANT RESEARCH LAB"] as const;
+const SUB_TABS = [
+  "PIPELINE",
+  "LIBRARY",
+  "CERTIFICATION",
+  "HEALTH",
+  "EVOLUTION",
+  "HALL OF FAME",
+  "FAILED ARCHIVE",
+  "DASHBOARD",
+  "50 EMA RESEARCH",
+  "STRATEGY COMPILER",
+  "QUANT RESEARCH LAB",
+  "CHAMPION/CHALLENGER",
+] as const;
 type SubTab = (typeof SUB_TABS)[number];
 
 const STRATEGY_SCOPED: ReadonlySet<SubTab> = new Set(["PIPELINE", "CERTIFICATION", "HEALTH", "EVOLUTION"]);
@@ -159,6 +173,7 @@ export function SandboxPanel() {
       {subTab === "50 EMA RESEARCH" && <EmaPullbackResearchView />}
       {subTab === "STRATEGY COMPILER" && <StrategyCompilerView seed={compilerSeed} />}
       {subTab === "QUANT RESEARCH LAB" && <QuantResearchLabView />}
+      {subTab === "CHAMPION/CHALLENGER" && <ChampionChallengerView />}
 
       {STRATEGY_SCOPED.has(subTab) && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">

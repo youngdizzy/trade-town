@@ -21,6 +21,9 @@ import type {
   CeoDecisionRecord,
   CeoOverrideRecord,
   ChallengeReport,
+  ChallengerComparison,
+  ChampionChallengerFamilyRead,
+  ChampionRecord,
   CeoOverrideEvaluation,
   CeoOverrideGovernanceSummary,
   CompiledStrategyBacktestResult,
@@ -902,6 +905,28 @@ export const api = {
       body: JSON.stringify({ name, sourceText, timeframe }),
     }),
   getStrategyVersions: (name: string) => request<CompiledStrategyDefinition[]>(`/sandbox/strategy-versions?name=${encodeURIComponent(name)}`),
+  // CEO directive "TradeTown — 11/10 Self-Improving Quant Agent
+  // System," Section 1 (Champion vs Challenger). See
+  // backend/app/champion_challenger.py.
+  compareChampionChallenger: (
+    championDefinition: CompiledStrategyDefinition,
+    challengerDefinition: CompiledStrategyDefinition,
+    strategyFamily: string,
+    hypothesis: string,
+    proposedBy: AgentId,
+    symbols?: string[]
+  ) =>
+    request<ChallengerComparison>("/sandbox/champion-challenger/compare", {
+      method: "POST",
+      body: JSON.stringify({ championDefinition, challengerDefinition, strategyFamily, hypothesis, proposedBy, symbols }),
+    }),
+  promoteChallenger: (comparisonId: string, promotedBy: AgentId, reasoning: string) =>
+    request<ChampionRecord>("/sandbox/champion-challenger/promote", {
+      method: "POST",
+      body: JSON.stringify({ comparisonId, promotedBy, reasoning }),
+    }),
+  getChampionChallengerFamily: (strategyFamily: string) =>
+    request<ChampionChallengerFamilyRead>(`/sandbox/champion-challenger/${encodeURIComponent(strategyFamily)}`),
   // CEO directive "Strategy Intelligence + Live Strategy Attribution,"
   // Phase 1 — the real Strategy Lab <-> CompiledStrategyDefinition
   // identity bridge. See backend/app/strategy_registry.py's

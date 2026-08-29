@@ -1891,6 +1891,58 @@ export interface SubmitQuantResearchExperimentResult {
   similarExperiments: QuantResearchExperimentSimilarity[];
 }
 
+// CEO directive "TradeTown — 11/10 Self-Improving Quant Agent System,"
+// Section 1 (Champion vs Challenger). See
+// backend/app/champion_challenger.py's own module docstring for the
+// real, disclosed methodology (identical real backtest window for
+// both sides, an economic — not statistical-significance — promotion
+// rule).
+export type ChallengerVerdict = "challenger_recommended" | "champion_retained" | "insufficient_evidence";
+
+export interface ChallengerComparison {
+  id: string;
+  strategyFamily: string;
+  championDefinitionId: string;
+  championDefinitionVersion: number;
+  challengerDefinitionId: string;
+  challengerDefinitionVersion: number;
+  hypothesis: string;
+  proposedBy: AgentId;
+  symbolsTested: string[];
+  timeframe: string;
+  candlesPerSymbol: number;
+  championTradeCount: number;
+  challengerTradeCount: number;
+  championExpectancyR: number | null;
+  challengerExpectancyR: number | null;
+  championProfitFactor: number | null;
+  challengerProfitFactor: number | null;
+  championMaxDrawdownR: number | null;
+  challengerMaxDrawdownR: number | null;
+  championConclusion: string;
+  challengerConclusion: string;
+  verdict: ChallengerVerdict;
+  reasoning: string;
+  generatedAt: string;
+}
+
+export interface ChampionRecord {
+  id: string;
+  strategyFamily: string;
+  definitionId: string;
+  definitionVersion: number;
+  sourceComparisonId: string | null;
+  promotedBy: AgentId;
+  reasoning: string;
+  promotedAt: string;
+}
+
+export interface ChampionChallengerFamilyRead {
+  current: ChampionRecord | null;
+  history: ChampionRecord[];
+  comparisons: ChallengerComparison[];
+}
+
 // CEO directive "Professional Quant Firm Phase," Feature 40 — the
 // Quant Strategy Tournament. See backend/app/strategy_tournament.py.
 export interface StrategyTournamentEntry {
