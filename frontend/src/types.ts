@@ -4863,6 +4863,29 @@ export interface RegimeSuitabilityRead {
   detail: string;
 }
 
+/** CEO directive "You are now entering the NEXT major TradeTown build
+ * phase," Phase 10 — promotes backend/app/session_evidence.py's own
+ * real, previously read-only SESSION x REGIME win-rate evidence (over
+ * this company's own real closed trades) into a real, narrowing-only
+ * cap, mirroring RegimeSuitabilityRead's own design exactly on a second,
+ * independently real evidence axis. `available: false` whenever this
+ * exact (session, regime) pairing has fewer than
+ * backend/app/session_evidence.py's own real MIN_SESSION_REGIME_SAMPLE
+ * closed trades on record — an honest "insufficient evidence" state,
+ * never a fabricated conclusion. */
+export interface SessionSuitabilityRead {
+  available: boolean;
+  session: string;
+  regime: string;
+  sampleSize: number;
+  winRatePct: number | null;
+  avgPnlPct: number | null;
+  evidenceState: string;
+  suitabilityScale: number;
+  sessionCapQuantity: number | null;
+  detail: string;
+}
+
 export interface PositionSizingResult {
   tier: PositionTier;
   tierLabel: string;
@@ -4905,6 +4928,11 @@ export interface PositionSizingResult {
    * persisted inside a war_room_sessions save — every field needs a
    * real default for an old save to still validate on load. */
   regimeSuitabilitySizing: RegimeSuitabilityRead;
+  /** CEO directive "You are now entering the NEXT major TradeTown build
+   * phase," Phase 10 — see SessionSuitabilityRead's own doc comment.
+   * Same non-optional-with-`available`-flag, backward-compat-default
+   * convention as regimeSuitabilitySizing above. */
+  sessionSuitabilitySizing: SessionSuitabilityRead;
   detail: string;
 }
 

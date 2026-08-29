@@ -397,6 +397,39 @@ function SessionDetail({ session }: { session: WarRoomSession }) {
               <p className="text-[9px] text-cmd-textDim">{session.positionSizing.regimeSuitabilitySizing.detail}</p>
             )}
           </div>
+
+          {/* CEO directive "You are now entering the NEXT major
+              TradeTown build phase," Phase 10 — promotes backend/app/
+              session_evidence.py's own real, previously read-only
+              SESSION x REGIME win-rate evidence (over this company's
+              own real closed trades) into a real, narrowing-only cap —
+              the same design as Regime Suitability above, applied to a
+              second, independently real evidence axis. */}
+          <div className="mt-2 border-t border-cmd-border/50 pt-2">
+            <div className="mb-1 flex items-center justify-between">
+              <TerminalLabel>Session Suitability — real win rate in the current session × regime</TerminalLabel>
+              <StatusPill tone={session.positionSizing.sessionSuitabilitySizing.available ? "cyan" : "neutral"}>
+                {session.positionSizing.sessionSuitabilitySizing.available ? "AVAILABLE" : "UNAVAILABLE"}
+              </StatusPill>
+            </div>
+            {session.positionSizing.sessionSuitabilitySizing.available ? (
+              <>
+                <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+                  <DataRow label="Session" value={session.positionSizing.sessionSuitabilitySizing.session.replace(/_/g, " ")} />
+                  <DataRow label="Sample Size" value={`${session.positionSizing.sessionSuitabilitySizing.sampleSize}`} />
+                  <DataRow label="Win Rate" value={`${session.positionSizing.sessionSuitabilitySizing.winRatePct?.toFixed(1) ?? "—"}%`} />
+                  <DataRow
+                    label="Suitability Scale"
+                    value={`${(session.positionSizing.sessionSuitabilitySizing.suitabilityScale * 100).toFixed(0)}%`}
+                    valueClassName={session.positionSizing.sessionSuitabilitySizing.suitabilityScale < 1.0 ? "text-cmd-amber" : undefined}
+                  />
+                </div>
+                <p className="mt-1 text-[9px] text-cmd-textDim">{session.positionSizing.sessionSuitabilitySizing.detail}</p>
+              </>
+            ) : (
+              <p className="text-[9px] text-cmd-textDim">{session.positionSizing.sessionSuitabilitySizing.detail}</p>
+            )}
+          </div>
         </Glass>
       )}
 
