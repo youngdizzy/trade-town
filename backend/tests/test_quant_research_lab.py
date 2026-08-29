@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.quant_research_lab import count_experiments_for_family, file_quant_research_experiment, find_similar_experiments
+from app.quant_research_lab import OVERTESTED_FAMILY_THRESHOLD, count_experiments_for_family, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
 from app.state import GameState
 from app.strategy_compiler import compile_strategy_text
@@ -173,6 +173,18 @@ class TestQuantResearchExperimentBackwardCompat:
         restored = QuantResearchExperiment.model_validate(old_save_shape)
         assert restored.family_experiment_count is None
 
+    def test_an_experiment_persisted_before_research_integrity_flag_existed_still_validates(self) -> None:
+        from app.schemas import QuantResearchExperiment
+
+        definition = compile_strategy_text(name="Old Save Strategy 4", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        old_save_shape = file_quant_research_experiment(
+            record, experiment_id="exp-old-4", hypothesis="Old-format hypothesis.", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00"
+        ).model_dump(by_alias=True)
+        del old_save_shape["researchIntegrityFlag"]
+        restored = QuantResearchExperiment.model_validate(old_save_shape)
+        assert restored.research_integrity_flag is None
+
     def test_an_experiment_persisted_before_buy_and_hold_baseline_existed_still_validates(self) -> None:
         from app.schemas import QuantResearchExperiment
 
@@ -234,3 +246,48 @@ class TestFileQuantResearchExperimentFamilyCount:
         _, second = asyncio.run(state.submit_quant_research_experiment(definition, hypothesis="second pass, differently worded", researcher_agent_id="nova", symbols=["AAPL"]))
         assert first.experiment.family_experiment_count == 1
         assert second.experiment.family_experiment_count == 2
+
+
+class TestResearchIntegrityFlag:
+    """CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+    Backtesting Engine," Section 12 (Multiple-Testing Penalty) — a real,
+    disclosed flag derived from family_experiment_count, never a
+    fabricated statistical correction."""
+
+    def test_no_count_leaves_the_flag_honestly_none(self) -> None:
+        definition = compile_strategy_text(name="No Flag Family", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        experiment = file_quant_research_experiment(record, experiment_id="exp-1", hypothesis="h1", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00")
+        assert experiment.family_experiment_count is None
+        assert experiment.research_integrity_flag is None
+
+    def test_below_the_real_threshold_reads_normal(self) -> None:
+        definition = compile_strategy_text(name="Normal Flag Family", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        experiment = file_quant_research_experiment(record, experiment_id="exp-1", hypothesis="h1", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00", existing=[])
+        assert experiment.family_experiment_count == 1
+        assert experiment.research_integrity_flag == "normal"
+
+    def test_one_below_the_real_threshold_still_reads_normal(self) -> None:
+        definition = compile_strategy_text(name="Just Under Family", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        existing = []
+        experiment = None
+        for i in range(OVERTESTED_FAMILY_THRESHOLD - 1):
+            experiment = file_quant_research_experiment(record, experiment_id=f"exp-{i}", hypothesis=f"h{i}", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00", existing=existing)
+            existing.append(experiment)
+        assert experiment is not None
+        assert experiment.family_experiment_count == OVERTESTED_FAMILY_THRESHOLD - 1
+        assert experiment.research_integrity_flag == "normal"
+
+    def test_at_the_real_threshold_reads_overtested(self) -> None:
+        definition = compile_strategy_text(name="Overtested Flag Family", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        existing = []
+        experiment = None
+        for i in range(OVERTESTED_FAMILY_THRESHOLD):
+            experiment = file_quant_research_experiment(record, experiment_id=f"exp-{i}", hypothesis=f"h{i}", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00", existing=existing)
+            existing.append(experiment)
+        assert experiment is not None
+        assert experiment.family_experiment_count == OVERTESTED_FAMILY_THRESHOLD
+        assert experiment.research_integrity_flag == "overtested"

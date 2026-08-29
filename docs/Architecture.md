@@ -14183,6 +14183,44 @@ correctness fix only, no application behavior changed. Also added a
 `familyExperimentCount` assertion to the same test's search-results
 check. Full `sandbox.spec.ts` re-run: 4/4 passed.
 
+**Follow-up — "TradeTown — 11/10 Strategy Factory + Ruthless
+Backtesting Engine," Section 12 (Multiple-Testing Penalty).** The real
+`family_experiment_count` signal above already existed, but the
+directive's own >= 5 "apply an appropriate penalty" ask was ONLY ever a
+hardcoded, client-side check inside `QuantResearchLabView.tsx`'s
+"just filed" result box — invisible to the permanent search-results
+list and to any non-UI consumer. New `app/quant_research_lab.py::
+_research_integrity_flag()` and `OVERTESTED_FAMILY_THRESHOLD = 5` (the
+exact number the frontend had already chosen, promoted to one real
+backend authority, not a second invented threshold) derive a real
+`normal`/`overtested` `ResearchIntegrityFlag`, `None` only when the
+count itself is unknown. New `QuantResearchExperiment.
+researchIntegrityFlag` field, computed by
+`file_quant_research_experiment()`. Frontend: both UI surfaces now read
+the identical real backend field — the permanent search-results list
+gained this warning for the first time, and the hardcoded client-side
+`>= 5` check is gone. Advisory only, disclosed: not wired into
+`_classify_outcome()`'s real `outcome` verdict or any promotion gate —
+an honest penalty needs a real backtest-performance dimension to
+discount against, which a bare flag alone doesn't have; an actual
+scoring penalty is real future work. 5 new tests
+(`TestResearchIntegrityFlag`) plus a backward-compat case. Full backend
+suite green, mypy/ruff clean; frontend tsc/lint/build clean.
+Live-verified: the same compiled definition filed five times via
+`POST /api/sandbox/quant-research-lab/experiments` against the real
+running dev stack read `familyExperimentCount` 1 through 5 with
+`researchIntegrityFlag` `normal` through the fourth filing and
+`overtested` exactly on the fifth — the real threshold boundary,
+proven live, not just unit-tested. Also fixed one unrelated,
+pre-existing, order-dependent flaky assertion discovered while
+re-running `sandbox.spec.ts`'s QUANT RESEARCH LAB regression test
+against a freshly-booted (zero-experiments) dev save: Playwright's
+default case-insensitive `getByText("Compile a Definition")`
+ambiguously matched both the real section header and the empty-state
+sentence "compile a definition below" whenever the search-results list
+was genuinely empty — fixed with `{ exact: true }`; the underlying UI
+was never broken, only the test's own selector.
+
 **Increment 5 — Phase 5, buy-and-hold baseline comparison.** The
 research audit found no buy-and-hold or market-benchmark computation
 anywhere in the codebase — the only existing "baseline" concept

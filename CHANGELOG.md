@@ -340,6 +340,45 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — 11/10 Strategy Factory + Ruthless Backtesting Engine," Section 12 (Multiple-Testing
+  Penalty) — a real, single-sourced "overtested" flag.** A real multiple-testing signal
+  (`QuantResearchExperiment.familyExperimentCount`, counting how many prior experiments already
+  tested this exact strategy name) already existed from an earlier pass — but the actual >= 5 warning
+  threshold this directive's Section 12 asks for ("track how many ideas were tested... apply an
+  appropriate... penalty") was ONLY ever a hardcoded, client-side check inside
+  `QuantResearchLabView.tsx`'s "just filed" result box, invisible to the permanent search-results list
+  and to any non-UI consumer.
+  - New `app/quant_research_lab.py::_research_integrity_flag()` and `OVERTESTED_FAMILY_THRESHOLD = 5`
+    (the exact same number the frontend had already chosen, promoted to one real backend authority —
+    not a second, independently-invented threshold) — derives a real `normal`/`overtested`
+    `ResearchIntegrityFlag` from `familyExperimentCount`, `None` only when that count is itself
+    unknown (never guessed as "normal").
+  - New `QuantResearchExperiment.researchIntegrityFlag` field, computed by
+    `file_quant_research_experiment()` alongside the existing count. Frontend: both UI surfaces
+    (`fileResult`'s own box and the permanent search-results list, which never had this warning at
+    all before) now read the identical real backend field — the hardcoded `>= 5` client-side check is
+    gone.
+  - **Deliberately advisory only, disclosed not fabricated**: not wired into `_classify_outcome()`'s
+    `outcome` verdict or any promotion gate. The directive's own words are "apply an appropriate...
+    penalty" — an honest penalty needs a real backtest-performance dimension to discount against,
+    which a bare overtested flag alone does not have; folding it into an actual scoring penalty is
+    real, tractable future work, not attempted in this pass.
+  - New tests: 5 in `TestResearchIntegrityFlag` (`test_quant_research_lab.py`) — an unknown count
+    leaves the flag honestly `None`, one filing reads `normal`, one below the real threshold still
+    reads `normal`, exactly at the real threshold reads `overtested` — plus a backward-compatibility
+    test proving an experiment persisted before this field existed still validates, reading `None`.
+  - Verified: full backend suite green, `mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+    Live-verified against the real running dev stack: the same compiled definition filed five times
+    via `POST /api/sandbox/quant-research-lab/experiments` read `familyExperimentCount`
+    1/2/3/4/5 with `researchIntegrityFlag` `normal`/`normal`/`normal`/`normal`/`overtested` — the
+    exact real threshold boundary. Also fixed one unrelated, pre-existing, order-dependent flaky
+    assertion discovered while re-running `sandbox.spec.ts`'s QUANT RESEARCH LAB regression test
+    against a freshly-booted (zero-experiments) dev save:
+    `page.getByText("Compile a Definition")` (Playwright's default case-insensitive substring match)
+    ambiguously matched both the real section header AND the empty-state sentence "compile a
+    definition below" whenever the search-results list was genuinely empty — fixed with
+    `{ exact: true }`; the underlying UI was never actually broken, only the test's own selector.
+
 - **"TradeTown — 11/10 Strategy Factory + Ruthless Backtesting Engine," Section 13 (Simplicity/
   Complexity Score) — a real structural complexity count for every compiled strategy.** This
   30-section directive overlaps almost entirely with the strategy-research audits already run this

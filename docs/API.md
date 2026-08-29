@@ -1836,6 +1836,14 @@ convention (see `QuantResearchExperiment`'s own docstring in
 (same compiled definition + timeframe, or overlapping hypothesis
 wording) without blocking the new filing.
 
+`QuantResearchExperiment.researchIntegrityFlag` (CEO directive
+"TradeTown — 11/10 Strategy Factory + Ruthless Backtesting Engine,"
+Section 12) — a real `normal`/`overtested` flag derived from
+`familyExperimentCount` at `app/quant_research_lab.py`'s
+`OVERTESTED_FAMILY_THRESHOLD` (5). `null` whenever
+`familyExperimentCount` is itself `null`. Advisory only, never wired
+into `outcome`.
+
 ### `GET /api/sandbox/quant-research-lab/experiments`
 
 Same directive, Feature 36 — real search over every permanently-

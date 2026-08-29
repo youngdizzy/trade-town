@@ -5388,6 +5388,16 @@ class ResearchExperimentRecord(CamelModel):
 
 QuantResearchOutcome = Literal["promising", "rejected", "inconclusive"]
 
+# CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+# Backtesting Engine," Section 12 (Multiple-Testing Penalty) — a real,
+# disclosed flag derived from `family_experiment_count` below, promoted
+# from what was previously only an ad-hoc, hardcoded threshold inside
+# `QuantResearchLabView.tsx`'s own "just filed" result box (never
+# available anywhere else, never a real backend field) into one real,
+# single-sourced signal every consumer reads. See
+# app/quant_research_lab.py's own OVERTESTED_FAMILY_THRESHOLD.
+ResearchIntegrityFlag = Literal["normal", "overtested"]
+
 
 class QuantResearchExperiment(CamelModel):
     """CEO directive "Professional Quant Firm Phase," Feature 36 — the
@@ -5454,6 +5464,17 @@ class QuantResearchExperiment(CamelModel):
     # field existed — the true historical count for those is genuinely
     # unknown, never guessed as 1.
     family_experiment_count: int | None = Field(default=None, alias="familyExperimentCount")
+    # CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
+    # Backtesting Engine," Section 12 — a real, disclosed derivation of
+    # `family_experiment_count` above against one real, disclosed
+    # threshold (see app/quant_research_lab.py's
+    # OVERTESTED_FAMILY_THRESHOLD), never a p-value or corrected
+    # significance level (same real limitation `family_experiment_count`
+    # itself already discloses). `None` whenever `family_experiment_count`
+    # is itself `None` — no flag can be honestly derived from an unknown
+    # count. Advisory only in this pass: not wired into `outcome`, not a
+    # promotion gate — see this field's own README/CHANGELOG entry.
+    research_integrity_flag: ResearchIntegrityFlag | None = Field(default=None, alias="researchIntegrityFlag")
     created_at: str = Field(alias="createdAt")
 
 
