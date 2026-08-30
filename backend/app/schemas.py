@@ -6190,6 +6190,16 @@ FailureCode = Literal[
     "redundant_strategy",
     "failed_challenger",
     "champion_not_beaten",
+    # CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+    # Engine," Section 3 — "a candidate that cannot compile is a
+    # legitimate research failure and should teach the system
+    # something." A real, distinct 39th code for exactly that case:
+    # `app/strategy_compiler.py::compile_strategy_text()` returned
+    # status "ambiguous"/"invalid" for a generated candidate's mutated
+    # source text, so no real backtest was ever attempted — never
+    # conflated with `insufficient_sample` (which means a real backtest
+    # ran but produced too few trades).
+    "compile_rejected",
     # LIFECYCLE_FAILURE — CEO directive "TradeTown — Research Engine
     # Hardening + Self-Improvement Implementation Pass," Phase 2. Closes
     # a real, confirmed gap the prior forensic audit proved reachable: a
@@ -11736,6 +11746,17 @@ class GameSaveState(CamelModel):
     research_lessons: list[ResearchLessonRecord] = Field(
         default_factory=list, alias="researchLessons"
     )
+    # CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+    # Engine" — see app/research_factory.py's own module docstring.
+    # Permanent, append-only, same precedent as research_iterations above.
+    # Each factory run's own per-generation ResearchLoopIterationRecord/
+    # ResearchLessonRecord are ALSO appended into research_iterations/
+    # research_lessons above (never a separate, second copy of that real
+    # evidence) — this list adds only the real, NEW lineage/lifecycle/
+    # summary bookkeeping the Phase 4-6 funnel didn't need.
+    factory_runs: list[FactoryRunRecord] = Field(
+        default_factory=list, alias="factoryRuns"
+    )
     hall_of_fame: list[HallOfFameEntry] = Field(
         default_factory=list, alias="hallOfFame"
     )
@@ -12249,6 +12270,25 @@ class StrategyHypothesis(CamelModel):
     proposed_by: AgentId = Field(alias="proposedBy")
     created_at: str = Field(alias="createdAt")
 
+    # CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+    # Engine," Section 1 — additive-only real lineage/generation fields
+    # for a hypothesis produced by `app/research_factory.py`'s real
+    # generator (see that module's own docstring). All default to
+    # generation-0/empty so every existing caller of this schema
+    # (the Phase 4-6 manual Research Factory UI/tests) is unaffected —
+    # a hand-authored hypothesis is honestly generation 0 with no
+    # lineage, never a fabricated one.
+    generation: int = 0
+    lineage_id: str | None = Field(default=None, alias="lineageId")
+    reason_for_generation: str | None = Field(default=None, alias="reasonForGeneration")
+    lessons_used: list[str] = Field(default_factory=list, alias="lessonsUsed")
+    failure_codes_addressed: list[FailureCode] = Field(default_factory=list, alias="failureCodesAddressed")
+    mutation_operator_used: str | None = Field(default=None, alias="mutationOperatorUsed")
+    expected_improvement: str | None = Field(default=None, alias="expectedImprovement")
+    expected_risk: str | None = Field(default=None, alias="expectedRisk")
+    reproducibility_seed: str | None = Field(default=None, alias="reproducibilitySeed")
+    source_evidence_ids: list[str] = Field(default_factory=list, alias="sourceEvidenceIds")
+
 
 class MutationRecord(CamelModel):
     """Section 3's real mutation lineage: parent -> observed failure ->
@@ -12413,6 +12453,175 @@ class ResearchLoopIterationRecord(CamelModel):
     mutation: MutationRecord | None = Field(default=None, alias="mutation")
     budget: ResearchBudgetStatus
     created_at: str = Field(alias="createdAt")
+
+
+# ============================================================================
+# CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution Engine" —
+# closes the seam Phase 4-6 (above) deliberately left open: automatic
+# hypothesis generation, a bounded/deterministic mutation-to-text engine, and
+# a real multi-generation OBSERVE->GENERATE->MUTATE->COMPILE->BACKTEST->
+# VALIDATE->STRESS->COMPARE->ACCEPT-OR-BIN->LEARN loop. See
+# app/research_factory.py's own module docstring for the complete real
+# architecture, every bounded mutation operator, and the explicit scope
+# cuts. Every schema below wraps already-real evidence
+# (ResearchLoopIterationRecord/ResearchLessonRecord, both unmodified) with
+# real lineage/lifecycle bookkeeping — no new backtest math anywhere here.
+# ============================================================================
+
+# Section 7 — the minimum candidate lifecycle compatible with this
+# codebase's existing architecture. `challenger_eligible` is a real,
+# disclosed LABEL only (candidacy == "accepted") — it never triggers an
+# automatic Champion/Challenger submission; see app/research_factory.py's
+# own docstring for why that stays a separate, explicit, human/agent action.
+# `promoted` is deliberately NOT a value this Literal can hold: that state
+# is owned entirely by ChampionRecord/champion_history, which this module
+# never writes to — a factory candidate's own lifecycle stage caps out at
+# `challenger_eligible`.
+CandidateLifecycleStage = Literal[
+    "generated",
+    "compile_rejected",
+    "backtested",
+    "candidate",
+    "rejected",
+    "survivor",
+    "challenger_eligible",
+]
+
+
+class MutationCandidate(CamelModel):
+    """Section 2's real, executable mutation — the successor to
+    `MutationRecord` above, used only inside the Research Factory's
+    automatic loop. `mutated_source_text` is `None` whenever this
+    iteration's real failure code has no bounded, deterministic textual
+    operator (see app/research_factory.py's own `_MUTATION_OPERATORS`
+    docstring for exactly which codes do/don't) — a real, disclosed
+    limitation, never a silent skip. `reproducibility_seed` is a real,
+    deterministic hash of (parent id/version, mutation type) — this
+    codebase's mutation logic has no actual randomness to seed; the field
+    exists so every candidate carries an auditable, reproducible identity
+    per Section 21, not because true randomness is involved."""
+
+    id: str
+    parent_definition_id: str = Field(alias="parentDefinitionId")
+    parent_definition_version: int = Field(alias="parentDefinitionVersion")
+    mutation_type: str = Field(alias="mutationType")
+    changed_parameters: dict[str, str] = Field(default_factory=dict, alias="changedParameters")
+    hypothesis: str
+    rationale: str
+    expected_effect: str = Field(alias="expectedEffect")
+    constraints: str
+    mutated_source_text: str | None = Field(default=None, alias="mutatedSourceText")
+    reproducibility_seed: str = Field(alias="reproducibilitySeed")
+    created_at: str = Field(alias="createdAt")
+
+
+class FactoryCandidateRecord(CamelModel):
+    """One real node in a Research Factory run's lineage tree. `iteration`
+    is `None` only when `lifecycle_stage == "compile_rejected"` — a
+    candidate whose mutated source text never reached `status == "compiled"`
+    never entered the real backtest pipeline at all (Section 3: "a
+    candidate that cannot compile is a legitimate research failure"), so
+    there is honestly no `ResearchLoopIterationRecord` to attach. Never
+    mutated after creation — a re-test is always a new record with its own
+    real id, linked via `parent_candidate_id`."""
+
+    id: str
+    run_id: str = Field(alias="runId")
+    generation: int
+    parent_candidate_id: str | None = Field(default=None, alias="parentCandidateId")
+    lineage_id: str = Field(alias="lineageId")
+    strategy_family: str = Field(alias="strategyFamily")
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    hypothesis: StrategyHypothesis
+    lifecycle_stage: CandidateLifecycleStage = Field(alias="lifecycleStage")
+    compile_status: CompiledStrategyStatus = Field(alias="compileStatus")
+    compile_detail: str = Field(alias="compileDetail")
+    iteration: ResearchLoopIterationRecord | None = Field(default=None)
+    mutation_candidate: MutationCandidate | None = Field(default=None, alias="mutationCandidate")
+    survived: bool
+    decision_reason: str = Field(alias="decisionReason")
+    created_at: str = Field(alias="createdAt")
+
+
+class FactoryRunConfig(CamelModel):
+    """Section 14/15 — a real, disclosed, bounded research budget for one
+    factory run. `max_mutations_per_parent`/`max_iterations_per_family`
+    are the SAME real constants app/research_loop.py already enforces
+    (`MAX_MUTATIONS_PER_PARENT`/`MAX_ITERATIONS_PER_FAMILY`) — surfaced
+    here, never duplicated as a second independent limit."""
+
+    max_generations: int = Field(alias="maxGenerations")
+    max_total_backtests: int = Field(alias="maxTotalBacktests")
+    max_mutations_per_parent: int = Field(alias="maxMutationsPerParent")
+    max_iterations_per_family: int = Field(alias="maxIterationsPerFamily")
+
+
+class FactoryRunRecord(CamelModel):
+    """Section 26's one real, persisted, permanent record of a full
+    factory cycle — every generated/tested/rejected/surviving candidate,
+    the real lineage tree (via each candidate's own `parent_candidate_id`),
+    and a real, decomposable summary (never a fabricated "AI quality
+    score" — Section 20's own explicit instruction). Never mutated after
+    creation; never deleted, matching this codebase's own
+    quant_research_experiments/champion_history precedent."""
+
+    id: str
+    strategy_family: str = Field(alias="strategyFamily")
+    seed_definition_id: str = Field(alias="seedDefinitionId")
+    seed_definition_version: int = Field(alias="seedDefinitionVersion")
+    lineage_id: str = Field(alias="lineageId")
+    config: FactoryRunConfig
+    candidates: list[FactoryCandidateRecord] = Field(default_factory=list)
+    generations_completed: int = Field(alias="generationsCompleted")
+    candidates_generated: int = Field(alias="candidatesGenerated")
+    candidates_compiled: int = Field(alias="candidatesCompiled")
+    candidates_backtested: int = Field(alias="candidatesBacktested")
+    candidates_validated: int = Field(alias="candidatesValidated")
+    candidates_rejected: int = Field(alias="candidatesRejected")
+    survivor_candidate_ids: list[str] = Field(default_factory=list, alias="survivorCandidateIds")
+    best_survivor_candidate_id: str | None = Field(default=None, alias="bestSurvivorCandidateId")
+    top_rejection_reasons: list[str] = Field(default_factory=list, alias="topRejectionReasons")
+    top_lessons: list[str] = Field(default_factory=list, alias="topLessons")
+    stop_reason: str = Field(alias="stopReason")
+    current_champion_definition_id: str | None = Field(default=None, alias="currentChampionDefinitionId")
+    current_champion_definition_version: int | None = Field(default=None, alias="currentChampionDefinitionVersion")
+    created_at: str = Field(alias="createdAt")
+
+
+class LessonEvidenceSummary(CamelModel):
+    """Section 12 — "memory is evidence, not truth." Computed FRESH per
+    request (CAGS, matching `ResearchExperimentRecord`'s own convention),
+    never stored on `ResearchLessonRecord` itself, so a lesson's own
+    evidence tally always reflects the CURRENT full lesson archive rather
+    than a stale count frozen at creation time. `supporting_iterations`/
+    `contradicting_iterations` are a real, disclosed, simple proxy: how
+    many OTHER real lessons for the SAME strategy family landed in the
+    same real candidacy bucket (accepted/promising treated as one
+    "favorable" bucket, everything else "unfavorable") as this one,
+    versus the opposite bucket — never a fabricated statistical
+    confidence measure. See app/research_factory.py's
+    `summarize_lesson_evidence()` for the exact rule."""
+
+    lesson_id: str = Field(alias="lessonId")
+    supporting_iterations: int = Field(alias="supportingIterations")
+    contradicting_iterations: int = Field(alias="contradictingIterations")
+    last_seen: str = Field(alias="lastSeen")
+    strategies_affected: list[str] = Field(default_factory=list, alias="strategiesAffected")
+
+
+class FactoryStatsRead(CamelModel):
+    """Section 20 — real, decomposable factory-wide observability, across
+    every persisted `FactoryRunRecord`. Deliberately NOT a fabricated "AI
+    quality score" — every field is a direct count or a direct pass-through
+    of already-real per-run fields."""
+
+    total_runs: int = Field(alias="totalRuns")
+    total_candidates: int = Field(alias="totalCandidates")
+    total_survivors: int = Field(alias="totalSurvivors")
+    total_rejected: int = Field(alias="totalRejected")
+    total_compile_rejected: int = Field(alias="totalCompileRejected")
+    top_rejection_reasons: list[str] = Field(default_factory=list, alias="topRejectionReasons")
 
 
 class HealthResponse(BaseModel):

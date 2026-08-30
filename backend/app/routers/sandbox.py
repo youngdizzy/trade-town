@@ -3,6 +3,8 @@ docstring for what this feature extends vs. builds new.
 """
 from __future__ import annotations
 
+from collections import Counter
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,11 +18,13 @@ from app.market_intelligence import compute_strategy_match
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.persistence import persist_modules
 from app.research_experiment import run_research_experiment
+from app.research_factory import summarize_lesson_evidence
 from app.quant_research_lab import find_similar_experiments
 from app.schemas import (
     AgentId,
     AgentStrategySurvivalScore,
     BacktestSession,
+    CandidacyBinning,
     ChallengerComparison,
     ChampionRecord,
     CompiledStrategyBacktestResult,
@@ -29,8 +33,11 @@ from app.schemas import (
     CostSensitivityResult,
     EmaPullbackResearchResult,
     EvaluationPolicyComparisonReport,
+    FactoryRunRecord,
+    FactoryStatsRead,
     FailedStrategyArchiveEntry,
     FailureModeCount,
+    LessonEvidenceSummary,
     LookAheadAuditResult,
     ResearchLessonRecord,
     ResearchLoopIterationRecord,
@@ -139,6 +146,18 @@ class SubmitResearchLoopIterationRequest(BaseModel):
 
     hypothesis: StrategyHypothesis
     definition: CompiledStrategyDefinition
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
+
+
+class SubmitResearchFactoryRunRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    hypothesis: StrategyHypothesis
+    definition: CompiledStrategyDefinition
+    max_generations: int | None = Field(default=None, alias="maxGenerations")
+    max_total_backtests: int | None = Field(default=None, alias="maxTotalBacktests")
     symbols: list[str] | None = None
     timeframe: str | None = None
     candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
@@ -622,13 +641,22 @@ async def run_research_loop_iteration_endpoint(payload: SubmitResearchLoopIterat
 
 
 @router.get("/research-loop/iterations", response_model=list[ResearchLoopIterationRecord])
-async def research_loop_iterations(strategy_family: str | None = Query(default=None)) -> list[ResearchLoopIterationRecord]:
+async def research_loop_iterations(
+    strategy_family: str | None = Query(default=None), candidacy: CandidacyBinning | None = Query(default=None)
+) -> list[ResearchLoopIterationRecord]:
     """Same directive — the full, real, permanent iteration history,
-    optionally filtered to one real strategy family. Read-only."""
+    optionally filtered to one real strategy family and/or one real
+    candidacy binning. CEO directive "TradeTown — Phase 7: Autonomous
+    Strategy Evolution Engine," Section 18 — `candidacy` is the real,
+    reused way to "inspect rejected candidates"/"inspect survivors"
+    (e.g. `?candidacy=accepted`) without a second, duplicate endpoint.
+    Read-only."""
     state = await game_state.snapshot()
     iterations = state.research_iterations
     if strategy_family is not None:
         iterations = [i for i in iterations if i.strategy_family == strategy_family]
+    if candidacy is not None:
+        iterations = [i for i in iterations if i.candidacy == candidacy]
     return iterations
 
 
@@ -641,6 +669,112 @@ async def research_loop_lessons(strategy_family: str | None = Query(default=None
     if strategy_family is not None:
         lessons = [lesson for lesson in lessons if lesson.strategy_family == strategy_family]
     return lessons
+
+
+@router.get("/research-loop/lessons/evidence", response_model=list[LessonEvidenceSummary])
+async def research_loop_lesson_evidence(strategy_family: str | None = Query(default=None)) -> list[LessonEvidenceSummary]:
+    """CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+    Engine," Section 12 — "memory is evidence, not truth." Computed
+    fresh (see app/research_factory.py's own `summarize_lesson_evidence()`
+    docstring for the exact real methodology); never stored on
+    ResearchLessonRecord itself, so it always reflects the current full
+    archive."""
+    state = await game_state.snapshot()
+    lessons = state.research_lessons
+    if strategy_family is not None:
+        lessons = [lesson for lesson in lessons if lesson.strategy_family == strategy_family]
+    return summarize_lesson_evidence(lessons)
+
+
+@router.post("/research-factory/run", response_model=FactoryRunRecord)
+async def run_research_factory_run_endpoint(payload: SubmitResearchFactoryRunRequest) -> FactoryRunRecord:
+    """CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+    Engine" — the one real entry point for the full, bounded,
+    multi-generation OBSERVE->GENERATE->MUTATE->COMPILE->BACKTEST->
+    VALIDATE->STRESS->COMPARE->ACCEPT-OR-BIN->LEARN loop (see
+    app/research_factory.py's own module docstring for the complete
+    real architecture and disclosed scope boundaries). Every generation
+    reuses the exact same real funnel `POST /research-loop/run` already
+    uses — this endpoint's only new behavior is automatically compiling
+    and re-testing each real, bounded, deterministic mutation. Never
+    calls Champion/Challenger or any promotion path — a real survivor
+    is only ever LABELED eligible; a separate, explicit, unmodified
+    `POST /champion-challenger/compare` call is still required."""
+    state, run = await game_state.submit_research_factory_run(
+        payload.hypothesis,
+        payload.definition,
+        max_generations=payload.max_generations,
+        max_total_backtests=payload.max_total_backtests,
+        symbols=payload.symbols,
+        timeframe=payload.timeframe,
+        candles_per_symbol=payload.candles_per_symbol,
+    )
+    persist_modules(state)
+    return run
+
+
+@router.get("/research-factory/runs", response_model=list[FactoryRunRecord])
+async def research_factory_runs(strategy_family: str | None = Query(default=None)) -> list[FactoryRunRecord]:
+    """Same directive — the full, real, permanent factory-run history,
+    optionally filtered to one real strategy family. Read-only."""
+    state = await game_state.snapshot()
+    runs = state.factory_runs
+    if strategy_family is not None:
+        runs = [r for r in runs if r.strategy_family == strategy_family]
+    return runs
+
+
+@router.get("/research-factory/runs/{run_id}", response_model=FactoryRunRecord)
+async def research_factory_run_detail(run_id: str) -> FactoryRunRecord:
+    """Same directive, Section 18 — one real factory run's full detail:
+    every candidate, its real lineage, and its real decision reason.
+    404 when no run with this id exists."""
+    state = await game_state.snapshot()
+    run = next((r for r in state.factory_runs if r.id == run_id), None)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"No real factory run found with id '{run_id}'.")
+    return run
+
+
+@router.get("/research-factory/lineage/{strategy_family}", response_model=list[ResearchLoopIterationRecord])
+async def research_factory_lineage(strategy_family: str) -> list[ResearchLoopIterationRecord]:
+    """Same directive, Section 18 — "inspect strategy lineage." Reuses
+    the already-real, already-persisted `research_iterations` (every
+    factory generation's own real `ResearchLoopIterationRecord` is
+    appended there, never stored twice) rather than a second lineage
+    store; the real lineage chain itself is reconstructable from each
+    iteration's own `hypothesis.parent_definition_id`/
+    `hypothesis.generation` fields. Oldest first, so ancestry reads
+    top-to-bottom."""
+    state = await game_state.snapshot()
+    return [i for i in state.research_iterations if i.strategy_family == strategy_family]
+
+
+@router.get("/research-factory/stats", response_model=FactoryStatsRead)
+async def research_factory_stats() -> FactoryStatsRead:
+    """Same directive, Section 20 — real, decomposable, factory-wide
+    observability across every persisted `FactoryRunRecord`. Never a
+    fabricated "AI quality score" — every field is a direct count or a
+    direct pass-through of already-real per-run fields."""
+    state = await game_state.snapshot()
+    runs = state.factory_runs
+    # A real, disclosed, simple tally: how many real runs listed this
+    # exact failure code among their own top-5 rejection reasons — never
+    # a fabricated cross-run sum of the per-run counts embedded in each
+    # reason string (which would double-count differently-sized runs).
+    rejection_counter: Counter[str] = Counter()
+    for run in runs:
+        for reason in run.top_rejection_reasons:
+            code = reason.rsplit(" (", 1)[0]
+            rejection_counter[code] += 1
+    return FactoryStatsRead(
+        totalRuns=len(runs),
+        totalCandidates=sum(r.candidates_generated for r in runs),
+        totalSurvivors=sum(len(r.survivor_candidate_ids) for r in runs),
+        totalRejected=sum(r.candidates_rejected for r in runs),
+        totalCompileRejected=sum(1 for r in runs for c in r.candidates if c.lifecycle_stage == "compile_rejected"),
+        topRejectionReasons=[code for code, _count in rejection_counter.most_common(5)],
+    )
 
 
 @router.post("/register-researchable-strategy", response_model=RegisterResearchableStrategyResponse)

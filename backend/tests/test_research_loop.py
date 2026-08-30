@@ -465,7 +465,16 @@ class TestRunResearchLoopIterationIntegration:
         assert result.candidacy in ("accepted", "promising", "fragile", "rejected", "duplicate", "insufficient_evidence", "overfit", "benchmark_failed", "risk_failed")
         assert result.scorecard.trade_count is not None
         assert result.experiment.definition_id == definition.id
-        assert result.mutation is None  # no parent -> no mutation proposed
+        # CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+        # Engine" — propose_mutation() now always runs (see
+        # run_research_loop_iteration()'s own updated comment): a
+        # hypothesis with no explicit parent self-references `definition`
+        # as its own "parent to mutate from." A mutation is produced iff
+        # a real failure code with a template is present — never
+        # unconditionally `None` merely because lineage was unstated.
+        if result.mutation is not None:
+            assert result.mutation.parent_definition_id == definition.id
+            assert result.mutation.parent_definition_version == definition.version
 
     def test_an_uncompilable_definition_never_crashes_the_funnel(self) -> None:
         definition = compile_strategy_text(name="Moon Strategy", source_text=_INVALID_TEXT)

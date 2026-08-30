@@ -590,6 +590,19 @@ def run_research_loop_iteration(
         largestWinShareOfReturnPct=(round(largest_win_share * 100, 1) if largest_win_share is not None else None),
     )
 
+    # CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+    # Engine" — fixed a real, confirmed latent inconsistency: the args
+    # below already fell back to definition.id/definition.version
+    # whenever hypothesis.parent_definition_id was None, but the outer
+    # guard used to skip calling propose_mutation() entirely in that
+    # exact case, making that fallback dead code. A hypothesis with no
+    # explicit lineage (a fresh, non-mutated idea) still has a real
+    # definition it is testing FROM — propose_mutation() now always
+    # runs, self-referencing that same definition as its own "parent to
+    # mutate from" when no earlier lineage exists. Required for
+    # app/research_factory.py's generation-0 seed hypotheses to receive
+    # a first real mutation proposal at all; every hypothesis that DOES
+    # carry an explicit parent behaves identically to before this fix.
     mutation = propose_mutation(
         failure_codes,
         parent_definition_id=hypothesis.parent_definition_id or definition.id,
@@ -598,7 +611,7 @@ def run_research_loop_iteration(
         mutation_number=1,
         mutation_id=mutation_id,
         created_at=created_at,
-    ) if hypothesis.parent_definition_id is not None else None
+    )
 
     budget = evaluate_research_budget(quant_research_experiments, research_iterations, strategy_family=definition.name, parent_definition_id=hypothesis.parent_definition_id)
 

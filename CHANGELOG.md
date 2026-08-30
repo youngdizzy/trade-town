@@ -340,6 +340,87 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Phase 7: Autonomous Strategy Evolution Engine" — closes the seam Phase 4-6 (below)
+  deliberately left open: a real, bounded, deterministic, multi-generation OBSERVE→GENERATE→MUTATE→
+  COMPILE→BACKTEST→VALIDATE→STRESS→COMPARE→ACCEPT-OR-BIN→LEARN loop (`app/research_factory.py`),
+  built entirely on Phase 4-6's own unmodified `run_research_loop_iteration()`/
+  `register_strategy_version()`/`classify_research_relationship()`.**
+  - **Automatic hypothesis generator** (`generate_next_hypothesis()`) — consumes the parent's own real
+    mutation/lesson and produces a new, structured, falsifiable `StrategyHypothesis` with a real,
+    disclosed generation number, lineage id, reason, lessons/failure-codes-addressed, mutation
+    operator used, and a deterministic reproducibility seed (`StrategyHypothesis` gained nine new
+    additive-only fields — every existing caller unaffected, defaulting to generation 0/empty).
+  - **A bounded, deterministic, executable mutation engine** (`MutationCandidate`, six real text
+    operators: `widen_stop`/`widen_target`/`narrow_target`/`add_confirmation_bar`/`relax_threshold`)
+    — every operator either numerically nudges one already-compiled, already-structured value (the
+    parent's own `stop.atrMultiplier`/`stop.percent`/`target.value`/a swept threshold/a
+    consecutive-bar count) by a small, capped step, reusing `app/strategy_compiler.py`'s own private
+    regex patterns directly (never re-derived, so they can't drift), or appends one new sentence in
+    that compiler's own disclosed vocabulary — never an LLM, never freeform rewriting (this codebase
+    runs no LLM at runtime anywhere). `regime_failure`/`negative_net_return`/
+    `benchmark_underperformance` get no bounded operator — explicitly disclosed, real reasons given
+    (the compiler's real vocabulary supports at most one trigger per strategy with no generic way to
+    add a second combined condition; the other two need a materially different hypothesis, not a
+    parameter tweak).
+  - **Real automatic compile→backtest integration** — a generated candidate's mutated text is
+    compiled via the existing, unmodified `register_strategy_version()` and immediately re-run
+    through the full existing funnel; a candidate that fails to compile is recorded as a new,
+    39th `FailureCode` (`compile_rejected`) and the lineage stops there, never silently dropped.
+  - **A real candidate lifecycle** (`CandidateLifecycleStage`: `compile_rejected`/`backtested`/
+    `candidate`/`rejected`/`survivor`, honestly derived — see `app/research_factory.py`'s own
+    docstring for exactly which declared states this pass can and cannot actually produce) and a
+    real, permanent lineage tree (`FactoryCandidateRecord.parentCandidateId`), persisted in a new
+    `GameSaveState.factoryRuns` (permanent, append-only) — every generation's own real
+    `ResearchLoopIterationRecord`/`ResearchLessonRecord` is ALSO appended into the existing
+    `researchIterations`/`researchLessons` lists, never stored twice.
+  - **Real, bounded budget/generation limits** — `MAX_GENERATIONS_PER_FACTORY_RUN`/
+    `MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN`, layered on top of (never replacing) Phase 4-6's own
+    `MAX_ITERATIONS_PER_FAMILY`/`MAX_MUTATIONS_PER_PARENT`, which this module still enforces every
+    generation via the unmodified `evaluate_research_budget()`.
+  - **Champion/Challenger boundary preserved by import shape, not prose** — this module imports only
+    the read-only `get_current_champion()`; a real survivor is only ever LABELED eligible in its own
+    `decisionReason` text — actually submitting it still requires a separate, explicit, unmodified
+    `POST /champion-challenger/compare` call. No factory candidate ever gets live/paper execution
+    authority.
+  - **`LessonEvidenceSummary`** (Section 12, "memory is evidence, not truth") — a real, disclosed,
+    computed-fresh (never stored) same-family candidacy-bucket agreement/disagreement tally per
+    lesson — never a fabricated statistical confidence measure.
+  - **One genuine, disclosed fix to already-shipped Phase 4-6 code**: `run_research_loop_iteration()`
+    had a real, confirmed latent inconsistency — its own fallback (`hypothesis.parent_definition_id
+    or definition.id`) could never actually run, because the outer guard skipped calling
+    `propose_mutation()` entirely whenever `hypothesis.parent_definition_id` was `None`, so a fresh,
+    non-mutated hypothesis could never receive a first real mutation proposal — which would make this
+    pass's entire closed loop impossible to start. Fixed with a minimal, one-line change (a hypothesis
+    with no explicit parent now self-references the definition it's testing, matching the fallback
+    that was already written); every hypothesis that already carried an explicit parent is completely
+    unaffected. One existing test's assertion (which depended on the old, buggy behavior) was updated
+    to match, with a disclosed comment explaining why.
+  - **New API**: `POST /research-factory/run`, `GET /research-factory/runs`,
+    `GET /research-factory/runs/{id}`, `GET /research-factory/lineage/{strategy_family}`,
+    `GET /research-factory/stats`, `GET /research-loop/lessons/evidence`; added an optional
+    `candidacy` filter to the existing `GET /research-loop/iterations` (Section 18's "inspect
+    rejected candidates"/"inspect survivors," reusing the existing endpoint rather than a duplicate).
+  - **UI**: the RESEARCH FACTORY sub-tab gained a "Run Autonomous Factory Cycle" button, a Factory
+    Status panel (generations/candidates generated-compiled-backtested-rejected/survivors/current
+    champion/budget), a static pipeline-stage row, and a full candidate lineage view (per-generation
+    hypothesis, real metrics, mutation disclosure, decision reason) plus a permanent run-history card.
+  - **NOT IMPLEMENTED, explicitly disclosed**: entry-condition/exit-condition/timeframe/position-
+    sizing/explicit-trade-frequency mutation operators (no bounded, deterministic text-splice exists
+    against the compiler's real vocabulary for any of these); new agent-role dialogue/personas (same
+    disclosed cut as Phase 4-6); genuine holdout data discipline (same disclosed cut as Phase 4-6 —
+    still no real date-partitioned historical dataset exists to carve one from).
+  - **Verified:** full backend suite (3379 tests, up from 3330 — 49 new tests in
+    `test_research_factory.py`, including a source-inspection test proving Champion/Challenger's
+    promotion path is never imported), `mypy app/`/`ruff app/ tests/` clean. Frontend `tsc -b`/lint/
+    build clean (a stale `.tsbuildinfo` initially masked a real missing-properties error on the
+    hypothesis literal in `ResearchFactoryView.tsx`; caught and fixed by forcing a clean rebuild).
+    Live-verified two ways: a direct API run against the real running dev stack (5 real generations,
+    real widen-target mutations compiling and re-testing automatically, stopping exactly at the real
+    5-mutation-per-parent budget with a disclosed reason; the persisted iterations/lessons/lineage/
+    stats endpoints all confirmed populated correctly), and a full interactive Playwright pass through
+    the RESEARCH FACTORY tab's new "Run Autonomous Factory Cycle" button confirming the Factory
+    Status panel, candidate lineage, and stop reason all render correctly end to end.
+
 - **"TradeTown — Next Major Implementation Pass, Phase 4-6: Self-Improving Strategy Factory +
   Validation Funnel" — a real, wired Research Factory orchestrator (`app/research_loop.py`) built
   entirely on the Research Desk pipeline this session already hardened.** Pure orchestration, no new

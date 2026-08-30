@@ -24,20 +24,23 @@ parameters from that caller rather than re-importing them here, since
 straight import the other way would be circular).
 
 AN HONEST, DISCLOSED SUBSET OF THE DIRECTIVE'S OWN 35-CODE TAXONOMY
-(NOW 38 — CEO directive "TradeTown — Research Engine Hardening +
+(NOW 39 — CEO directive "TradeTown — Research Engine Hardening +
 Self-Improvement Implementation Pass," Phase 2 added two real,
 evidence-backed LIFECYCLE_FAILURE codes: `never_reached_required_stage`/
 `founder_approval_rejected`, closing the confirmed gap where a strategy
 clearing every numeric bar could still retire with `failureCodes: []`;
 CEO directive "TradeTown — Next Major Implementation Pass, Phase 4-6"
 added one real STATISTICAL_FAILURE code, `outlier_dependent`, derived
-by the NEW `app/research_loop.py` module — see that module's own
-docstring for why the Research Desk pipeline, not this function, is
-the honest home for that derivation). `FailureCode` (app/schemas.py)
+by the NEW `app/research_loop.py` module; CEO directive "TradeTown —
+Phase 7: Autonomous Strategy Evolution Engine" added one real
+RESEARCH_FAILURE code, `compile_rejected`, derived by the NEW
+`app/research_factory.py` module — see each module's own docstring for
+why the Research Desk pipeline, not this function, is the honest home
+for those derivations). `FailureCode` (app/schemas.py)
 defines the directive's own full, requested vocabulary verbatim — real,
 valid vocabulary, useful even before every code has a real derivation
 path wired to it. Today, a `Strategy`'s own retirement decision only
-has real evidence for EIGHT of those 38 codes (see `derive_failure_codes()`
+has real evidence for EIGHT of those 39 codes (see `derive_failure_codes()`
 below) — this codebase has
 no real walk-forward/cost-sensitivity/look-ahead-audit/benchmark
 evidence wired into the SANDBOX strategy-retirement pipeline at all
@@ -136,6 +139,11 @@ FAILURE_CODE_METADATA: dict[FailureCode, tuple[FailureCategory, FailureSeverity]
     "redundant_strategy": ("research_failure", "low"),
     "failed_challenger": ("research_failure", "low"),
     "champion_not_beaten": ("research_failure", "low"),
+    # CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+    # Engine," Section 3 — real derivation lives in
+    # app/research_factory.py, not here (see that module's own
+    # module docstring for exactly when this fires).
+    "compile_rejected": ("research_failure", "high"),
     # CEO directive "TradeTown — Research Engine Hardening +
     # Self-Improvement Implementation Pass," Phase 2 — real evidence
     # exists for both (the strategy's own real `stage`/real

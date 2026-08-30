@@ -1887,7 +1887,11 @@ unmodified, authoritative promotion path.
 ### `GET /api/sandbox/research-loop/iterations`
 
 Same directive — the full, real, permanent iteration history, never
-overwritten. Optional `?strategyFamily=...` filter. Returns
+overwritten. Optional `?strategyFamily=...` and `?candidacy=...`
+filters (the latter added by CEO directive "TradeTown — Phase 7:
+Autonomous Strategy Evolution Engine," Section 18 — the real, reused
+way to "inspect rejected candidates"/"inspect survivors," e.g.
+`?candidacy=accepted`, without a second, duplicate endpoint). Returns
 `ResearchLoopIterationRecord[]`.
 
 ### `GET /api/sandbox/research-loop/lessons`
@@ -1895,6 +1899,72 @@ overwritten. Optional `?strategyFamily=...` filter. Returns
 Same directive, Section 9 — the real, permanent self-improvement
 memory. Optional `?strategyFamily=...` filter. Returns
 `ResearchLessonRecord[]`.
+
+### `GET /api/sandbox/research-loop/lessons/evidence`
+
+CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+Engine," Section 12 — "memory is evidence, not truth." Optional
+`?strategyFamily=...` filter. Returns `LessonEvidenceSummary[]`, computed
+fresh (never stored on `ResearchLessonRecord` itself): for each lesson,
+how many other real lessons for the SAME strategy family landed in the
+same real candidacy bucket (accepted/promising = "favorable," everything
+else "unfavorable") as this one, versus the opposite bucket — a real,
+disclosed, simple proxy, never a fabricated statistical confidence
+measure.
+
+### `POST /api/sandbox/research-factory/run`
+
+CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+Engine" — the one real entry point for the full, bounded,
+multi-generation OBSERVE→GENERATE→MUTATE→COMPILE→BACKTEST→VALIDATE→
+STRESS→COMPARE→ACCEPT-OR-BIN→LEARN loop (see `app/research_factory.py`'s
+own module docstring for the complete real architecture). Body:
+`{ "hypothesis": StrategyHypothesis, "definition": CompiledStrategyDefinition,
+"maxGenerations": 5, "maxTotalBacktests": 10, "symbols": [...],
+"timeframe": "...", "candlesPerSymbol": 6000 }` (all but `hypothesis`/
+`definition` optional). Every generation reuses the exact same real
+funnel `POST /research-loop/run` already uses — this endpoint's only new
+behavior is automatically compiling and re-testing each real, bounded,
+deterministic mutation via `app/strategy_registry.py`'s own unmodified
+`register_strategy_version()`. Returns the full `FactoryRunRecord`: every
+`FactoryCandidateRecord` (real lineage via `parentCandidateId`, real
+lifecycle stage, the wrapped `ResearchLoopIterationRecord` when a real
+backtest ran, an optional `MutationCandidate` with its own real
+`mutatedSourceText` or a disclosed `null`), real decomposable summary
+counts, `topRejectionReasons`/`topLessons`, a real disclosed
+`stopReason`, and the current champion (if any) for context. Never calls
+Champion/Challenger or any promotion path — a real survivor is only ever
+LABELED eligible; a separate, explicit, unmodified
+`POST /champion-challenger/compare` call is still required. Permanently
+persists the run plus every generation's own real
+`ResearchLoopIterationRecord`/`ResearchLessonRecord` (appended into the
+same `researchIterations`/`researchLessons` lists Phase 4-6 already
+uses, never stored twice).
+
+### `GET /api/sandbox/research-factory/runs`
+
+Same directive — the full, real, permanent factory-run history, never
+overwritten. Optional `?strategyFamily=...` filter. Returns
+`FactoryRunRecord[]`.
+
+### `GET /api/sandbox/research-factory/runs/{run_id}`
+
+Same directive, Section 18 — one real factory run's full detail. `404`
+when no run with this id exists. Returns `FactoryRunRecord`.
+
+### `GET /api/sandbox/research-factory/lineage/{strategy_family}`
+
+Same directive, Section 18 — "inspect strategy lineage." Reuses the
+already-real, already-persisted `research_iterations` (every factory
+generation's own real `ResearchLoopIterationRecord` is appended there,
+never stored twice) rather than a second lineage store. Returns
+`ResearchLoopIterationRecord[]`, oldest first.
+
+### `GET /api/sandbox/research-factory/stats`
+
+Same directive, Section 20 — real, decomposable, factory-wide
+observability across every persisted `FactoryRunRecord`. Never a
+fabricated "AI quality score." Returns `FactoryStatsRead`.
 
 ### `GET /api/sandbox/failure-modes`
 

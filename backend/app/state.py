@@ -127,6 +127,7 @@ from app.schemas import (
     BlackSwanRiskTier,
     ChallengerComparison,
     ChampionRecord,
+    FactoryRunRecord,
     ResearchLoopIterationRecord,
     StrategyHypothesis,
     ClientSaveRequest,
@@ -168,7 +169,9 @@ from app.failure_taxonomy import find_similar_failed_strategies
 from app.quant_research_lab import cap_quant_research_experiments, classify_research_relationship, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
 from app.research_loop import generate_research_lesson, run_research_loop_iteration
+from app.research_factory import MAX_GENERATIONS_PER_FACTORY_RUN, MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN, run_research_factory_cycle
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
+from app.strategy_compiler import strategy_definition_slug
 from app.strategy_registry import default_researchable_strategies, register_researchable_strategy, register_strategy_version
 from app.foundational_mentors import (
     add_custom_lesson as add_custom_academy_lesson_entry,
@@ -2803,6 +2806,80 @@ class GameState:
             updated_lessons = [*self.data.research_lessons, lesson]
             self.data = self.data.model_copy(update={"research_iterations": updated_iterations, "research_lessons": updated_lessons})
             return self.data, iteration
+
+    async def submit_research_factory_run(
+        self,
+        hypothesis: StrategyHypothesis,
+        definition: CompiledStrategyDefinition,
+        *,
+        max_generations: int | None = None,
+        max_total_backtests: int | None = None,
+        symbols: list[str] | None = None,
+        timeframe: str | None = None,
+        candles_per_symbol: int | None = None,
+    ) -> tuple[GameSaveState, FactoryRunRecord]:
+        """CEO directive "TradeTown — Phase 7: Autonomous Strategy
+        Evolution Engine" — see app/research_factory.py's own module
+        docstring for the full real architecture. Runs the potentially
+        slow, real, multi-generation loop OUTSIDE the lock (same
+        real convention submit_research_loop_iteration() above already
+        established, for the identical real reason). Concurrency-safe
+        by construction: only the NEW iterations/lessons this run itself
+        produced (never the whole stale snapshot the loop started from)
+        are appended onto whatever `research_iterations`/
+        `research_lessons` look like at the FINAL lock acquisition, and
+        only this ONE strategy family's own updated version history is
+        merged back into `compiled_strategy_versions` — a concurrent
+        write to a different family, or a new iteration/lesson filed by
+        another request while this run was in flight, is never lost."""
+        resolved_timeframe = timeframe if timeframe is not None else DEFAULT_TIMEFRAME
+        resolved_candles = candles_per_symbol if candles_per_symbol is not None else DEFAULT_CANDLES_PER_SYMBOL
+        run_id = f"factory-run-{definition.id}-{definition.version}-{uuid.uuid4().hex[:12]}"
+        async with self.lock:
+            quant_research_experiments = self.data.quant_research_experiments
+            research_iterations_snapshot = self.data.research_iterations
+            research_lessons_snapshot = self.data.research_lessons
+            failed_archive = self.data.strategy_failed_archive
+            champion_history = self.data.champion_history
+            risk_per_trade_pct = self.data.risk_limits.risk_per_trade_pct
+            registry_snapshot = self.data.compiled_strategy_versions
+        resolved_max_generations = max_generations if max_generations is not None else MAX_GENERATIONS_PER_FACTORY_RUN
+        resolved_max_total_backtests = max_total_backtests if max_total_backtests is not None else MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN
+        run_record, updated_registry, all_iterations, all_lessons = run_research_factory_cycle(
+            hypothesis,
+            definition,
+            compiled_strategy_registry=registry_snapshot,
+            quant_research_experiments=quant_research_experiments,
+            research_iterations=research_iterations_snapshot,
+            research_lessons=research_lessons_snapshot,
+            failed_archive=failed_archive,
+            champion_history=champion_history,
+            risk_per_trade_pct=risk_per_trade_pct,
+            run_id=run_id,
+            created_at=_now_iso(),
+            max_generations=resolved_max_generations,
+            max_total_backtests=resolved_max_total_backtests,
+            symbols=symbols,
+            timeframe=resolved_timeframe,
+            candles_per_symbol=resolved_candles,
+        )
+        new_iterations = all_iterations[len(research_iterations_snapshot):]
+        new_lessons = all_lessons[len(research_lessons_snapshot):]
+        family_slug = strategy_definition_slug(definition.name)
+        async with self.lock:
+            updated_iterations = [*self.data.research_iterations, *new_iterations]
+            updated_lessons = [*self.data.research_lessons, *new_lessons]
+            updated_full_registry = {**self.data.compiled_strategy_versions, family_slug: updated_registry.get(family_slug, [])}
+            updated_runs = [*self.data.factory_runs, run_record]
+            self.data = self.data.model_copy(
+                update={
+                    "research_iterations": updated_iterations,
+                    "research_lessons": updated_lessons,
+                    "compiled_strategy_versions": updated_full_registry,
+                    "factory_runs": updated_runs,
+                }
+            )
+            return self.data, run_record
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""

@@ -14445,6 +14445,68 @@ interactive Playwright pass confirming the entire funnel renders and
 functions live end to end (temporary spec, removed after
 verification).
 
+**Follow-up — "TradeTown — Phase 7: Autonomous Strategy Evolution
+Engine."** Closes the seam Phase 4-6 (above) deliberately left open —
+a real, bounded, deterministic, multi-generation OBSERVE→GENERATE→
+MUTATE→COMPILE→BACKTEST→VALIDATE→STRESS→COMPARE→ACCEPT-OR-BIN→LEARN
+loop (`app/research_factory.py`), built entirely on Phase 4-6's own
+unmodified `run_research_loop_iteration()`/`register_strategy_version()`/
+`classify_research_relationship()` — no second backtest engine, no
+second compiler. A real generator (`generate_next_hypothesis()`)
+produces the next generation's `StrategyHypothesis` (nine new
+additive-only lineage/generation fields) from the parent's own real
+mutation/lesson. A bounded, deterministic mutation engine (six real
+text operators — `widen_stop`/`widen_target`/`narrow_target`/
+`add_confirmation_bar`/`relax_threshold`) either numerically nudges one
+already-compiled value by a capped step, reusing `app/strategy_compiler.py`'s
+own private regex patterns directly, or appends one new sentence in
+that compiler's disclosed vocabulary — never an LLM (this codebase runs
+none at runtime). Tracing the compiler's real single-trigger-per-
+strategy grammar proved a "regime filter" operator could not be safely
+added as a bounded text splice (it would re-compile but have zero real
+structural effect) — disclosed, not attempted, alongside
+`negative_net_return`/`benchmark_underperformance`, which need a
+materially different hypothesis rather than a parameter tweak. Each
+mutated candidate is automatically compiled and re-tested through the
+unmodified funnel; a compile failure is a real, new 39th taxonomy code
+(`compile_rejected`), and the lineage stops there rather than being
+silently dropped. A real candidate lifecycle
+(`compile_rejected`/`backtested`/`candidate`/`rejected`/`survivor`) and
+permanent lineage tree persist in a new `GameSaveState.factoryRuns`;
+every generation's own iteration/lesson is ALSO appended to the
+existing `researchIterations`/`researchLessons`, never stored twice.
+Champion/Challenger's boundary is enforced by import shape (only the
+read-only `get_current_champion()` is imported) — a survivor is only
+ever LABELED eligible; actual submission stays a separate, unmodified,
+explicit `/champion-challenger/compare` call, and no factory candidate
+ever gets live/paper execution authority. One genuine, disclosed fix to
+already-shipped Phase 4-6 code: `run_research_loop_iteration()`'s own
+mutation-proposal guard could never actually fire for a fresh,
+non-mutated hypothesis (a real, confirmed dead-code inconsistency that
+would have made this pass's entire loop impossible to start) — fixed
+with a minimal, one-line change; every hypothesis with an explicit
+parent is unaffected, and the one dependent test assertion was updated
+with a disclosed comment. New `POST /research-factory/run` + four `GET`
+endpoints (runs/run-detail/lineage/stats) plus
+`GET /research-loop/lessons/evidence` and an optional `candidacy` filter
+on the existing iterations endpoint. UI gained a "Run Autonomous
+Factory Cycle" button, a Factory Status panel, a static pipeline row,
+and a full candidate lineage view. NOT IMPLEMENTED, disclosed: entry/
+exit-condition, timeframe, and position-sizing mutation operators (no
+safe bounded text-splice exists for any against the compiler's real
+vocabulary); new agent-role dialogue/personas and genuine holdout data
+discipline (same disclosed cuts as Phase 4-6). 49 new tests
+(`test_research_factory.py`, including a source-inspection test proving
+Champion/Challenger's promotion path is never imported), full backend
+suite green (3379, up from 3330), mypy/ruff clean; frontend tsc -b
+(after a stale `.tsbuildinfo` initially masked a real error)/lint/build
+clean. Live-verified two ways: a direct API run (5 real generations,
+real widen-target mutations compiling and re-testing automatically,
+stopping exactly at the real 5-mutation-per-parent budget) and a full
+interactive Playwright pass confirming the Factory Status panel,
+candidate lineage, and stop reason all render correctly end to end
+(temporary spec, removed after verification).
+
 **Follow-up — "TradeTown — Research Engine Hardening +
 Self-Improvement Implementation Pass."** A 20-phase directive; a
 dedicated Phase 0 forensic recon (before any code was written) found
