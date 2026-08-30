@@ -340,6 +340,96 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Next Major Implementation Pass, Phase 4-6: Self-Improving Strategy Factory +
+  Validation Funnel" — a real, wired Research Factory orchestrator (`app/research_loop.py`) built
+  entirely on the Research Desk pipeline this session already hardened.** Pure orchestration, no new
+  backtest math — every real number comes from the already-real, already-tested
+  `run_research_experiment()` (backtest, walk-forward, cost sensitivity, parameter sensitivity,
+  look-ahead audit, buy-and-hold baseline) plus last pass's `find_similar_experiments()`/
+  `find_similar_failed_strategies()`/`classify_research_relationship()`. Four genuinely new real
+  computations close the directive's own funnel: benchmark comparison (in a disclosed approximate
+  unit), outlier dependence, tuning-exposure reads, and a candidacy/failure-code/mutation/lesson/
+  budget layer that turns all of it into one auditable record per iteration.
+  - **The one honest scope boundary the whole module rests on, stated up front: mutation is a real,
+    persisted RECOMMENDATION, never an auto-rewritten strategy.** `propose_mutation()` returns a
+    real, deterministic (never LLM-generated), evidence-backed `MutationRecord` — a concrete next
+    step mapped from the iteration's own single strongest real failure code (never a vague
+    multi-parameter shotgun change). It does not, and nothing else in this pass does, generate a new
+    `sourceText` and recompile it automatically — a human or agent reads the recommendation and
+    re-files through the existing, completely unmodified `register_strategy_version()` pipeline,
+    exactly as RE-TEST already worked before this pass. **NOT IMPLEMENTED**, stated explicitly:
+    automatic strategy-rules rewriting.
+  - **A real, NEW, separate research-candidate qualification layer — never touching, never weaker
+    than, the existing Certification/Hall-of-Fame/Champion-Challenger gates.** New
+    `RESEARCH_CANDIDATE_MIN_TRADE_COUNT = 100`/`RESEARCH_CANDIDATE_MAX_DRAWDOWN_PCT = 20.0`/
+    `RESEARCH_CANDIDATE_MIN_PROFIT_FACTOR = 1.10` (the directive's own literal numbers) are
+    deliberately distinct constants from `app/strategy_lab.py`'s own `HALL_OF_FAME_MIN_TRADE_COUNT`
+    (30)/`MIN_PROFIT_FACTOR` (1.5) — `classify_candidacy()` never reads or feeds those, and neither
+    Certification nor Hall-of-Fame nor Champion/Challenger read anything this module produces.
+    Proven, not just asserted: a dedicated test inspects the real source of every public function in
+    this module and confirms none references `qualifies_for_hall_of_fame`,
+    `evaluate_certification_readiness`, `champion_history`, `promote_challenger`, or
+    `compare_champion_challenger`.
+  - **The benchmark-comparison approximation, disclosed on every single instance.** Closes the
+    deferred "excess return" ask without violating `app/baseline_comparison.py`'s own real, prior
+    "never blend R-multiples with % price returns" discipline: `compute_benchmark_comparisons()`
+    reuses the CEO's own already-real, already-configured `RiskLimits.riskPerTradePct` (the same
+    real convention `app/position_sizing.py` already uses to convert risk-in-R to risk-in-dollars) to
+    compute `cumulative_R * risk_per_trade_pct` — a real, honest APPROXIMATION of what equity return
+    this strategy would have produced at that constant risk-per-trade, no compounding, no
+    concurrent-position effects — never a claim of a real simulated equity curve.
+    `BenchmarkComparison.approximationNote` states this on every instance.
+  - **Failure diagnosis extended to the Research Desk pipeline**, closing the exact gap
+    `app/failure_taxonomy.py`'s own docstring named as future work: `derive_research_failure_codes()`
+    derives real codes this pipeline (unlike the Sandbox-facing one) actually has evidence for —
+    `lookahead_detected`, `insufficient_sample`, `statistical_uncertainty`, `negative_net_return`,
+    `low_profit_factor`, `excessive_drawdown` (via the same real risk-per-trade conversion),
+    `walk_forward_failure`, `cost_sensitivity`, `parameter_sensitivity`, a new `outlier_dependent`
+    code (the 38th in the taxonomy — "no single trade responsible for the majority of profits",
+    computed from the bucket's own already-real `largestWinR`), `regime_failure` (a real,
+    sufficiently-evidenced regime bucket with real negative expectancy), `benchmark_underperformance`,
+    `duplicate_strategy` (from `research_relationship == "near_duplicate"`), `multiple_testing_risk`,
+    `excessive_tuning`. `classify_candidacy()` combines these into one real, disclosed,
+    priority-ordered binning: `accepted`/`promising`/`fragile`/`rejected`/`duplicate`/
+    `insufficient_evidence`/`overfit`/`benchmark_failed`/`risk_failed` — purely informational triage,
+    never a promotion.
+  - **Self-improvement memory, real and persisted, not an LLM prompt.** New
+    `GameSaveState.researchIterations`/`.researchLessons` (permanent, append-only, registered in
+    `app/save_modules.py`'s `MODULE_FIELDS` map). `generate_research_lesson()` files one real,
+    deterministic, templated lesson after every completed iteration — success or failure — with
+    real confidence derived from real sample size, never fabricated.
+  - **A real, bounded research budget**, preventing runaway search: `MAX_ITERATIONS_PER_FAMILY = 20`/
+    `MAX_MUTATIONS_PER_PARENT = 5`, reusing `count_experiments_for_family()` (the same real counter
+    Champion/Challenger's own multiple-testing flag already uses) rather than a second counter.
+  - New `POST /api/sandbox/research-loop/run`, `GET /api/sandbox/research-loop/iterations`,
+    `GET /api/sandbox/research-loop/lessons` endpoints. New "RESEARCH FACTORY" Sandbox sub-tab
+    (`ResearchFactoryView.tsx`): a structured hypothesis form, the real funnel (look-ahead/cost/
+    walk-forward/regime/parameters/statistics/benchmark, each a real verdict pill), the candidacy
+    decision with its real reason, a full transparent scorecard (every dimension real or "NOT
+    VERIFIED," never a black-box score), benchmark comparison, failure diagnosis, the proposed
+    mutation (when one exists), research-memory matches, and budget status.
+  - **Explicitly deferred this pass, with reasons** (Section 24's own "if any part is not
+    implemented, say NOT IMPLEMENTED"): new specialized agent ROLES/dialogue (Section 13) — the
+    structural function each named role would perform is real and wired (backtest, red-team/overfit
+    check, benchmark comparison, statistician); new agent personas/flavor dialogue is a large,
+    orthogonal content task, not attempted. Genuine HOLDOUT DATA DISCIPLINE (Section 11) as a
+    separately-fetched, never-touched-during-development candle partition — **NOT IMPLEMENTED**;
+    this codebase's mock candle provider has no real date-partitioned historical dataset to carve a
+    true holdout from, and fabricating one would itself be dishonest. The closest real, honest analog
+    that already exists and was reused: `app/walk_forward.py`'s own disjoint chronological windows.
+  - **Verified:** full backend suite (3330 tests, up from 3274 — 56 new tests), `mypy app/`/
+    `ruff app/ tests/` clean. Frontend `tsc`/lint/build clean. All 56 new tests live in
+    `test_research_loop.py` (pure-function unit tests hand-constructing full,
+    real `ResearchExperimentRecord` fixtures, plus real end-to-end integration tests over the actual
+    compiled-strategy pipeline and real (mock) candle data — no mocked evidence anywhere). Live-
+    verified two ways: direct API calls against the real running dev stack (a real 34-trade iteration
+    correctly read `insufficient_evidence` with real `insufficient_sample`/`cost_sensitivity` codes
+    and a real benchmark comparison beating buy-and-hold by +32.2 approximate points), and a full
+    interactive Playwright pass through the new RESEARCH FACTORY tab confirming the entire funnel —
+    hypothesis form, funnel stage pills (clean/cost sensitive/insufficient data/robust/robust/
+    sufficient evidence/beats), and a correctly-derived `OVERFIT` candidacy decision — renders and
+    functions live end to end (temporary spec, removed after verification).
+
 - **"TradeTown — Research Engine Hardening + Self-Improvement Implementation Pass" — the
   highest-value, safely-scoped subset of a 20-phase directive, following its own explicit
   "without destroying existing architecture" constraint.** A dedicated Phase 0 forensic recon

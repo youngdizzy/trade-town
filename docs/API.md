@@ -1857,6 +1857,45 @@ first, never deleted), and `comparisons` (every real
 `ChallengerComparison` ever run for this family, including ones that
 retained the champion). Read-only, computed fresh every call.
 
+### `POST /api/sandbox/research-loop/run`
+
+CEO directive "TradeTown — Next Major Implementation Pass, Phase 4-6:
+Self-Improving Strategy Factory + Validation Funnel." Body:
+`{ "hypothesis": StrategyHypothesis, "definition": CompiledStrategyDefinition,
+"symbols": [...], "timeframe": "...", "candlesPerSymbol": 6000 }`
+(`symbols`/`timeframe`/`candlesPerSymbol` optional). Runs the real
+funnel over the real Research Desk pipeline (see
+`app/research_loop.py`'s own module docstring) — no duplicate backtest
+math — and permanently persists both a `ResearchLoopIterationRecord`
+and a real, templated `ResearchLessonRecord`. Returns the full
+`ResearchLoopIterationRecord`: the wrapped `ResearchExperimentRecord`,
+a transparent `StrategyScorecard` (every dimension real or `null` —
+rendered "NOT VERIFIED"), `benchmarkComparisons` (a real, disclosed
+approximation — see `BenchmarkComparison.approximationNote` on every
+instance), `failureCodes`, the real `candidacy` binning
+(`accepted`/`promising`/`fragile`/`rejected`/`duplicate`/
+`insufficient_evidence`/`overfit`/`benchmark_failed`/`risk_failed`)
+with its real `candidacyReason`, `similarExperiments`/
+`similarFailedStrategies`/`researchRelationship` (real memory
+consultation, never blocking), an optional `mutation` (a real,
+persisted recommendation — never an auto-applied strategy rewrite; see
+that module's own docstring), and `budget` (real, bounded research
+budget status). Purely informational triage — never gates or feeds
+Certification/Hall-of-Fame/Champion-Challenger, which stay the sole,
+unmodified, authoritative promotion path.
+
+### `GET /api/sandbox/research-loop/iterations`
+
+Same directive — the full, real, permanent iteration history, never
+overwritten. Optional `?strategyFamily=...` filter. Returns
+`ResearchLoopIterationRecord[]`.
+
+### `GET /api/sandbox/research-loop/lessons`
+
+Same directive, Section 9 — the real, permanent self-improvement
+memory. Optional `?strategyFamily=...` filter. Returns
+`ResearchLessonRecord[]`.
+
 ### `GET /api/sandbox/failure-modes`
 
 CEO directive "TradeTown — Statistical Validation + Research Failure

@@ -24,16 +24,21 @@ parameters from that caller rather than re-importing them here, since
 straight import the other way would be circular).
 
 AN HONEST, DISCLOSED SUBSET OF THE DIRECTIVE'S OWN 35-CODE TAXONOMY
-(NOW 37 — CEO directive "TradeTown — Research Engine Hardening +
+(NOW 38 — CEO directive "TradeTown — Research Engine Hardening +
 Self-Improvement Implementation Pass," Phase 2 added two real,
 evidence-backed LIFECYCLE_FAILURE codes: `never_reached_required_stage`/
 `founder_approval_rejected`, closing the confirmed gap where a strategy
-clearing every numeric bar could still retire with `failureCodes: []`).
-`FailureCode` (app/schemas.py) defines the directive's own full,
-requested vocabulary verbatim — real, valid vocabulary, useful even
-before every code has a real derivation path wired to it. Today, a
-`Strategy`'s own retirement decision only has real evidence for EIGHT of
-those 37 codes (see `derive_failure_codes()` below) — this codebase has
+clearing every numeric bar could still retire with `failureCodes: []`;
+CEO directive "TradeTown — Next Major Implementation Pass, Phase 4-6"
+added one real STATISTICAL_FAILURE code, `outlier_dependent`, derived
+by the NEW `app/research_loop.py` module — see that module's own
+docstring for why the Research Desk pipeline, not this function, is
+the honest home for that derivation). `FailureCode` (app/schemas.py)
+defines the directive's own full, requested vocabulary verbatim — real,
+valid vocabulary, useful even before every code has a real derivation
+path wired to it. Today, a `Strategy`'s own retirement decision only
+has real evidence for EIGHT of those 38 codes (see `derive_failure_codes()`
+below) — this codebase has
 no real walk-forward/cost-sensitivity/look-ahead-audit/benchmark
 evidence wired into the SANDBOX strategy-retirement pipeline at all
 (that evidence lives on the SEPARATE, parallel `ResearchExperimentRecord`/
@@ -139,6 +144,12 @@ FAILURE_CODE_METADATA: dict[FailureCode, tuple[FailureCategory, FailureSeverity]
     # process-level shortfall) rather than `high`/`critical`.
     "never_reached_required_stage": ("research_failure", "medium"),
     "founder_approval_rejected": ("research_failure", "medium"),
+    # CEO directive "TradeTown — Next Major Implementation Pass, Phase
+    # 4-6" — real evidence exists (largestWinR vs. cumulative
+    # expectancy), and an outlier-dependent edge undermines confidence
+    # in an otherwise-real result without invalidating it outright, so
+    # `high` — same rationale as `selection_bias`/`insufficient_sample`.
+    "outlier_dependent": ("statistical_failure", "high"),
 }
 
 

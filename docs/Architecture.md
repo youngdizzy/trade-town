@@ -14386,6 +14386,65 @@ than approving on a technicality. The new UI tab was confirmed
 rendering and functioning end-to-end via a temporary Playwright spec
 (removed after verification).
 
+**Follow-up — "TradeTown — Next Major Implementation Pass, Phase 4-6:
+Self-Improving Strategy Factory + Validation Funnel."** A real,
+wired Research Factory orchestrator (`app/research_loop.py`) built
+entirely on the Research Desk pipeline the prior pass hardened — pure
+orchestration, every real number from `run_research_experiment()` plus
+that pass's own `find_similar_experiments()`/
+`find_similar_failed_strategies()`/`classify_research_relationship()`.
+Four new real computations close the funnel: benchmark comparison
+(disclosed approximation), outlier dependence, tuning-exposure reads,
+and a candidacy/failure-code/mutation/lesson/budget layer. THE ONE
+SCOPE BOUNDARY THE MODULE RESTS ON: mutation
+(`propose_mutation()`) is a real, persisted, deterministic
+RECOMMENDATION — never an auto-rewritten strategy; re-testing still
+goes through the existing, unmodified `register_strategy_version()`
+pipeline. NOT IMPLEMENTED, stated explicitly: automatic strategy-rules
+rewriting. A real, NEW, separate research-candidate qualification
+layer — `RESEARCH_CANDIDATE_MIN_TRADE_COUNT=100`/
+`RESEARCH_CANDIDATE_MAX_DRAWDOWN_PCT=20.0`/
+`RESEARCH_CANDIDATE_MIN_PROFIT_FACTOR=1.10` (the directive's own
+literal numbers) — deliberately distinct from
+`app/strategy_lab.py`'s own `HALL_OF_FAME_MIN_*` constants;
+`classify_candidacy()` never reads or feeds those, and neither
+Certification nor Hall-of-Fame nor Champion/Challenger read anything
+this module produces (proven by a dedicated source-inspection test,
+not just asserted). Benchmark comparison reuses the CEO's own real
+`RiskLimits.riskPerTradePct` (the same convention
+`app/position_sizing.py` already uses) to compute a real, disclosed
+APPROXIMATE equity-return figure (`cumulative_R * risk_per_trade_pct`)
+without violating `app/baseline_comparison.py`'s own prior "never
+blend R-multiples with % returns" discipline — every instance carries
+an explicit approximation note. Failure diagnosis extended to the
+Research Desk pipeline (closing the exact gap
+`app/failure_taxonomy.py`'s own docstring named as future work) with a
+new 38th taxonomy code, `outlier_dependent`. Self-improvement memory
+is real and persisted (`GameSaveState.researchIterations`/
+`.researchLessons`, registered in `save_modules.py`), never an LLM
+prompt — one real, templated lesson filed per completed iteration. A
+real, bounded research budget (`MAX_ITERATIONS_PER_FAMILY=20`/
+`MAX_MUTATIONS_PER_PARENT=5`) prevents runaway search. New
+`POST /api/sandbox/research-loop/run` + two `GET` endpoints; new
+"RESEARCH FACTORY" Sandbox sub-tab with a structured hypothesis form,
+real funnel-stage pills, a transparent scorecard (every dimension real
+or "NOT VERIFIED," never a black-box score), benchmark comparison,
+failure diagnosis, proposed mutation, research-memory matches, and
+budget status. Explicitly deferred: new agent-role dialogue/personas
+(the structural function each role performs is real and wired; the
+persona content is not); genuine holdout data discipline — NOT
+IMPLEMENTED, since this codebase's mock candle provider has no real
+date-partitioned dataset to carve a true holdout from (the closest
+real, honest analog, already reused: `app/walk_forward.py`'s own
+disjoint chronological windows). 56 new tests
+(`test_research_loop.py`), full backend suite green, mypy/ruff clean;
+frontend tsc/lint/build clean. Live-verified via direct API calls (a
+real 34-trade iteration correctly read `insufficient_evidence` with
+real failure codes and a real benchmark comparison) and a full
+interactive Playwright pass confirming the entire funnel renders and
+functions live end to end (temporary spec, removed after
+verification).
+
 **Follow-up — "TradeTown — Research Engine Hardening +
 Self-Improvement Implementation Pass."** A 20-phase directive; a
 dedicated Phase 0 forensic recon (before any code was written) found

@@ -6200,6 +6200,14 @@ FailureCode = Literal[
     # exact derivation.
     "never_reached_required_stage",
     "founder_approval_rejected",
+    # CEO directive "TradeTown — Next Major Implementation Pass, Phase
+    # 4-6: Self-Improving Strategy Factory + Validation Funnel" —
+    # Section 7/10/14's explicit red-team check: "no single trade
+    # responsible for the majority of profits... does it survive
+    # removal of the biggest winning trade?" Real evidence: computed by
+    # app/research_loop.py::compute_outlier_dependence() from the
+    # bucket's own already-real largestWinR vs. cumulative expectancy.
+    "outlier_dependent",
 ]
 
 # CEO directive "TradeTown — Statistical Validation + Research Failure
@@ -11712,6 +11720,22 @@ class GameSaveState(CamelModel):
     champion_history: list[ChampionRecord] = Field(
         default_factory=list, alias="championHistory"
     )
+    # CEO directive "TradeTown — Next Major Implementation Pass, Phase
+    # 4-6: Self-Improving Strategy Factory + Validation Funnel" — see
+    # app/research_loop.py's own module docstring. Permanent,
+    # append-only, matching quant_research_experiments' own "never
+    # deleted, even when rejected" precedent. `research_lessons` is the
+    # real, persisted self-improvement memory (Section 9) — a separate
+    # list from `research_iterations` (not folded into it) because a
+    # lesson is meant to be cheaply, quickly scannable by a future
+    # hypothesis-generation pass without deserializing every full
+    # `ResearchExperimentRecord`.
+    research_iterations: list[ResearchLoopIterationRecord] = Field(
+        default_factory=list, alias="researchIterations"
+    )
+    research_lessons: list[ResearchLessonRecord] = Field(
+        default_factory=list, alias="researchLessons"
+    )
     hall_of_fame: list[HallOfFameEntry] = Field(
         default_factory=list, alias="hallOfFame"
     )
@@ -12174,6 +12198,221 @@ class CreateRunRequest(CamelModel):
     # Optional — omitted or blank falls back to a real, honest default
     # name (see app/routers/runs.py), never a fabricated "clever" name.
     display_name: str | None = Field(default=None, alias="displayName")
+
+
+# =====================================================================
+# CEO directive "TradeTown — Next Major Implementation Pass, Phase 4-6:
+# Self-Improving Strategy Factory + Validation Funnel." See
+# app/research_loop.py's own module docstring for the full real
+# architecture: which existing modules are reused (not duplicated),
+# and the honest scope boundary on strategy MUTATION (a real,
+# persisted, evidence-backed RECOMMENDATION — never an auto-rewritten
+# CompiledStrategyDefinition; re-testing a mutated idea still goes
+# through the existing, unmodified register_strategy_version()/
+# compile_strategy_text() pipeline like any other new version).
+# =====================================================================
+
+
+class StrategyHypothesis(CamelModel):
+    """Section 2's structured hypothesis representation — the real
+    alternative to "the agent just invents another strategy." Every
+    field here is either CEO/agent-authored free text (the mechanism
+    the researcher believes is real, never independently verified by
+    this schema itself — that verification is exactly what the funnel
+    below exists to do) or a real, already-compiled reference
+    (`compiled_definition_id`/`version`, once a hypothesis has been
+    turned into an actual `CompiledStrategyDefinition` via the
+    existing, unmodified compiler). Never a promise of a real edge —
+    only a structured, falsifiable claim a real funnel can test."""
+
+    id: str
+    hypothesis: str
+    market_mechanism: str = Field(alias="marketMechanism")
+    expected_edge: str = Field(alias="expectedEdge")
+    invalidation_conditions: str = Field(alias="invalidationConditions")
+    symbol_universe: list[str] = Field(alias="symbolUniverse")
+    timeframe: str
+    entry_conditions: str = Field(alias="entryConditions")
+    exit_conditions: str = Field(alias="exitConditions")
+    stop_loss_logic: str = Field(alias="stopLossLogic")
+    take_profit_logic: str = Field(alias="takeProfitLogic")
+    position_sizing_logic: str = Field(alias="positionSizingLogic")
+    risk_constraints: str = Field(alias="riskConstraints")
+    indicators_features: list[str] = Field(default_factory=list, alias="indicatorsFeatures")
+    regime_assumptions: str = Field(default="", alias="regimeAssumptions")
+    research_rationale: str = Field(default="", alias="researchRationale")
+    # `None` for a genuinely novel (non-mutated) hypothesis — a real,
+    # honest absence, never a fabricated lineage.
+    parent_strategy_family: str | None = Field(default=None, alias="parentStrategyFamily")
+    parent_definition_id: str | None = Field(default=None, alias="parentDefinitionId")
+    parent_definition_version: int | None = Field(default=None, alias="parentDefinitionVersion")
+    proposed_by: AgentId = Field(alias="proposedBy")
+    created_at: str = Field(alias="createdAt")
+
+
+class MutationRecord(CamelModel):
+    """Section 3's real mutation lineage: parent -> observed failure ->
+    proposed change -> reason -> expected effect -> validation
+    requirements. A real, persisted, structured RECOMMENDATION — see
+    this section's own module-docstring note above on why this schema
+    never auto-rewrites a `CompiledStrategyDefinition`'s own
+    `sourceText`. `observed_failure_codes` are the parent's own real,
+    already-derived `FailureCode`s (app/failure_taxonomy.py) — never a
+    fabricated diagnosis independent of real evidence."""
+
+    id: str
+    parent_definition_id: str = Field(alias="parentDefinitionId")
+    parent_definition_version: int = Field(alias="parentDefinitionVersion")
+    parent_iteration_id: str = Field(alias="parentIterationId")
+    mutation_number: int = Field(alias="mutationNumber")
+    observed_failure_codes: list[FailureCode] = Field(default_factory=list, alias="observedFailureCodes")
+    proposed_change: str = Field(alias="proposedChange")
+    reason: str
+    expected_effect: str = Field(alias="expectedEffect")
+    validation_requirements: str = Field(alias="validationRequirements")
+    created_at: str = Field(alias="createdAt")
+
+
+# Section 12 — "Do NOT create a black-box 'AI quality score.' Instead
+# create a transparent scorecard." Every dimension is `None` (rendered
+# "NOT VERIFIED" in the UI) when this codebase genuinely has no real
+# evidence for it yet — never a guessed value. Every non-`None` field
+# is a direct, unmodified read from an already-real, already-tested
+# module (never a second, competing computation of the same thing).
+class StrategyScorecard(CamelModel):
+    trade_count: int | None = Field(default=None, alias="tradeCount")
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    avg_win_r: float | None = Field(default=None, alias="avgWinR")
+    avg_loss_r: float | None = Field(default=None, alias="avgLossR")
+    expectancy_r: float | None = Field(default=None, alias="expectancyR")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    max_drawdown_r: float | None = Field(default=None, alias="maxDrawdownR")
+    total_return_r: float | None = Field(default=None, alias="totalReturnR")
+    benchmark_return_pct: float | None = Field(default=None, alias="benchmarkReturnPct")
+    excess_return_approx_pct: float | None = Field(default=None, alias="excessReturnApproxPct")
+    cost_sensitivity_verdict: str | None = Field(default=None, alias="costSensitivityVerdict")
+    walk_forward_verdict: str | None = Field(default=None, alias="walkForwardVerdict")
+    regime_robustness_verdict: str | None = Field(default=None, alias="regimeRobustnessVerdict")
+    parameter_robustness_verdict: str | None = Field(default=None, alias="parameterRobustnessVerdict")
+    look_ahead_verdict: str | None = Field(default=None, alias="lookAheadVerdict")
+    statistical_evidence_state: str | None = Field(default=None, alias="statisticalEvidenceState")
+    tuning_exposure_version: int | None = Field(default=None, alias="tuningExposureVersion")
+    research_family_experiment_count: int | None = Field(default=None, alias="researchFamilyExperimentCount")
+    outlier_dependent: bool | None = Field(default=None, alias="outlierDependent")
+    largest_win_share_of_return_pct: float | None = Field(default=None, alias="largestWinShareOfReturnPct")
+
+
+class BenchmarkComparison(CamelModel):
+    """Section 6's real, explicit, persisted benchmark comparison.
+    `strategy_equity_return_approx_pct` is a REAL, disclosed
+    APPROXIMATION, never a claim of a real simulated equity curve: this
+    compiled-strategy engine has no real position-sizing/equity
+    simulation (see app/baseline_comparison.py's own module docstring
+    for why R-multiples and % price returns are deliberately never
+    blended) — this reuses the CEO's own real, already-configured
+    `RiskLimits.riskPerTradePct` (the same real convention
+    app/position_sizing.py already uses to convert a risk-in-R figure
+    into a real risk-in-dollars figure) to compute
+    `cumulative_R * risk_per_trade_pct`, i.e. "if every trade had risked
+    exactly this much of equity, with no compounding and no
+    concurrent-position effects, cumulative equity change would be
+    approximately X%." `approximation_note` states this plainly on every
+    instance so no downstream reader mistakes it for a real simulated
+    return."""
+
+    symbol: str
+    benchmark_return_pct: float = Field(alias="benchmarkReturnPct")
+    strategy_total_return_r: float = Field(alias="strategyTotalReturnR")
+    strategy_equity_return_approx_pct: float = Field(alias="strategyEquityReturnApproxPct")
+    excess_return_approx_pct: float = Field(alias="excessReturnApproxPct")
+    risk_per_trade_pct_used: float = Field(alias="riskPerTradePctUsed")
+    beats_benchmark: bool = Field(alias="beatsBenchmark")
+    approximation_note: str = Field(alias="approximationNote")
+
+
+# Section 15 — real, explicit, disclosed outcomes. "BIN" means archive
+# with evidence, never delete.
+CandidacyBinning = Literal[
+    "accepted",
+    "promising",
+    "fragile",
+    "rejected",
+    "duplicate",
+    "insufficient_evidence",
+    "overfit",
+    "benchmark_failed",
+    "risk_failed",
+]
+
+
+class ResearchBudgetStatus(CamelModel):
+    """Section 18 — a real, disclosed research-budget read, reusing
+    `app/quant_research_lab.py`'s own already-real
+    `count_experiments_for_family()` rather than a second counting
+    mechanism. `stopped`/`stop_reason` are `False`/`None` unless a real
+    configured limit was actually hit."""
+
+    strategy_family: str = Field(alias="strategyFamily")
+    experiments_attempted: int = Field(alias="experimentsAttempted")
+    mutations_for_this_parent: int = Field(alias="mutationsForThisParent")
+    max_iterations_per_family: int = Field(alias="maxIterationsPerFamily")
+    max_mutations_per_parent: int = Field(alias="maxMutationsPerParent")
+    stopped: bool
+    stop_reason: str | None = Field(default=None, alias="stopReason")
+
+
+class ResearchLessonRecord(CamelModel):
+    """Section 9's self-improvement memory — a real, persisted lesson
+    filed after EVERY completed research-loop iteration (success or
+    failure), never an LLM prompt saying "remember this." `lesson` is a
+    real, deterministic, templated sentence built from this iteration's
+    own real evidence (candidacy/failure codes/scorecard) — never a
+    fabricated narrative."""
+
+    id: str
+    strategy_family: str = Field(alias="strategyFamily")
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    iteration_id: str = Field(alias="iterationId")
+    parent_definition_id: str | None = Field(default=None, alias="parentDefinitionId")
+    mutation_id: str | None = Field(default=None, alias="mutationId")
+    hypothesis: str
+    candidacy: CandidacyBinning
+    reason: str
+    key_metrics: list[str] = Field(default_factory=list, alias="keyMetrics")
+    confidence_pct: float = Field(alias="confidencePct")
+    lesson: str
+    created_at: str = Field(alias="createdAt")
+
+
+class ResearchLoopIterationRecord(CamelModel):
+    """Section 1's one real, persisted, never-overwritten record of a
+    full research-loop pass through the funnel: HYPOTHESIS ->
+    STRATEGY_GENERATED -> HISTORICAL_BACKTEST -> COST_TEST ->
+    WALK_FORWARD -> REGIME_TEST -> ROBUSTNESS_TEST ->
+    STATISTICAL_VALIDATION -> BENCHMARK_COMPARISON -> FAILURE_DIAGNOSIS
+    -> candidacy decision. Wraps the already-real `ResearchExperimentRecord`
+    (never a duplicate backtest) with the new real evidence this pass
+    adds: scorecard, benchmark comparison, outlier dependence, mutation
+    lineage, similar-failure memory, and the final candidacy binning.
+    Never mutated after creation; a re-test is always a NEW record with
+    its own real id, linked via `mutation`."""
+
+    id: str
+    strategy_family: str = Field(alias="strategyFamily")
+    hypothesis: StrategyHypothesis
+    experiment: ResearchExperimentRecord
+    scorecard: StrategyScorecard
+    benchmark_comparisons: list[BenchmarkComparison] = Field(default_factory=list, alias="benchmarkComparisons")
+    failure_codes: list[FailureCodeEntry] = Field(default_factory=list, alias="failureCodes")
+    candidacy: CandidacyBinning
+    candidacy_reason: str = Field(alias="candidacyReason")
+    similar_experiments: list[QuantResearchExperimentSimilarity] = Field(default_factory=list, alias="similarExperiments")
+    similar_failed_strategies: list[SimilarFailedStrategyMatch] = Field(default_factory=list, alias="similarFailedStrategies")
+    research_relationship: ResearchRelationship = Field(alias="researchRelationship")
+    mutation: MutationRecord | None = Field(default=None, alias="mutation")
+    budget: ResearchBudgetStatus
+    created_at: str = Field(alias="createdAt")
 
 
 class HealthResponse(BaseModel):

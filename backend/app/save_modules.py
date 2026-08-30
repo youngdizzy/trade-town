@@ -106,6 +106,12 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # never-recomputed mutated state as the two fields above.
         "challenger_comparisons",
         "champion_history",
+        # CEO directive "TradeTown — Next Major Implementation Pass,
+        # Phase 4-6: Self-Improving Strategy Factory + Validation
+        # Funnel" — see app/research_loop.py. Same real, ever-growing,
+        # never-recomputed mutated state as the fields above.
+        "research_iterations",
+        "research_lessons",
         "goals",
         "strategic_reviews",
         # Design Bible Chapter 69 Part 1 — Multi-Account & Fund

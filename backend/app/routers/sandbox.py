@@ -32,6 +32,9 @@ from app.schemas import (
     FailedStrategyArchiveEntry,
     FailureModeCount,
     LookAheadAuditResult,
+    ResearchLessonRecord,
+    ResearchLoopIterationRecord,
+    StrategyHypothesis,
     ModelValidationReport,
     ParameterSensitivityResult,
     QuantResearchExperiment,
@@ -126,6 +129,16 @@ class CompareChampionChallengerRequest(BaseModel):
     strategy_family: str = Field(alias="strategyFamily")
     hypothesis: str
     proposed_by: AgentId = Field(alias="proposedBy")
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
+
+
+class SubmitResearchLoopIterationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    hypothesis: StrategyHypothesis
+    definition: CompiledStrategyDefinition
     symbols: list[str] | None = None
     timeframe: str | None = None
     candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
@@ -580,6 +593,54 @@ async def champion_challenger_family(strategy_family: str) -> ChampionChallenger
     history = [c for c in state.champion_history if c.strategy_family == strategy_family]
     comparisons = [c for c in state.challenger_comparisons if c.strategy_family == strategy_family]
     return ChampionChallengerFamilyRead(current=current, history=history, comparisons=comparisons)
+
+
+@router.post("/research-loop/run", response_model=ResearchLoopIterationRecord)
+async def run_research_loop_iteration_endpoint(payload: SubmitResearchLoopIterationRequest) -> ResearchLoopIterationRecord:
+    """CEO directive "TradeTown — Next Major Implementation Pass, Phase
+    4-6: Self-Improving Strategy Factory + Validation Funnel" — the one
+    real entry point for the full research funnel (see
+    app/research_loop.py's own module docstring for the complete real
+    architecture and its disclosed scope boundaries). Runs the real,
+    already-existing `run_research_experiment()` pipeline (no duplicate
+    backtest math), computes a real benchmark comparison/scorecard/
+    failure-code diagnosis/candidacy binning, checks the permanent
+    Failed Archive and prior experiments for research memory, and
+    permanently persists both the iteration and a real, templated
+    self-improvement lesson. Purely informational triage — never
+    gates or feeds Certification/Hall-of-Fame/Champion-Challenger,
+    which stay the sole, unmodified, authoritative promotion path."""
+    state, iteration = await game_state.submit_research_loop_iteration(
+        payload.hypothesis,
+        payload.definition,
+        symbols=payload.symbols,
+        timeframe=payload.timeframe,
+        candles_per_symbol=payload.candles_per_symbol,
+    )
+    persist_modules(state)
+    return iteration
+
+
+@router.get("/research-loop/iterations", response_model=list[ResearchLoopIterationRecord])
+async def research_loop_iterations(strategy_family: str | None = Query(default=None)) -> list[ResearchLoopIterationRecord]:
+    """Same directive — the full, real, permanent iteration history,
+    optionally filtered to one real strategy family. Read-only."""
+    state = await game_state.snapshot()
+    iterations = state.research_iterations
+    if strategy_family is not None:
+        iterations = [i for i in iterations if i.strategy_family == strategy_family]
+    return iterations
+
+
+@router.get("/research-loop/lessons", response_model=list[ResearchLessonRecord])
+async def research_loop_lessons(strategy_family: str | None = Query(default=None)) -> list[ResearchLessonRecord]:
+    """Same directive, Section 9 — the real, permanent self-improvement
+    memory, optionally filtered to one real strategy family. Read-only."""
+    state = await game_state.snapshot()
+    lessons = state.research_lessons
+    if strategy_family is not None:
+        lessons = [lesson for lesson in lessons if lesson.strategy_family == strategy_family]
+    return lessons
 
 
 @router.post("/register-researchable-strategy", response_model=RegisterResearchableStrategyResponse)

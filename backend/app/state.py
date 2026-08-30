@@ -127,6 +127,8 @@ from app.schemas import (
     BlackSwanRiskTier,
     ChallengerComparison,
     ChampionRecord,
+    ResearchLoopIterationRecord,
+    StrategyHypothesis,
     ClientSaveRequest,
     CompiledStrategyDefinition,
     DefensiveModeState,
@@ -165,6 +167,7 @@ from app.champion_challenger import compare_champion_challenger, promote_challen
 from app.failure_taxonomy import find_similar_failed_strategies
 from app.quant_research_lab import cap_quant_research_experiments, classify_research_relationship, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
+from app.research_loop import generate_research_lesson, run_research_loop_iteration
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 from app.strategy_registry import default_researchable_strategies, register_researchable_strategy, register_strategy_version
 from app.foundational_mentors import (
@@ -2733,6 +2736,73 @@ class GameState:
             updated = [*self.data.champion_history, record]
             self.data = self.data.model_copy(update={"champion_history": updated})
             return self.data, record
+
+    async def submit_research_loop_iteration(
+        self,
+        hypothesis: StrategyHypothesis,
+        definition: CompiledStrategyDefinition,
+        *,
+        symbols: list[str] | None = None,
+        timeframe: str | None = None,
+        candles_per_symbol: int | None = None,
+    ) -> tuple[GameSaveState, ResearchLoopIterationRecord]:
+        """CEO directive "TradeTown — Next Major Implementation Pass,
+        Phase 4-6: Self-Improving Strategy Factory + Validation
+        Funnel" — see app/research_loop.py's own module docstring for
+        the full real architecture. Both real snapshots (the archives
+        `run_research_loop_iteration()` reads for memory/budget/tuning
+        context) are taken under the lock BEFORE the slow real backtest
+        runs outside it, same real convention
+        submit_champion_challenger_comparison() above already
+        established, for the identical real reason (a length/count
+        snapshotted after slow work could be stale by the time this
+        iteration's own append lands). Permanently persists both a
+        `ResearchLoopIterationRecord` and a real, templated
+        `ResearchLessonRecord` — never mutates any existing gate's own
+        state (Certification/Hall-of-Fame/Champion-Challenger)."""
+        resolved_timeframe = timeframe if timeframe is not None else DEFAULT_TIMEFRAME
+        resolved_candles = candles_per_symbol if candles_per_symbol is not None else DEFAULT_CANDLES_PER_SYMBOL
+        iteration_id = f"research-loop-{definition.id}-{definition.version}-{uuid.uuid4().hex[:12]}"
+        mutation_id = f"mutation-{definition.id}-{definition.version}-{uuid.uuid4().hex[:12]}"
+        async with self.lock:
+            quant_research_experiments = self.data.quant_research_experiments
+            research_iterations = self.data.research_iterations
+            failed_archive = self.data.strategy_failed_archive
+            risk_per_trade_pct = self.data.risk_limits.risk_per_trade_pct
+        iteration = run_research_loop_iteration(
+            hypothesis,
+            definition,
+            quant_research_experiments=quant_research_experiments,
+            research_iterations=research_iterations,
+            failed_archive=failed_archive,
+            risk_per_trade_pct=risk_per_trade_pct,
+            iteration_id=iteration_id,
+            mutation_id=mutation_id,
+            created_at=_now_iso(),
+            symbols=symbols,
+            timeframe=resolved_timeframe,
+            candles_per_symbol=resolved_candles,
+        )
+        lesson = generate_research_lesson(
+            lesson_id=f"lesson-{iteration.id}",
+            strategy_family=iteration.strategy_family,
+            definition_id=definition.id,
+            definition_version=definition.version,
+            iteration_id=iteration.id,
+            parent_definition_id=hypothesis.parent_definition_id,
+            mutation_id=(iteration.mutation.id if iteration.mutation is not None else None),
+            hypothesis=hypothesis.hypothesis,
+            candidacy=iteration.candidacy,
+            candidacy_reason=iteration.candidacy_reason,
+            scorecard=iteration.scorecard,
+            trade_count=iteration.scorecard.trade_count or 0,
+            created_at=iteration.created_at,
+        )
+        async with self.lock:
+            updated_iterations = [*self.data.research_iterations, iteration]
+            updated_lessons = [*self.data.research_lessons, lesson]
+            self.data = self.data.model_copy(update={"research_iterations": updated_iterations, "research_lessons": updated_lessons})
+            return self.data, iteration
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""
