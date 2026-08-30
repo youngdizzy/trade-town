@@ -2341,7 +2341,10 @@ export type FailureCode =
   // Hall-of-Fame induction also requires stage === "approved" and a
   // real approved Founder Approval.
   | "never_reached_required_stage"
-  | "founder_approval_rejected";
+  | "founder_approval_rejected"
+  // CEO directive "TradeTown — Next Major Implementation Pass, Phase
+  // 4-6: Self-Improving Strategy Factory + Validation Funnel."
+  | "outlier_dependent";
 
 export type FailureSeverity = "critical" | "high" | "medium" | "low";
 
@@ -7165,6 +7168,137 @@ export interface RunSummary {
   createdAt: string;
   lastPlayedAt: string;
   currentDay: number | null;
+}
+
+// =====================================================================
+// CEO directive "TradeTown — Next Major Implementation Pass, Phase 4-6:
+// Self-Improving Strategy Factory + Validation Funnel." See
+// backend/app/research_loop.py's own module docstring for the full
+// real architecture and its disclosed scope boundaries (mutation is a
+// real, persisted RECOMMENDATION, never an auto-rewritten strategy;
+// this candidate layer is separate from, and never weaker than, the
+// existing Certification/Hall-of-Fame/Champion-Challenger gates).
+// =====================================================================
+
+export interface StrategyHypothesis {
+  id: string;
+  hypothesis: string;
+  marketMechanism: string;
+  expectedEdge: string;
+  invalidationConditions: string;
+  symbolUniverse: string[];
+  timeframe: string;
+  entryConditions: string;
+  exitConditions: string;
+  stopLossLogic: string;
+  takeProfitLogic: string;
+  positionSizingLogic: string;
+  riskConstraints: string;
+  indicatorsFeatures: string[];
+  regimeAssumptions: string;
+  researchRationale: string;
+  parentStrategyFamily: string | null;
+  parentDefinitionId: string | null;
+  parentDefinitionVersion: number | null;
+  proposedBy: AgentId;
+  createdAt: string;
+}
+
+export interface MutationRecord {
+  id: string;
+  parentDefinitionId: string;
+  parentDefinitionVersion: number;
+  parentIterationId: string;
+  mutationNumber: number;
+  observedFailureCodes: FailureCode[];
+  proposedChange: string;
+  reason: string;
+  expectedEffect: string;
+  validationRequirements: string;
+  createdAt: string;
+}
+
+// Section 12 — no black-box "AI quality score." Every field `null` ==
+// "NOT VERIFIED" in the UI, never a guessed value.
+export interface StrategyScorecard {
+  tradeCount: number | null;
+  winRatePct: number | null;
+  avgWinR: number | null;
+  avgLossR: number | null;
+  expectancyR: number | null;
+  profitFactor: number | null;
+  maxDrawdownR: number | null;
+  totalReturnR: number | null;
+  benchmarkReturnPct: number | null;
+  excessReturnApproxPct: number | null;
+  costSensitivityVerdict: string | null;
+  walkForwardVerdict: string | null;
+  regimeRobustnessVerdict: string | null;
+  parameterRobustnessVerdict: string | null;
+  lookAheadVerdict: string | null;
+  statisticalEvidenceState: string | null;
+  tuningExposureVersion: number | null;
+  researchFamilyExperimentCount: number | null;
+  outlierDependent: boolean | null;
+  largestWinShareOfReturnPct: number | null;
+}
+
+export interface BenchmarkComparison {
+  symbol: string;
+  benchmarkReturnPct: number;
+  strategyTotalReturnR: number;
+  strategyEquityReturnApproxPct: number;
+  excessReturnApproxPct: number;
+  riskPerTradePctUsed: number;
+  beatsBenchmark: boolean;
+  approximationNote: string;
+}
+
+export type CandidacyBinning = "accepted" | "promising" | "fragile" | "rejected" | "duplicate" | "insufficient_evidence" | "overfit" | "benchmark_failed" | "risk_failed";
+
+export interface ResearchBudgetStatus {
+  strategyFamily: string;
+  experimentsAttempted: number;
+  mutationsForThisParent: number;
+  maxIterationsPerFamily: number;
+  maxMutationsPerParent: number;
+  stopped: boolean;
+  stopReason: string | null;
+}
+
+export interface ResearchLessonRecord {
+  id: string;
+  strategyFamily: string;
+  definitionId: string;
+  definitionVersion: number;
+  iterationId: string;
+  parentDefinitionId: string | null;
+  mutationId: string | null;
+  hypothesis: string;
+  candidacy: CandidacyBinning;
+  reason: string;
+  keyMetrics: string[];
+  confidencePct: number;
+  lesson: string;
+  createdAt: string;
+}
+
+export interface ResearchLoopIterationRecord {
+  id: string;
+  strategyFamily: string;
+  hypothesis: StrategyHypothesis;
+  experiment: ResearchExperimentRecord;
+  scorecard: StrategyScorecard;
+  benchmarkComparisons: BenchmarkComparison[];
+  failureCodes: FailureCodeEntry[];
+  candidacy: CandidacyBinning;
+  candidacyReason: string;
+  similarExperiments: QuantResearchExperimentSimilarity[];
+  similarFailedStrategies: SimilarFailedStrategyMatch[];
+  researchRelationship: ResearchRelationship;
+  mutation: MutationRecord | null;
+  budget: ResearchBudgetStatus;
+  createdAt: string;
 }
 
 export function isDaytime(time: TimeState): boolean {

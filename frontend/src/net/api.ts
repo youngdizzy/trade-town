@@ -102,6 +102,9 @@ import type {
   FailedStrategyArchiveEntry,
   FailureModeCount,
   KnowledgeQualityScore,
+  ResearchLessonRecord,
+  ResearchLoopIterationRecord,
+  StrategyHypothesis,
   MarketIntelligenceRegime,
   ModelValidationReport,
   MonteCarloReliabilityAssessment,
@@ -932,6 +935,18 @@ export const api = {
   // Failure Taxonomy," Part 2 (Failure Clustering). See
   // backend/app/failure_taxonomy.py's compute_top_failure_modes().
   getTopFailureModes: () => request<FailureModeCount[]>("/sandbox/failure-modes"),
+  // CEO directive "TradeTown — Next Major Implementation Pass, Phase
+  // 4-6: Self-Improving Strategy Factory + Validation Funnel." See
+  // backend/app/research_loop.py.
+  runResearchLoopIteration: (hypothesis: StrategyHypothesis, definition: CompiledStrategyDefinition, symbols?: string[]) =>
+    request<ResearchLoopIterationRecord>("/sandbox/research-loop/run", {
+      method: "POST",
+      body: JSON.stringify({ hypothesis, definition, symbols }),
+    }),
+  getResearchLoopIterations: (strategyFamily?: string) =>
+    request<ResearchLoopIterationRecord[]>(`/sandbox/research-loop/iterations${strategyFamily ? `?strategyFamily=${encodeURIComponent(strategyFamily)}` : ""}`),
+  getResearchLoopLessons: (strategyFamily?: string) =>
+    request<ResearchLessonRecord[]>(`/sandbox/research-loop/lessons${strategyFamily ? `?strategyFamily=${encodeURIComponent(strategyFamily)}` : ""}`),
   // CEO directive "Strategy Intelligence + Live Strategy Attribution,"
   // Phase 1 — the real Strategy Lab <-> CompiledStrategyDefinition
   // identity bridge. See backend/app/strategy_registry.py's

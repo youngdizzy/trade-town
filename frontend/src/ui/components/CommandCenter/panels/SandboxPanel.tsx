@@ -18,6 +18,7 @@ import { QuantResearchLabView } from "./sandbox/QuantResearchLabView";
 import { LiveStrategyEligibilityCard } from "./sandbox/LiveStrategyEligibilityCard";
 import { StrategyTradingDiagnosticsView } from "./sandbox/StrategyTradingDiagnosticsView";
 import { ChampionChallengerView } from "./sandbox/ChampionChallengerView";
+import { ResearchFactoryView } from "./sandbox/ResearchFactoryView";
 
 const SUB_TABS = [
   "PIPELINE",
@@ -32,6 +33,7 @@ const SUB_TABS = [
   "STRATEGY COMPILER",
   "QUANT RESEARCH LAB",
   "CHAMPION/CHALLENGER",
+  "RESEARCH FACTORY",
 ] as const;
 type SubTab = (typeof SUB_TABS)[number];
 
@@ -174,6 +176,7 @@ export function SandboxPanel() {
       {subTab === "STRATEGY COMPILER" && <StrategyCompilerView seed={compilerSeed} />}
       {subTab === "QUANT RESEARCH LAB" && <QuantResearchLabView />}
       {subTab === "CHAMPION/CHALLENGER" && <ChampionChallengerView />}
+      {subTab === "RESEARCH FACTORY" && <ResearchFactoryView />}
 
       {STRATEGY_SCOPED.has(subTab) && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
