@@ -7329,7 +7329,140 @@ export interface ResearchLoopIterationRecord {
 // real architecture and every disclosed scope cut.
 // ============================================================================
 
-export type CandidateLifecycleStage = "generated" | "compile_rejected" | "backtested" | "candidate" | "rejected" | "survivor" | "challenger_eligible";
+export type CandidateLifecycleStage =
+  | "generated"
+  | "duplicate_pruned"
+  | "compile_rejected"
+  | "backtested"
+  | "candidate"
+  | "adversarial_tested"
+  | "rejected"
+  | "survivor"
+  | "challenger_eligible";
+
+// CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery +
+// Adversarial Research Engine." See backend/app/strategy_families.py and
+// backend/app/adversarial_research.py's own module docstrings.
+export type StrategyFamily = "trend_following" | "breakout" | "momentum_threshold" | "pullback_continuation" | "volatility_adjusted_risk" | "risk_reward_variation";
+
+export type DiscoveryReason =
+  | "failed_cost_resilience"
+  | "failed_regime"
+  | "outlier_dependence"
+  | "benchmark_underperformance"
+  | "drawdown_failure"
+  | "low_profit_factor"
+  | "weak_walk_forward"
+  | "parameter_fragility"
+  | "successful_parent"
+  | "successful_family"
+  | "research_exploration";
+
+export type OutlierResilienceClass = "robust_to_outliers" | "moderately_outlier_dependent" | "highly_outlier_dependent" | "insufficient_evidence";
+export type RegimeRobustnessClass = "regime_robust" | "regime_specialist" | "regime_fragile" | "regime_unknown";
+export type ResearchScorecardClassification = "rejected" | "fragile" | "promising" | "robust" | "champion_candidate";
+export type HoldoutStatus = "not_available" | "available";
+export type FailureBoundaryType = "cost_bps" | "drawdown_pct" | "parameter_stop" | "parameter_target" | "outlier_removal_pct";
+
+export interface OutlierRemovalScenario {
+  label: string;
+  tradesRemoved: number;
+  bucket: EmaPullbackStatsBucket;
+}
+
+export interface OutlierResilienceResult {
+  scenarios: OutlierRemovalScenario[];
+  classification: OutlierResilienceClass;
+  detail: string;
+}
+
+export interface WorstPeriodResult {
+  windowTradeCount: number;
+  windowStartTimestamp: string | null;
+  windowEndTimestamp: string | null;
+  windowCumulativeR: number | null;
+  detail: string;
+}
+
+export interface SequenceRobustnessResult {
+  reshuffleCount: number;
+  seed: string;
+  baselineMaxDrawdownR: number | null;
+  worstReshuffledMaxDrawdownR: number | null;
+  detail: string;
+}
+
+export interface ExtendedCostAttackScenario {
+  label: string;
+  costBpsPerLeg: number;
+  bucket: EmaPullbackStatsBucket;
+}
+
+export interface ExtendedCostAttackResult {
+  scenarios: ExtendedCostAttackScenario[];
+  survivesBeyondStress: boolean | null;
+  detail: string;
+}
+
+export interface RegimeRobustnessResult {
+  classification: RegimeRobustnessClass;
+  provenRegimes: string[];
+  fragileRegimes: string[];
+  detail: string;
+}
+
+export interface FailureBoundary {
+  id: string;
+  failureBoundaryType: FailureBoundaryType;
+  failureBoundaryMetric: string;
+  failureBoundaryValue: number | null;
+  currentValue: number | null;
+  distanceToFailure: number | null;
+  confidence: "low" | "medium" | "high";
+  evidenceSource: string;
+  detail: string;
+}
+
+export interface AdversarialResearchResult {
+  id: string;
+  definitionId: string;
+  definitionVersion: number;
+  outlierResilience: OutlierResilienceResult;
+  worstPeriod: WorstPeriodResult;
+  sequenceRobustness: SequenceRobustnessResult;
+  extendedCostAttack: ExtendedCostAttackResult;
+  regimeRobustness: RegimeRobustnessResult;
+  failureBoundaries: FailureBoundary[];
+  dataProvenance: "real" | "synthetic" | "simulated" | "user_provided" | "unavailable";
+  generatedAt: string;
+}
+
+export interface HoldoutAvailability {
+  status: HoldoutStatus;
+  reason: string;
+}
+
+export interface FamilyResearchStats {
+  family: StrategyFamily;
+  numberGenerated: number;
+  numberBacktested: number;
+  numberRejected: number;
+  numberPromising: number;
+  numberRobust: number;
+  averageExpectancyR: number | null;
+  medianExpectancyR: number | null;
+  averageMaxDrawdownR: number | null;
+  benchmarkBeatRatePct: number | null;
+  costSurvivalRatePct: number | null;
+  walkForwardPassRatePct: number | null;
+  adversarialSurvivalRatePct: number | null;
+}
+
+export interface ResearchAllocationDecision {
+  family: StrategyFamily;
+  allocationWeightPct: number;
+  rationale: string;
+}
 
 export interface MutationCandidate {
   id: string;
@@ -7364,6 +7497,12 @@ export interface FactoryCandidateRecord {
   survived: boolean;
   decisionReason: string;
   createdAt: string;
+  researchFamily: StrategyFamily | null;
+  candidateSeed: string | null;
+  discoveryReason: DiscoveryReason | null;
+  duplicateOfCandidateId: string | null;
+  adversarialResult: AdversarialResearchResult | null;
+  scorecardClassification: ResearchScorecardClassification | null;
 }
 
 export interface FactoryRunConfig {
@@ -7412,6 +7551,22 @@ export interface FactoryStatsRead {
   totalRejected: number;
   totalCompileRejected: number;
   topRejectionReasons: string[];
+}
+
+export interface ResearchDiscoveryCycleRecord {
+  id: string;
+  conceptName: string;
+  populationSize: number;
+  seed: string;
+  candidates: FactoryCandidateRecord[];
+  familyStats: FamilyResearchStats[];
+  allocationDecisions: ResearchAllocationDecision[];
+  survivorCandidateIds: string[];
+  championCandidateIds: string[];
+  duplicatesPruned: number;
+  stopReason: string;
+  holdout: HoldoutAvailability;
+  createdAt: string;
 }
 
 export function isDaytime(time: TimeState): boolean {

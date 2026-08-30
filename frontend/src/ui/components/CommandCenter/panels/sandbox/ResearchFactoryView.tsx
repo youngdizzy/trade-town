@@ -1,7 +1,18 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import { AGENT_IDS } from "@/types";
-import type { AgentId, CandidacyBinning, CandidateLifecycleStage, FactoryRunRecord, FactoryStatsRead, ResearchLoopIterationRecord, StrategyScorecard } from "@/types";
+import type {
+  AgentId,
+  CandidacyBinning,
+  CandidateLifecycleStage,
+  FactoryRunRecord,
+  FactoryStatsRead,
+  FamilyResearchStats,
+  ResearchDiscoveryCycleRecord,
+  ResearchLoopIterationRecord,
+  ResearchScorecardClassification,
+  StrategyScorecard,
+} from "@/types";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
 
 const CANDIDACY_TONE: Record<CandidacyBinning, "green" | "amber" | "red" | "purple"> = {
@@ -18,12 +29,22 @@ const CANDIDACY_TONE: Record<CandidacyBinning, "green" | "amber" | "red" | "purp
 
 const LIFECYCLE_TONE: Record<CandidateLifecycleStage, "green" | "amber" | "red" | "purple"> = {
   generated: "purple",
+  duplicate_pruned: "purple",
   compile_rejected: "red",
   backtested: "purple",
   candidate: "amber",
+  adversarial_tested: "amber",
   rejected: "red",
   survivor: "green",
   challenger_eligible: "green",
+};
+
+const SCORECARD_TONE: Record<ResearchScorecardClassification, "green" | "amber" | "red" | "purple"> = {
+  rejected: "red",
+  fragile: "amber",
+  promising: "amber",
+  robust: "green",
+  champion_candidate: "green",
 };
 
 const FACTORY_PIPELINE_LABELS = ["OBSERVE", "GENERATE", "MUTATE", "COMPILE", "BACKTEST", "VALIDATE", "STRESS", "COMPARE", "ACCEPT / BIN"];
@@ -397,6 +418,8 @@ export function ResearchFactoryView() {
         </Glass>
       )}
 
+      <DiscoveryCyclePanel />
+
       {result && (
         <>
           <Glass className="p-3">
@@ -515,6 +538,247 @@ export function ResearchFactoryView() {
       {!result && history.length === 0 && (
         <Glass className="p-3">
           <EmptyState>No research-loop iteration has been run yet.</EmptyState>
+        </Glass>
+      )}
+    </div>
+  );
+}
+
+/**
+ * CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery +
+ * Adversarial Research Engine." Generates a controlled, deterministic
+ * candidate POPULATION across multiple real, compiler-supported
+ * strategy families, prunes real near-duplicates, and attacks every
+ * real survivor via app/adversarial_research.py's real attack suite —
+ * see backend/app/research_discovery.py's own module docstring for the
+ * full real architecture and its disclosed scope boundary (one real
+ * generation per population member).
+ */
+function DiscoveryCyclePanel() {
+  const [conceptName, setConceptName] = useState("Discovery Cycle");
+  const [populationSize, setPopulationSize] = useState(6);
+  const [seed, setSeed] = useState(() => `seed-${Date.now()}`);
+  const [proposedBy, setProposedBy] = useState<AgentId>("quant");
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cycle, setCycle] = useState<ResearchDiscoveryCycleRecord | null>(null);
+  const [cycles, setCycles] = useState<ResearchDiscoveryCycleRecord[]>([]);
+  const [familyStats, setFamilyStats] = useState<FamilyResearchStats[]>([]);
+  const [unsupported, setUnsupported] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    api
+      .getResearchDiscoveryCycles()
+      .then(setCycles)
+      .catch(() => undefined);
+    api
+      .getResearchDiscoveryFamilyStats()
+      .then(setFamilyStats)
+      .catch(() => undefined);
+    api
+      .getResearchDiscoverySupportedFamilies()
+      .then((r) => setUnsupported(r.unsupported))
+      .catch(() => undefined);
+  }, [cycle?.id]);
+
+  async function runCycle() {
+    setRunning(true);
+    setError(null);
+    try {
+      const record = await api.runResearchDiscoveryCycle(conceptName, populationSize, seed, proposedBy, { symbols: ["AAPL"] });
+      setCycle(record);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Glass className="p-3">
+        <TerminalLabel>Strategy Discovery Cycle — a diverse population, real near-duplicate pruning, real adversarial attacks</TerminalLabel>
+        <p className="mt-1 text-[9px] text-cmd-textDim">
+          Generates a controlled, deterministic candidate population across multiple real, compiler-supported strategy families (never 30 mutations of one parent), prunes
+          real near-duplicates before spending research budget, and attacks every real survivor (outlier removal, worst-period, sequence reshuffle, extended cost, regime).
+          Each real candidate runs the SAME unmodified research funnel — this never bypasses a hard gate. Runtime scales with population size (each candidate re-runs a full
+          real backtest plus adversarial suite) — a population of 6 typically takes several minutes.
+        </p>
+        {Object.keys(unsupported).length > 0 && (
+          <p className="mt-1 text-[8px] italic text-cmd-textDim">Not generated (real, disclosed compiler limitations): {Object.keys(unsupported).join(", ")}.</p>
+        )}
+        <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+          <input
+            type="text"
+            value={conceptName}
+            onChange={(e) => setConceptName(e.target.value)}
+            placeholder="Concept name"
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
+          />
+          <input
+            type="number"
+            min={1}
+            max={30}
+            value={populationSize}
+            onChange={(e) => setPopulationSize(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
+            placeholder="Population size"
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
+          />
+          <input
+            type="text"
+            value={seed}
+            onChange={(e) => setSeed(e.target.value)}
+            placeholder="Deterministic seed"
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
+          />
+          <select
+            value={proposedBy}
+            onChange={(e) => setProposedBy(e.target.value as AgentId)}
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
+          >
+            {AGENT_IDS.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          disabled={running || !conceptName.trim()}
+          onClick={runCycle}
+          className="mt-2 rounded-sm border border-cmd-purple/60 px-3 py-1.5 text-[9px] uppercase text-cmd-purple transition-colors hover:enabled:border-cmd-purple hover:enabled:text-cmd-text disabled:opacity-40"
+        >
+          {running ? "Generating population and attacking survivors…" : "Run Discovery Cycle"}
+        </button>
+        {error && <div className="mt-1.5 text-[9px] text-cmd-red">{error}</div>}
+      </Glass>
+
+      {cycle && (
+        <>
+          <Glass className="p-3">
+            <TerminalLabel>Discovery Cycle {cycle.id} — Status</TerminalLabel>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
+              <DataRow label="Population size" value={cycle.populationSize} />
+              <DataRow label="Duplicates pruned" value={cycle.duplicatesPruned} />
+              <DataRow label="Survivors" value={cycle.survivorCandidateIds.length} />
+              <DataRow label="Champion candidates" value={cycle.championCandidateIds.length} />
+              <DataRow label="Holdout" value={cycle.holdout.status === "available" ? "available" : "NOT AVAILABLE"} />
+            </div>
+            <p className="mt-1.5 text-[8px] italic text-cmd-textDim">{cycle.holdout.reason}</p>
+            <p className="mt-1.5 border-t border-cmd-border/40 pt-1.5 text-[9px] text-cmd-text">{cycle.stopReason}</p>
+          </Glass>
+
+          <Glass className="p-3">
+            <TerminalLabel>Family Research Statistics — real, decomposable, never a black-box score</TerminalLabel>
+            <div className="mt-1.5 overflow-x-auto">
+              <table className="w-full text-[8px]">
+                <thead>
+                  <tr className="text-left text-cmd-textDim">
+                    <th className="pr-2">Family</th>
+                    <th className="pr-2">Gen</th>
+                    <th className="pr-2">BT</th>
+                    <th className="pr-2">Avg Exp (R)</th>
+                    <th className="pr-2">Cost Surv %</th>
+                    <th>Allocation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cycle.familyStats.map((fs) => {
+                    const allocation = cycle.allocationDecisions.find((a) => a.family === fs.family);
+                    return (
+                      <tr key={fs.family} className="border-t border-cmd-border/30">
+                        <td className="py-0.5 pr-2 text-cmd-text">{fs.family.replace(/_/g, " ")}</td>
+                        <td className="pr-2">{fs.numberGenerated}</td>
+                        <td className="pr-2">{fs.numberBacktested}</td>
+                        <td className="pr-2">{fs.averageExpectancyR !== null ? fs.averageExpectancyR.toFixed(3) : "NOT VERIFIED"}</td>
+                        <td className="pr-2">{fs.costSurvivalRatePct !== null ? `${fs.costSurvivalRatePct.toFixed(0)}%` : "NOT VERIFIED"}</td>
+                        <td>{allocation ? `${allocation.allocationWeightPct.toFixed(1)}%` : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Glass>
+
+          <Glass className="p-3">
+            <TerminalLabel>Population — every candidate, real evidence, never deleted</TerminalLabel>
+            {cycle.candidates.map((candidate) => (
+              <div key={candidate.id} className="mt-2 border-t border-cmd-border/40 pt-2 first:mt-0 first:border-0 first:pt-0">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <span className="text-[9px] text-cmd-text">
+                    {candidate.researchFamily?.replace(/_/g, " ") ?? "—"}
+                    {candidate.discoveryReason && <span className="text-cmd-textDim"> · {candidate.discoveryReason.replace(/_/g, " ")}</span>}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <StatusPill tone={LIFECYCLE_TONE[candidate.lifecycleStage]}>{candidate.lifecycleStage.replace(/_/g, " ")}</StatusPill>
+                    {candidate.scorecardClassification && (
+                      <StatusPill tone={SCORECARD_TONE[candidate.scorecardClassification]}>{candidate.scorecardClassification.replace(/_/g, " ")}</StatusPill>
+                    )}
+                  </div>
+                </div>
+                {candidate.duplicateOfCandidateId && <p className="mt-0.5 text-[8px] italic text-cmd-textDim">Duplicate of {candidate.duplicateOfCandidateId} — never backtested.</p>}
+                {candidate.iteration && (
+                  <div className="mt-1 grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+                    <DataRow label="Trades" value={candidate.iteration.scorecard.tradeCount ?? "NOT VERIFIED"} />
+                    <DataRow label="Expectancy (R)" value={candidate.iteration.scorecard.expectancyR?.toFixed(3) ?? "NOT VERIFIED"} />
+                    <DataRow label="PF" value={candidate.iteration.scorecard.profitFactor?.toFixed(2) ?? "NOT VERIFIED"} />
+                    <DataRow label="Max DD (R)" value={candidate.iteration.scorecard.maxDrawdownR?.toFixed(2) ?? "NOT VERIFIED"} />
+                  </div>
+                )}
+                {candidate.adversarialResult && (
+                  <div className="mt-1 grid grid-cols-2 gap-x-4 sm:grid-cols-3">
+                    <DataRow label="Outlier resilience" value={candidate.adversarialResult.outlierResilience.classification.replace(/_/g, " ")} />
+                    <DataRow label="Regime" value={candidate.adversarialResult.regimeRobustness.classification.replace(/_/g, " ")} />
+                    <DataRow
+                      label="Survives beyond stress"
+                      value={candidate.adversarialResult.extendedCostAttack.survivesBeyondStress === null ? "NOT VERIFIED" : candidate.adversarialResult.extendedCostAttack.survivesBeyondStress}
+                    />
+                  </div>
+                )}
+                {candidate.adversarialResult && candidate.adversarialResult.failureBoundaries.length > 0 && (
+                  <div className="mt-1 text-[8px] text-cmd-textDim">
+                    {candidate.adversarialResult.failureBoundaries.map((fb) => (
+                      <div key={fb.id}>
+                        {fb.failureBoundaryMetric}: survives until{" "}
+                        {fb.failureBoundaryValue !== null ? fb.failureBoundaryValue.toFixed(1) : "not observed to fail within the tested range"} (confidence: {fb.confidence})
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-0.5 text-[9px] text-cmd-textDim">{candidate.decisionReason}</p>
+              </div>
+            ))}
+          </Glass>
+        </>
+      )}
+
+      {cycles.length > 0 && (
+        <Glass className="p-3">
+          <TerminalLabel>Discovery Cycle History — permanent, never overwritten</TerminalLabel>
+          {[...cycles].reverse().slice(0, 10).map((c) => (
+            <div key={c.id} className="mt-1 flex items-center justify-between border-t border-cmd-border/40 pt-1 text-[9px] first:mt-0 first:border-0 first:pt-0">
+              <span className="text-cmd-text">
+                {c.conceptName} — {c.populationSize} candidates
+              </span>
+              <StatusPill tone={c.survivorCandidateIds.length > 0 ? "green" : "red"}>{c.survivorCandidateIds.length} survivor(s)</StatusPill>
+            </div>
+          ))}
+        </Glass>
+      )}
+
+      {familyStats.length > 0 && !cycle && (
+        <Glass className="p-3">
+          <TerminalLabel>Family Research Statistics — across every real discovery cycle ever run</TerminalLabel>
+          {familyStats.map((fs) => (
+            <div key={fs.family} className="mt-1 flex items-center justify-between border-t border-cmd-border/40 pt-1 text-[9px] first:mt-0 first:border-0 first:pt-0">
+              <span className="text-cmd-text">{fs.family.replace(/_/g, " ")}</span>
+              <span className="text-cmd-textDim">
+                {fs.numberGenerated} generated · avg exp {fs.averageExpectancyR !== null ? fs.averageExpectancyR.toFixed(3) : "N/A"}
+              </span>
+            </div>
+          ))}
         </Glass>
       )}
     </div>

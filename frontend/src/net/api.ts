@@ -104,7 +104,10 @@ import type {
   FactoryStatsRead,
   FailedStrategyArchiveEntry,
   FailureModeCount,
+  FamilyResearchStats,
   KnowledgeQualityScore,
+  ResearchDiscoveryCycleRecord,
+  StrategyFamily,
   LessonEvidenceSummary,
   ResearchLessonRecord,
   ResearchLoopIterationRecord,
@@ -981,6 +984,30 @@ export const api = {
   getResearchFactoryLineage: (strategyFamily: string) =>
     request<ResearchLoopIterationRecord[]>(`/sandbox/research-factory/lineage/${encodeURIComponent(strategyFamily)}`),
   getResearchFactoryStats: () => request<FactoryStatsRead>("/sandbox/research-factory/stats"),
+  // CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery +
+  // Adversarial Research Engine." See backend/app/research_discovery.py.
+  runResearchDiscoveryCycle: (
+    conceptName: string,
+    populationSize: number,
+    seed: string,
+    proposedBy: AgentId,
+    options?: { families?: StrategyFamily[]; symbols?: string[] }
+  ) =>
+    request<ResearchDiscoveryCycleRecord>("/sandbox/research-discovery/run", {
+      method: "POST",
+      body: JSON.stringify({
+        conceptName,
+        populationSize,
+        seed,
+        proposedBy,
+        families: options?.families,
+        symbols: options?.symbols,
+      }),
+    }),
+  getResearchDiscoveryCycles: () => request<ResearchDiscoveryCycleRecord[]>("/sandbox/research-discovery/cycles"),
+  getResearchDiscoveryCycleDetail: (cycleId: string) => request<ResearchDiscoveryCycleRecord>(`/sandbox/research-discovery/cycles/${encodeURIComponent(cycleId)}`),
+  getResearchDiscoveryFamilyStats: () => request<FamilyResearchStats[]>("/sandbox/research-discovery/families"),
+  getResearchDiscoverySupportedFamilies: () => request<{ supported: StrategyFamily[]; unsupported: Record<string, string> }>("/sandbox/research-discovery/supported-families"),
   // CEO directive "Strategy Intelligence + Live Strategy Attribution,"
   // Phase 1 — the real Strategy Lab <-> CompiledStrategyDefinition
   // identity bridge. See backend/app/strategy_registry.py's
