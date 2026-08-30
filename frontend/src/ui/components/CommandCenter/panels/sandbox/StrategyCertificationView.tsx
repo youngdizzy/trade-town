@@ -361,11 +361,15 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
       {founderApproval && (
         <Glass className="p-3">
           <div className="mb-1.5 flex items-center justify-between">
-            <TerminalLabel>Founder Approval</TerminalLabel>
+            <TerminalLabel>Founder Council Review — algorithmic, not a human decision</TerminalLabel>
             <StatusPill tone={founderApproval.verdict === "approved" ? "green" : "red"}>{founderApproval.verdict}</StatusPill>
           </div>
           <p className="text-[9px] text-cmd-text">{founderApproval.verdictReason}</p>
           <DataRow label="Confidence At Decision" value={`${founderApproval.confidencePct.toFixed(0)}/100`} />
+          <p className="mt-1 text-[8px] italic text-cmd-textDim">
+            A real, deterministic threshold verdict voiced as Keystone/Compass — never the CEO&apos;s own click. The separate &quot;Final CEO Approval&quot; item above is the
+            real human-verifiable checkpoint.
+          </p>
         </Glass>
       )}
     </div>

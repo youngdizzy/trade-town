@@ -1292,6 +1292,15 @@ export interface SimulationResult {
   expectedValuePct: number;
   profitFactor: number;
   riskRewardRatio: number;
+  // CEO directive "TradeTown — Research Engine Hardening +
+  // Self-Improvement Implementation Pass," Phase 1 — reuses the
+  // existing DataCategory vocabulary. "synthetic" for every result the
+  // Sandbox's RNG-only engine produces (app/simulation.py — the only
+  // producer whose output is actually ever persisted into
+  // GameSaveState.simulation_results); "simulated" for the two real,
+  // price-series-driven engines whose own output never reaches this
+  // persisted list today (see the backend schema's own docstring).
+  dataProvenance: DataCategory;
 }
 
 // v0.7 Feature 45 — auto-generated whenever a SimulationResult completes.
@@ -1886,9 +1895,34 @@ export interface QuantResearchExperimentSimilarity {
   outcomeReason: string;
 }
 
+// CEO directive "TradeTown — Research Engine Hardening +
+// Self-Improvement Implementation Pass," Phase 3 — the real, disclosed
+// counterpart to QuantResearchExperimentSimilarity above, searching the
+// PERMANENT Failed Strategy Archive instead of the Quant Research Lab's
+// own experiment list. Never used to auto-reject — purely surfaced
+// evidence for CEO/agent judgment.
+export interface SimilarFailedStrategyMatch {
+  strategyArchiveId: string;
+  strategyName: string;
+  overlapScore: number;
+  reason: string;
+  failedAtStage: StrategyStage;
+  failureCodes: FailureCode[];
+  evidence: string[];
+  simDay: number;
+}
+
+// "classify the relationship: NOVEL / SIMILAR_SUCCESS / SIMILAR_FAILURE
+// / NEAR_DUPLICATE / CONTRADICTORY_EVIDENCE... do NOT automatically
+// reject a strategy merely because something similar failed." Purely
+// informational — never blocks filing.
+export type ResearchRelationship = "novel" | "similar_success" | "similar_failure" | "near_duplicate" | "contradictory_evidence";
+
 export interface SubmitQuantResearchExperimentResult {
   experiment: QuantResearchExperiment;
   similarExperiments: QuantResearchExperimentSimilarity[];
+  similarFailedStrategies: SimilarFailedStrategyMatch[];
+  researchRelationship: ResearchRelationship;
 }
 
 // CEO directive "TradeTown — 11/10 Self-Improving Quant Agent System,"
@@ -1906,7 +1940,12 @@ export type ChallengerVerdict = "challenger_recommended" | "champion_retained" |
 // module docstring for the exact real methodology and its disclosed
 // IID (not block-bootstrap) limitation. Never a claim of a classical
 // p-value.
-export type BootstrapEvidenceState = "sufficient_evidence" | "insufficient_evidence";
+// "invalid_evidence" — CEO directive "TradeTown — Research Engine
+// Hardening + Self-Improvement Implementation Pass," Phase 8. A real,
+// distinct state for a NaN/Inf observation in either sample, never
+// conflated with "insufficient_evidence" (too few real observations,
+// a different, honest condition).
+export type BootstrapEvidenceState = "sufficient_evidence" | "insufficient_evidence" | "invalid_evidence";
 
 export interface BootstrapComparisonResult {
   championSampleSize: number;
@@ -1926,7 +1965,15 @@ export interface BootstrapComparisonResult {
 
 // "The system should explicitly distinguish: STATISTICALLY SUPPORTED /
 // ECONOMICALLY MEANINGFUL / BOTH / NEITHER / INSUFFICIENT SAMPLE."
-export type StatisticalEconomicClassification = "both" | "statistically_supported_only" | "economically_meaningful_only" | "neither" | "insufficient_sample";
+export type StatisticalEconomicClassification =
+  | "both"
+  | "statistically_supported_only"
+  | "economically_meaningful_only"
+  | "neither"
+  | "insufficient_sample"
+  // CEO directive "TradeTown — Research Engine Hardening +
+  // Self-Improvement Implementation Pass," Phase 8.
+  | "invalid_evidence";
 
 export interface ChallengerComparison {
   id: string;
@@ -2286,7 +2333,15 @@ export type FailureCode =
   | "duplicate_strategy"
   | "redundant_strategy"
   | "failed_challenger"
-  | "champion_not_beaten";
+  | "champion_not_beaten"
+  // CEO directive "TradeTown — Research Engine Hardening +
+  // Self-Improvement Implementation Pass," Phase 2 — closes the real,
+  // confirmed "missing failure reason" gap: a strategy clearing every
+  // numeric bar could still retire with failureCodes: [] because
+  // Hall-of-Fame induction also requires stage === "approved" and a
+  // real approved Founder Approval.
+  | "never_reached_required_stage"
+  | "founder_approval_rejected";
 
 export type FailureSeverity = "critical" | "high" | "medium" | "low";
 

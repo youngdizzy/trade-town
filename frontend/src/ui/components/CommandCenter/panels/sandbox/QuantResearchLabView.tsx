@@ -361,6 +361,34 @@ export function QuantResearchLabView() {
                     ))}
                   </div>
                 )}
+                {/* CEO directive "TradeTown — Research Engine Hardening +
+                    Self-Improvement Implementation Pass," Phase 3 — real
+                    memory consultation against the permanent Failed
+                    Strategy Archive, surfaced as evidence, never a
+                    blocker (filing above already succeeded regardless). */}
+                {fileResult.researchRelationship !== "novel" && (
+                  <div
+                    className={`rounded-sm border p-1.5 ${
+                      fileResult.researchRelationship === "similar_failure" || fileResult.researchRelationship === "contradictory_evidence"
+                        ? "border-cmd-red/40 bg-cmd-red/5"
+                        : fileResult.researchRelationship === "near_duplicate"
+                          ? "border-cmd-amber/40 bg-cmd-amber/5"
+                          : "border-cmd-green/40 bg-cmd-green/5"
+                    }`}
+                  >
+                    <div className="text-[9px] uppercase text-cmd-textDim">Research relationship: {fileResult.researchRelationship.replace(/_/g, " ")}</div>
+                    {fileResult.similarFailedStrategies.map((m) => (
+                      <div key={m.strategyArchiveId} className="mt-1 border-t border-cmd-border/40 pt-1 text-[9px] first:mt-0 first:border-0 first:pt-0">
+                        <div className="text-cmd-text">
+                          ⚠ Retired strategy &quot;{m.strategyName}&quot; failed at {m.failedAtStage.replace(/_/g, " ")} ({(m.overlapScore * 100).toFixed(0)}% wording overlap)
+                        </div>
+                        {m.evidence.length > 0 && <div className="mt-0.5 text-cmd-textDim">What failed: {m.evidence.join("; ")}</div>}
+                        {m.failureCodes.length > 0 && <div className="mt-0.5 text-cmd-textDim">Codes: {m.failureCodes.join(", ").replace(/_/g, " ")}</div>}
+                      </div>
+                    ))}
+                    <div className="mt-1 text-[8px] italic text-cmd-textDim">Evidence only — this never blocked filing. A materially different approach is still worth testing.</div>
+                  </div>
+                )}
               </div>
             )}
           </Glass>

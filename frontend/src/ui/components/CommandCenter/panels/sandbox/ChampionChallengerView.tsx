@@ -19,6 +19,9 @@ const CLASSIFICATION_TONE: Record<StatisticalEconomicClassification, "green" | "
   economically_meaningful_only: "amber",
   neither: "red",
   insufficient_sample: "purple",
+  // CEO directive "TradeTown — Research Engine Hardening +
+  // Self-Improvement Implementation Pass," Phase 8.
+  invalid_evidence: "red",
 };
 
 function MetricRow({ label, champion, challenger, suffix = "" }: { label: string; champion: number | null; challenger: number | null; suffix?: string }) {
@@ -237,7 +240,7 @@ export function ChampionChallengerView() {
             <TerminalLabel>Statistical Evidence — an additional layer, never a gate-bypass</TerminalLabel>
             <StatusPill tone={CLASSIFICATION_TONE[comparison.classification]}>{comparison.classification.replace(/_/g, " ")}</StatusPill>
           </div>
-          {comparison.statisticalComparison.evidenceState === "insufficient_evidence" ? (
+          {comparison.statisticalComparison.evidenceState === "insufficient_evidence" || comparison.statisticalComparison.evidenceState === "invalid_evidence" ? (
             <EmptyState>{comparison.statisticalComparison.limitationNote}</EmptyState>
           ) : (
             <>
