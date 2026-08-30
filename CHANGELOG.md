@@ -340,6 +340,82 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Phase 8: Autonomous Strategy Discovery + Adversarial Research Engine" — turns the
+  factory from "mutate one parent" into a real, miniature quantitative research department: generate
+  DIVERSE hypotheses across multiple real families → prune near-duplicates → independently validate →
+  ATTACK adversarially → classify without ever bypassing a hard gate → learn.**
+  - **Strategy Discovery layer** (`app/strategy_families.py`) — 6 real, materially-different, compiler-
+    vocabulary-safe families (`trend_following`/`breakout`/`momentum_threshold` vary the real TRIGGER
+    mechanism — EMA cross / multi-horizon trend score / RSI; `pullback_continuation`/
+    `volatility_adjusted_risk`/`risk_reward_variation` vary a real structural/risk axis on the same
+    trigger). `mean_reversion`/`volatility_expansion`/`volatility_contraction`/`regime_conditioned` are
+    explicitly declared **UNSUPPORTED**, with real, disclosed compiler-vocabulary reasons (grep-proven,
+    not asserted) — never faked. Deterministic population generation (same seed -> byte-identical
+    population); real near-duplicate pruning reusing `app/quant_research_lab.py`'s own
+    `word_overlap_score()`/`NEAR_DUPLICATE_OVERLAP_THRESHOLD` directly (a dedicated test proves
+    mechanism-distinct families never cross-collide, while textually-similar risk-variation families
+    correctly CAN collide — documented as correct behavior, not a bug).
+  - **Adversarial Research suite** (`app/adversarial_research.py`) — outlier-removal (top 1%/5%/10%
+    winners stripped, real recomputed expectancy), worst-contiguous-period detection (real deterministic
+    min-subarray scan), sequence-reshuffle robustness (200 real, seeded reshuffles of the SAME real
+    closed trades — expectancy is order-invariant, only drawdown differs), and an extended (3x/5x)
+    cost/slippage attack beyond `app/cost_sensitivity.py`'s own "stressed" ceiling — all built on the
+    real, individually-traceable per-trade sequence `app/strategy_engine.py::backtest_symbol_over_
+    candles()` already produces (the same real primitive `app/statistical_comparison.py`'s bootstrap
+    already reuses), never a second backtest engine. Regime robustness classification
+    (`regime_robust`/`regime_specialist`/`regime_fragile`/`regime_unknown`) reuses already-real
+    `regimeTrendBreakdown`/`regimeVolatilityBreakdown` — no new regime detection.
+  - **Failure boundaries, not pass/fail** (`derive_failure_boundaries()`) — "survives until X bps of
+    cost," "fails at Y% outlier removal," never a fabricated extrapolation past the real range actually
+    tested; confidence is a real, sample-size-derived read.
+  - **Holdout interface, honestly not available** — `evaluate_holdout_availability()` always returns
+    `not_available`: this codebase's mock candle provider has no real date-partitioned dataset to carve
+    a true chronological holdout from. The real TRAIN/VALIDATION/HOLDOUT interface exists for future
+    real support; never faked with a relabeled in-sample split.
+  - **Transparent scorecard, never a black-box override** (`classify_research_scorecard()`,
+    `app/research_discovery.py`) — a real, priority-ordered rule: the EXISTING `CandidacyBinning` gate
+    is checked first and is the ONLY thing that can produce `rejected`; adversarial evidence can only
+    ever REFINE an already-accepted/promising candidacy into `fragile`/`promising`/`robust`/
+    `champion_candidate` — proven by a dedicated test that no adversarial result, however favorable,
+    can ever upgrade a real, already-failed candidacy.
+  - **Research resource allocation** (`allocate_research_budget()`) — a real, deterministic 70/30
+    exploitation/exploration split over real per-family statistics
+    (`compute_family_research_stats()`, computed fresh, never persisted/stale); no family is ever fully
+    abandoned. Advisory research-effort routing only — never a trading signal.
+  - **New, permanent `GameSaveState.discoveryCycles`** — every population, every real near-duplicate
+    relationship, every real adversarial result, every real failure boundary, permanently persisted,
+    never deleted (a duplicate-pruned or compile-rejected candidate stays visible with its own real
+    reason, exactly like every other outcome).
+  - **Champion/Challenger boundary enforced by import shape** — `app/research_discovery.py` imports
+    only the read-only `get_current_champion()`; no discovery-cycle candidate ever gets live/paper
+    execution authority — a survivor is only ever a real research artifact until it independently clears
+    every existing downstream gate.
+  - **New API**: `POST /research-discovery/run`, `GET /research-discovery/cycles`,
+    `GET /research-discovery/cycles/{id}`, `GET /research-discovery/families`,
+    `GET /research-discovery/supported-families`.
+  - **UI**: a new "Strategy Discovery Cycle" panel on the RESEARCH FACTORY sub-tab — population
+    controls, real family-statistics table, per-candidate adversarial evidence and failure-boundary
+    disclosure, and permanent cycle history.
+  - **Scope boundary, disclosed**: one real generation per population member (never full recursive
+    multi-generation mutation-evolution per candidate — a 10-30 candidate population evolved 5
+    generations each was judged an unreasonable default compute cost for one manual research action);
+    any promising candidate can still be hand-picked and evolved further via the existing, unmodified
+    `POST /research-factory/run`. Real, observed runtime: each candidate re-runs a full backtest AND a
+    full adversarial suite (duplicating the underlying trade-generation work, the same accepted cost
+    `app/statistical_comparison.py`'s own bootstrap already pays for two-sample comparisons) — a
+    population of 6-8 candidates typically takes several minutes; the UI discloses this plainly and
+    defaults to a small population.
+  - **NOT IMPLEMENTED, disclosed**: entry/exit-condition, timeframe, and position-sizing mutation/
+    generation operators (no safe bounded text-splice exists against the compiler's real vocabulary for
+    any of these); a fake "AI quality score" anywhere (every classification is rule-derived from named,
+    real evidence); genuine holdout data (see above).
+  - **Verified:** full backend suite (3454 tests, up from 3379 — 75 new across `test_strategy_families.py`
+    (20), `test_adversarial_research.py` (35), and `test_research_discovery.py` (20), including a
+    dedicated hard-gate-bypass-impossible test and source-inspection tests proving Champion/Challenger's
+    promotion path is never imported), `mypy app/`/`ruff app/ tests/` clean. Frontend `tsc -b`/lint/build
+    clean. Live-verified via direct API calls against the real running dev stack and an interactive
+    Playwright pass confirming the new Discovery Cycle panel renders and functions end to end.
+
 - **"TradeTown — Phase 7: Autonomous Strategy Evolution Engine" — closes the seam Phase 4-6 (below)
   deliberately left open: a real, bounded, deterministic, multi-generation OBSERVE→GENERATE→MUTATE→
   COMPILE→BACKTEST→VALIDATE→STRESS→COMPARE→ACCEPT-OR-BIN→LEARN loop (`app/research_factory.py`),

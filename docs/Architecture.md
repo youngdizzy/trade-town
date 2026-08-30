@@ -14507,6 +14507,64 @@ interactive Playwright pass confirming the Factory Status panel,
 candidate lineage, and stop reason all render correctly end to end
 (temporary spec, removed after verification).
 
+**Follow-up — "TradeTown — Phase 8: Autonomous Strategy Discovery +
+Adversarial Research Engine."** Turns the factory from "mutate one
+parent" into a real, miniature quant research department: generate
+DIVERSE hypotheses across multiple real families -> prune near-
+duplicates -> validate -> ATTACK adversarially -> classify without
+bypassing a hard gate -> learn. `app/strategy_families.py`: 6 real,
+materially-different, compiler-vocabulary-safe families
+(`trend_following`/`breakout`/`momentum_threshold` vary the real
+TRIGGER mechanism — EMA cross/multi-horizon trend score/RSI;
+`pullback_continuation`/`volatility_adjusted_risk`/
+`risk_reward_variation` vary a real structural/risk axis on the same
+trigger). `mean_reversion`/`volatility_expansion`/
+`volatility_contraction`/`regime_conditioned` explicitly declared
+UNSUPPORTED with real, grep-proven compiler-vocabulary reasons — never
+faked. Deterministic population generation; real near-duplicate pruning
+reusing `app/quant_research_lab.py`'s own `word_overlap_score()`/
+`NEAR_DUPLICATE_OVERLAP_THRESHOLD` (a dedicated test proves mechanism-
+distinct families never cross-collide, while textually-similar risk-
+variation families correctly CAN — documented as correct, not a bug).
+`app/adversarial_research.py`: outlier-removal (top 1/5/10% winners
+stripped, real recomputed expectancy), worst-contiguous-period
+detection (real deterministic min-subarray scan), sequence-reshuffle
+robustness (200 real seeded reshuffles of the SAME real closed trades),
+and an extended 3x/5x cost attack beyond the existing "stressed"
+ceiling — all built on the real per-trade sequence
+`backtest_symbol_over_candles()` already produces (the same primitive
+`app/statistical_comparison.py`'s bootstrap already reuses), never a
+second backtest engine. Regime robustness reuses already-real
+regime breakdowns — no new detection. Failure boundaries ("survives
+until X," never fabricated past the real tested range) and an honestly
+`not_available` holdout interface (this codebase's mock candle provider
+has no real date-partitioned dataset to carve a true holdout from).
+`app/research_discovery.py`'s `classify_research_scorecard()` — a real,
+priority-ordered rule: the EXISTING candidacy gate is checked first and
+is the ONLY thing that can produce `rejected`; adversarial evidence can
+only ever REFINE an already-accepted candidacy, proven by a dedicated
+hard-gate-bypass-impossible test. Real, deterministic 70/30
+exploitation/exploration research-budget allocation over real per-
+family statistics — advisory only, never a trading signal. New,
+permanent `GameSaveState.discoveryCycles`; Champion/Challenger boundary
+enforced by import shape (only the read-only `get_current_champion()`
+imported). New `POST /research-discovery/run` + four `GET` endpoints;
+new "Strategy Discovery Cycle" UI panel. Scope boundary, disclosed: one
+real generation per population member (never full recursive multi-
+generation evolution per candidate — any promising candidate can still
+be hand-picked and evolved via the existing, unmodified
+`POST /research-factory/run`); real, observed runtime is several
+minutes for a population of 6-8 (each candidate re-runs a full backtest
+AND a full adversarial suite), disclosed plainly in the UI. NOT
+IMPLEMENTED, disclosed: entry/exit-condition/timeframe/position-sizing
+mutation operators; any fake "AI quality score." 75 new tests across
+`test_strategy_families.py` (20)/`test_adversarial_research.py`
+(35)/`test_research_discovery.py` (20), full backend suite green (3454,
+up from 3379), mypy/ruff clean; frontend tsc -b/lint/build clean.
+Live-verified via direct API calls and an interactive Playwright pass
+confirming the new Discovery Cycle panel end to end (temporary spec,
+removed after verification).
+
 **Follow-up — "TradeTown — Research Engine Hardening +
 Self-Improvement Implementation Pass."** A 20-phase directive; a
 dedicated Phase 0 forensic recon (before any code was written) found

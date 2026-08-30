@@ -11757,6 +11757,16 @@ class GameSaveState(CamelModel):
     factory_runs: list[FactoryRunRecord] = Field(
         default_factory=list, alias="factoryRuns"
     )
+    # CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery +
+    # Adversarial Research Engine" — see app/strategy_families.py's own
+    # module docstring. Permanent, append-only, same precedent as
+    # factory_runs above. A distinct, real concept from factory_runs
+    # (population-based discovery across independent research families,
+    # never a single-parent mutation chain), so kept as its own list
+    # rather than overloading that one.
+    discovery_cycles: list[ResearchDiscoveryCycleRecord] = Field(
+        default_factory=list, alias="discoveryCycles"
+    )
     hall_of_fame: list[HallOfFameEntry] = Field(
         default_factory=list, alias="hallOfFame"
     )
@@ -12479,13 +12489,269 @@ class ResearchLoopIterationRecord(CamelModel):
 # `challenger_eligible`.
 CandidateLifecycleStage = Literal[
     "generated",
+    # CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery +
+    # Adversarial Research Engine," Section 8C — a real, disclosed
+    # near-duplicate real classification (reusing
+    # app/quant_research_lab.py's own word_overlap_score()/
+    # NEAR_DUPLICATE_OVERLAP_THRESHOLD, never a second heuristic),
+    # never backtested to preserve real research budget.
+    "duplicate_pruned",
     "compile_rejected",
     "backtested",
     "candidate",
+    # Section 8D/8L — a real, disclosed marker that this candidate's
+    # real adversarial-attack suite (app/adversarial_research.py) has
+    # completed. Never a terminal verdict by itself — the real
+    # candidacy/scorecard classification still decides survivor/rejected.
+    "adversarial_tested",
     "rejected",
     "survivor",
     "challenger_eligible",
 ]
+
+
+# ============================================================================
+# CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery +
+# Adversarial Research Engine." See app/strategy_families.py and
+# app/adversarial_research.py's own module docstrings for the complete real
+# architecture and every disclosed scope cut.
+# ============================================================================
+
+# Section 8A — ONLY families the real compiler
+# (app/strategy_compiler.py) can safely express are declared here.
+# "mean_reversion"/"volatility_expansion"/"volatility_contraction" (as
+# literal trigger conditions) are explicitly NOT declared — that
+# compiler's own module docstring already discloses no mean-reversion-
+# phrased RSI/Stochastic reading is supported (a trigger-vs-entry
+# direction contradiction check correctly flags it "ambiguous"), and a
+# full grep of `_TRIGGER_PATTERN`/`_RSI_THRESHOLD_PATTERN`/etc. confirms
+# no raw ATR/volatility-threshold trigger exists at all (ATR is used
+# only to size a chandelier stop, never to gate entry). See
+# app/strategy_families.py's own `UNSUPPORTED_FAMILIES` for the explicit,
+# disclosed list of requested-but-unsupported families.
+StrategyFamily = Literal[
+    "trend_following",
+    "pullback_continuation",
+    "breakout",
+    "momentum_threshold",
+    "volatility_adjusted_risk",
+    "risk_reward_variation",
+]
+
+# Section 8K — a real, structured (never free-text-only) reason a
+# candidate was generated. `negative_net_return`'s own real failure code
+# has no exact match in this directive-specified vocabulary — mapped to
+# `low_profit_factor` as the closest real analog, disclosed in
+# app/strategy_families.py's own mapping table.
+DiscoveryReason = Literal[
+    "failed_cost_resilience",
+    "failed_regime",
+    "outlier_dependence",
+    "benchmark_underperformance",
+    "drawdown_failure",
+    "low_profit_factor",
+    "weak_walk_forward",
+    "parameter_fragility",
+    "successful_parent",
+    "successful_family",
+    "research_exploration",
+]
+
+# Section 8F — real, disclosed outlier-dependence tiers, extending
+# app/research_loop.py's own single outlier_dependent bool/share (kept,
+# never replaced) with a real three-way read over the top-1/5/10%
+# removal ladder (see app/adversarial_research.py's own
+# `classify_outlier_resilience()`).
+OutlierResilienceClass = Literal["robust_to_outliers", "moderately_outlier_dependent", "highly_outlier_dependent", "insufficient_evidence"]
+
+# Section 8G.
+RegimeRobustnessClass = Literal["regime_robust", "regime_specialist", "regime_fragile", "regime_unknown"]
+
+# Section 8I — a real, rule-derived classification (never overriding a
+# hard gate — see app/adversarial_research.py's own
+# `classify_research_scorecard()` for the exact, disclosed priority
+# order).
+ResearchScorecardClassification = Literal["rejected", "fragile", "promising", "robust", "champion_candidate"]
+
+# Section 8H.
+HoldoutStatus = Literal["not_available", "available"]
+
+FailureBoundaryType = Literal["cost_bps", "drawdown_pct", "parameter_stop", "parameter_target", "outlier_removal_pct"]
+
+
+class OutlierRemovalScenario(CamelModel):
+    label: str
+    trades_removed: int = Field(alias="tradesRemoved")
+    bucket: EmaPullbackStatsBucket
+
+
+class OutlierResilienceResult(CamelModel):
+    """Section 8F — real recomputation (via the same, already-real
+    `aggregate_bucket()` app/backtest_primitives.py already uses) of
+    expectancy after removing the real top 1%/5%/10% winning trades by
+    `r_multiple_realized`. `scenarios[0]` is always the real, unmodified
+    baseline bucket. `classification` is `insufficient_evidence` (never
+    forced) below the real bucket evidence floor."""
+
+    scenarios: list[OutlierRemovalScenario] = Field(default_factory=list)
+    classification: OutlierResilienceClass
+    detail: str
+
+
+class WorstPeriodResult(CamelModel):
+    """Section 8D.7 — the real worst contiguous chronological block of
+    closed trades (by real `entryTimestamp` order), found via a real,
+    deterministic minimum-subarray-sum scan over each trade's own real
+    `rMultipleRealized` — never a fabricated "bad month." `None` fields
+    when there were too few real closed trades to evaluate a real
+    window."""
+
+    window_trade_count: int = Field(alias="windowTradeCount")
+    window_start_timestamp: str | None = Field(default=None, alias="windowStartTimestamp")
+    window_end_timestamp: str | None = Field(default=None, alias="windowEndTimestamp")
+    window_cumulative_r: float | None = Field(default=None, alias="windowCumulativeR")
+    detail: str
+
+
+class SequenceRobustnessResult(CamelModel):
+    """Section 8D.8 — a real, deterministic (seeded) reshuffle of the
+    SAME real closed-trade R-multiples this strategy actually produced
+    (never fabricated returns) — expectancy is order-invariant by
+    definition, so only order-DEPENDENT metrics (max drawdown here) can
+    honestly differ across reshuffles. Reuses the exact same real
+    `hashlib.sha256(...)` -> `random.Random(...)` reproducibility
+    convention app/strategy_lab.py's Monte Carlo and
+    app/statistical_comparison.py's bootstrap already established."""
+
+    reshuffle_count: int = Field(alias="reshuffleCount")
+    seed: str
+    baseline_max_drawdown_r: float | None = Field(default=None, alias="baselineMaxDrawdownR")
+    worst_reshuffled_max_drawdown_r: float | None = Field(default=None, alias="worstReshuffledMaxDrawdownR")
+    detail: str
+
+
+class ExtendedCostAttackScenario(CamelModel):
+    label: str
+    cost_bps_per_leg: float = Field(alias="costBpsPerLeg")
+    bucket: EmaPullbackStatsBucket
+
+
+class ExtendedCostAttackResult(CamelModel):
+    """Section 8D.1/8D.2 — extends app/cost_sensitivity.py's own real
+    `COST_SCENARIOS` ladder (reused via its own `_apply_cost_to_trades()`,
+    never a second cost model) with two real, disclosed, harsher-than-
+    "stressed" multiples."""
+
+    scenarios: list[ExtendedCostAttackScenario] = Field(default_factory=list)
+    survives_beyond_stress: bool | None = Field(default=None, alias="survivesBeyondStress")
+    detail: str
+
+
+class RegimeRobustnessResult(CamelModel):
+    """Section 8G — a real, disclosed classification over
+    `CompiledStrategyBacktestResult.regimeTrendBreakdown`/
+    `regimeVolatilityBreakdown` (already-real, already-computed —
+    no new regime detection). `provenRegimes`/`fragileRegimes` name
+    every real regime label with `verdict == "enough_evidence"` and a
+    positive/non-positive real expectancy respectively — a regime with
+    insufficient evidence is named in neither list."""
+
+    classification: RegimeRobustnessClass
+    proven_regimes: list[str] = Field(default_factory=list, alias="provenRegimes")
+    fragile_regimes: list[str] = Field(default_factory=list, alias="fragileRegimes")
+    detail: str
+
+
+class FailureBoundary(CamelModel):
+    """Section 8E — "report survives-until-X, not merely pass/fail."
+    `failure_boundary_value`/`distance_to_failure` are `None` (never
+    fabricated) when the real tested range never actually crossed into
+    failure — an honest "not observed to fail within the real range
+    tested," never extrapolated. `confidence` is a real, disclosed,
+    sample-size-derived read (high >= the real 20-trade bootstrap floor,
+    medium >= the real 10-trade bucket-verdict floor, low below it) —
+    never a fabricated statistical confidence."""
+
+    id: str
+    failure_boundary_type: FailureBoundaryType = Field(alias="failureBoundaryType")
+    failure_boundary_metric: str = Field(alias="failureBoundaryMetric")
+    failure_boundary_value: float | None = Field(default=None, alias="failureBoundaryValue")
+    current_value: float | None = Field(default=None, alias="currentValue")
+    distance_to_failure: float | None = Field(default=None, alias="distanceToFailure")
+    confidence: Literal["low", "medium", "high"]
+    evidence_source: str = Field(alias="evidenceSource")
+    detail: str
+
+
+class AdversarialResearchResult(CamelModel):
+    """Section 8D's one real, packaged adversarial-attack suite result
+    for a single compiled definition. `data_provenance` reuses
+    app/data_provenance.py's own real `DataCategory` (never a new
+    provenance concept) — always `"simulated"` here, since every real
+    trade this suite attacks comes from `app/market_data.py`'s mock,
+    seeded candle provider, never a real market feed."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    outlier_resilience: OutlierResilienceResult = Field(alias="outlierResilience")
+    worst_period: WorstPeriodResult = Field(alias="worstPeriod")
+    sequence_robustness: SequenceRobustnessResult = Field(alias="sequenceRobustness")
+    extended_cost_attack: ExtendedCostAttackResult = Field(alias="extendedCostAttack")
+    regime_robustness: RegimeRobustnessResult = Field(alias="regimeRobustness")
+    failure_boundaries: list[FailureBoundary] = Field(default_factory=list, alias="failureBoundaries")
+    data_provenance: DataCategory = Field(alias="dataProvenance")
+    generated_at: str = Field(alias="generatedAt")
+
+
+class HoldoutAvailability(CamelModel):
+    """Section 8H — a real, honest interface. `status` is
+    `"not_available"` today (never faked "available"): a full grep of
+    app/market_data.py confirmed its mock provider generates a fixed-
+    length, seeded-per-(symbol,timeframe) series with no real date-
+    partitioned historical dataset to carve a true, never-touched-
+    during-development chronological holdout from — see this schema's
+    own real, disclosed reason string. The `status == "available"` path
+    (train/validation/holdout ranges) is real, tractable future work,
+    not fabricated here."""
+
+    status: HoldoutStatus
+    reason: str
+
+
+class FamilyResearchStats(CamelModel):
+    """Section 8J — real, computed-fresh (never persisted, never
+    stale) per-family statistics over every real candidate this
+    codebase has ever generated for this family (across every real,
+    persisted `FactoryRunRecord`/`ResearchDiscoveryCycleRecord`)."""
+
+    family: StrategyFamily
+    number_generated: int = Field(alias="numberGenerated")
+    number_backtested: int = Field(alias="numberBacktested")
+    number_rejected: int = Field(alias="numberRejected")
+    number_promising: int = Field(alias="numberPromising")
+    number_robust: int = Field(alias="numberRobust")
+    average_expectancy_r: float | None = Field(default=None, alias="averageExpectancyR")
+    median_expectancy_r: float | None = Field(default=None, alias="medianExpectancyR")
+    average_max_drawdown_r: float | None = Field(default=None, alias="averageMaxDrawdownR")
+    benchmark_beat_rate_pct: float | None = Field(default=None, alias="benchmarkBeatRatePct")
+    cost_survival_rate_pct: float | None = Field(default=None, alias="costSurvivalRatePct")
+    walk_forward_pass_rate_pct: float | None = Field(default=None, alias="walkForwardPassRatePct")
+    adversarial_survival_rate_pct: float | None = Field(default=None, alias="adversarialSurvivalRatePct")
+
+
+class ResearchAllocationDecision(CamelModel):
+    """Section 8J — a real, deterministic 70/30 exploitation/exploration
+    split (see app/strategy_families.py's own `allocate_research_budget()`)
+    over families with real evidence — advisory research-effort routing
+    ONLY, never a trading signal (this schema is never read by any
+    execution/paper-trading path — see this directive's own Section 8O,
+    enforced the same import-shape way Phase 7 enforced the Champion/
+    Challenger boundary)."""
+
+    family: StrategyFamily
+    allocation_weight_pct: float = Field(alias="allocationWeightPct")
+    rationale: str
 
 
 class MutationCandidate(CamelModel):
@@ -12542,6 +12808,21 @@ class FactoryCandidateRecord(CamelModel):
     survived: bool
     decision_reason: str = Field(alias="decisionReason")
     created_at: str = Field(alias="createdAt")
+    # CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery +
+    # Adversarial Research Engine" — additive-only real fields for a
+    # candidate produced by app/strategy_families.py's population
+    # generator and/or app/adversarial_research.py's attack suite.
+    # `None`/empty for every existing Phase 7 mutation-chain candidate
+    # (a single-parent mutation lineage has no real "research family"
+    # concept of its own distinct from `strategy_family` above, which
+    # names the compiled strategy's own slug family, not a research
+    # concept like "trend following").
+    research_family: StrategyFamily | None = Field(default=None, alias="researchFamily")
+    candidate_seed: str | None = Field(default=None, alias="candidateSeed")
+    discovery_reason: DiscoveryReason | None = Field(default=None, alias="discoveryReason")
+    duplicate_of_candidate_id: str | None = Field(default=None, alias="duplicateOfCandidateId")
+    adversarial_result: AdversarialResearchResult | None = Field(default=None, alias="adversarialResult")
+    scorecard_classification: ResearchScorecardClassification | None = Field(default=None, alias="scorecardClassification")
 
 
 class FactoryRunConfig(CamelModel):
@@ -12622,6 +12903,35 @@ class FactoryStatsRead(CamelModel):
     total_rejected: int = Field(alias="totalRejected")
     total_compile_rejected: int = Field(alias="totalCompileRejected")
     top_rejection_reasons: list[str] = Field(default_factory=list, alias="topRejectionReasons")
+
+
+class ResearchDiscoveryCycleRecord(CamelModel):
+    """Section 8B's one real, permanent, persisted record of a full
+    discovery cycle: a controlled, deterministic candidate POPULATION
+    (multiple independent research families, never 30 mutations of one
+    parent) generated, pruned for real near-duplicates, each survivor
+    independently backtested through the unmodified Phase 4-6 funnel and
+    attacked via app/adversarial_research.py. Deliberately bounded to
+    ONE real generation per candidate (never full recursive multi-
+    generation mutation-evolution per population member — see this
+    module's own docstring for why that stays this directive's own
+    explicitly bounded scope; any individual promising candidate can
+    still be evolved further via the existing, unmodified
+    `POST /research-factory/run`)."""
+
+    id: str
+    concept_name: str = Field(alias="conceptName")
+    population_size: int = Field(alias="populationSize")
+    seed: str
+    candidates: list[FactoryCandidateRecord] = Field(default_factory=list)
+    family_stats: list[FamilyResearchStats] = Field(default_factory=list, alias="familyStats")
+    allocation_decisions: list[ResearchAllocationDecision] = Field(default_factory=list, alias="allocationDecisions")
+    survivor_candidate_ids: list[str] = Field(default_factory=list, alias="survivorCandidateIds")
+    champion_candidate_ids: list[str] = Field(default_factory=list, alias="championCandidateIds")
+    duplicates_pruned: int = Field(alias="duplicatesPruned")
+    stop_reason: str = Field(alias="stopReason")
+    holdout: HoldoutAvailability
+    created_at: str = Field(alias="createdAt")
 
 
 class HealthResponse(BaseModel):

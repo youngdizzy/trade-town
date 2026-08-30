@@ -1966,6 +1966,63 @@ Same directive, Section 20 — real, decomposable, factory-wide
 observability across every persisted `FactoryRunRecord`. Never a
 fabricated "AI quality score." Returns `FactoryStatsRead`.
 
+### `POST /api/sandbox/research-discovery/run`
+
+CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery +
+Adversarial Research Engine" — the one real entry point for a full
+discovery cycle. Body: `{ "conceptName": "...", "populationSize": 6,
+"seed": "...", "proposedBy": "quant", "families": [...], "symbols":
+[...], "timeframe": "...", "candlesPerSymbol": 6000 }` (`families`
+optional — defaults to every real, compiler-supported family;
+`symbols`/`timeframe`/`candlesPerSymbol` optional). Generates a
+controlled, deterministic candidate POPULATION across multiple real,
+compiler-supported strategy families (see `app/strategy_families.py`),
+prunes real near-duplicates before spending research budget, backtests
+every real survivor through the unmodified existing funnel, and attacks
+each one via `app/adversarial_research.py`'s real outlier/worst-period/
+sequence/extended-cost/regime attack suite. Never calls Champion/
+Challenger — see `app/research_discovery.py`'s own module docstring for
+the complete real architecture and its disclosed scope boundary (one
+real generation per population member). Returns the full
+`ResearchDiscoveryCycleRecord`: every `FactoryCandidateRecord` (with
+`researchFamily`/`candidateSeed`/`discoveryReason`/
+`duplicateOfCandidateId`/`adversarialResult`/`scorecardClassification`
+populated), real per-family statistics, real research-budget
+allocation, and real holdout availability (always `not_available`
+today, honestly disclosed — see that schema's own docstring).
+Permanently persisted in `GameSaveState.discoveryCycles`; every
+candidate's own real `ResearchLoopIterationRecord`/`ResearchLessonRecord`
+is also appended into the existing `researchIterations`/
+`researchLessons` lists, never stored twice. Real, observed runtime:
+each candidate re-runs a full backtest AND a full adversarial suite —
+a population of 6-8 typically takes several minutes.
+
+### `GET /api/sandbox/research-discovery/cycles`
+
+Same directive — the full, real, permanent discovery-cycle history,
+never overwritten. Returns `ResearchDiscoveryCycleRecord[]`.
+
+### `GET /api/sandbox/research-discovery/cycles/{cycle_id}`
+
+Same directive — one real discovery cycle's full detail, including
+every candidate's real adversarial attack results and failure
+boundaries. `404` when no cycle with this id exists. Returns
+`ResearchDiscoveryCycleRecord`.
+
+### `GET /api/sandbox/research-discovery/families`
+
+Same directive, Section 8J — real, computed-fresh per-family
+statistics across every real candidate ever generated, over every real,
+persisted `ResearchDiscoveryCycleRecord`. Returns `FamilyResearchStats[]`.
+
+### `GET /api/sandbox/research-discovery/supported-families`
+
+Same directive, Section 8A — the real, disclosed set of compiler-
+supported families this codebase can safely generate
+(`supported: StrategyFamily[]`), and the real, disclosed reasons every
+requested-but-unsupported family was NOT faked
+(`unsupported: Record<string, string>`).
+
 ### `GET /api/sandbox/failure-modes`
 
 CEO directive "TradeTown — Statistical Validation + Research Failure

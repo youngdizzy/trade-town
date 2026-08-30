@@ -128,6 +128,7 @@ from app.schemas import (
     ChallengerComparison,
     ChampionRecord,
     FactoryRunRecord,
+    ResearchDiscoveryCycleRecord,
     ResearchLoopIterationRecord,
     StrategyHypothesis,
     ClientSaveRequest,
@@ -170,6 +171,8 @@ from app.quant_research_lab import cap_quant_research_experiments, classify_rese
 from app.research_experiment import run_research_experiment
 from app.research_loop import generate_research_lesson, run_research_loop_iteration
 from app.research_factory import MAX_GENERATIONS_PER_FACTORY_RUN, MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN, run_research_factory_cycle
+from app.research_discovery import run_research_discovery_cycle
+from app.strategy_families import SUPPORTED_FAMILIES
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 from app.strategy_compiler import strategy_definition_slug
 from app.strategy_registry import default_researchable_strategies, register_researchable_strategy, register_strategy_version
@@ -2880,6 +2883,83 @@ class GameState:
                 }
             )
             return self.data, run_record
+
+    async def submit_research_discovery_cycle(
+        self,
+        *,
+        concept_name: str,
+        population_size: int,
+        seed: str,
+        proposed_by: AgentId,
+        families: tuple[str, ...] | None = None,
+        symbols: list[str] | None = None,
+        timeframe: str | None = None,
+        candles_per_symbol: int | None = None,
+    ) -> tuple[GameSaveState, ResearchDiscoveryCycleRecord]:
+        """CEO directive "TradeTown — Phase 8: Autonomous Strategy
+        Discovery + Adversarial Research Engine" — see
+        app/research_discovery.py's own module docstring for the full
+        real architecture. Runs the potentially slow, real,
+        population-generation + adversarial-attack loop OUTSIDE the
+        lock (same real convention submit_research_factory_run() above
+        already established). Concurrency-safe by construction: only
+        the NEW iterations/lessons this cycle itself produced are
+        appended, and only the specific strategy slugs this cycle
+        actually compiled are merged back into
+        `compiled_strategy_versions` — generalizing the same single-
+        slug merge submit_research_factory_run() already established to
+        the real, multiple, independently-named strategies one
+        discovery cycle produces."""
+        resolved_timeframe = timeframe if timeframe is not None else DEFAULT_TIMEFRAME
+        resolved_candles = candles_per_symbol if candles_per_symbol is not None else DEFAULT_CANDLES_PER_SYMBOL
+        resolved_families = tuple(families) if families else SUPPORTED_FAMILIES
+        cycle_id = f"discovery-cycle-{strategy_definition_slug(concept_name)}-{uuid.uuid4().hex[:12]}"
+        async with self.lock:
+            quant_research_experiments = self.data.quant_research_experiments
+            research_iterations_snapshot = self.data.research_iterations
+            research_lessons_snapshot = self.data.research_lessons
+            failed_archive = self.data.strategy_failed_archive
+            champion_history = self.data.champion_history
+            risk_per_trade_pct = self.data.risk_limits.risk_per_trade_pct
+            registry_snapshot = self.data.compiled_strategy_versions
+            existing_candidates = [c for cycle in self.data.discovery_cycles for c in cycle.candidates]
+        record, updated_registry, all_iterations, all_lessons = run_research_discovery_cycle(
+            concept_name=concept_name,
+            population_size=population_size,
+            seed=seed,
+            compiled_strategy_registry=registry_snapshot,
+            quant_research_experiments=quant_research_experiments,
+            research_iterations=research_iterations_snapshot,
+            research_lessons=research_lessons_snapshot,
+            failed_archive=failed_archive,
+            champion_history=champion_history,
+            existing_candidates=existing_candidates,
+            risk_per_trade_pct=risk_per_trade_pct,
+            cycle_id=cycle_id,
+            created_at=_now_iso(),
+            proposed_by=proposed_by,
+            families=resolved_families,  # type: ignore[arg-type]
+            symbols=symbols,
+            timeframe=resolved_timeframe,
+            candles_per_symbol=resolved_candles,
+        )
+        new_iterations = all_iterations[len(research_iterations_snapshot):]
+        new_lessons = all_lessons[len(research_lessons_snapshot):]
+        changed_slugs = {slug for slug, versions in updated_registry.items() if registry_snapshot.get(slug) != versions}
+        async with self.lock:
+            updated_iterations = [*self.data.research_iterations, *new_iterations]
+            updated_lessons = [*self.data.research_lessons, *new_lessons]
+            updated_full_registry = {**self.data.compiled_strategy_versions, **{slug: updated_registry[slug] for slug in changed_slugs}}
+            updated_cycles = [*self.data.discovery_cycles, record]
+            self.data = self.data.model_copy(
+                update={
+                    "research_iterations": updated_iterations,
+                    "research_lessons": updated_lessons,
+                    "compiled_strategy_versions": updated_full_registry,
+                    "discovery_cycles": updated_cycles,
+                }
+            )
+            return self.data, record
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""

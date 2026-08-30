@@ -18,8 +18,10 @@ from app.market_intelligence import compute_strategy_match
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.persistence import persist_modules
 from app.research_experiment import run_research_experiment
+from app.research_discovery import compute_family_research_stats
 from app.research_factory import summarize_lesson_evidence
 from app.quant_research_lab import find_similar_experiments
+from app.strategy_families import SUPPORTED_FAMILIES, UNSUPPORTED_FAMILIES
 from app.schemas import (
     AgentId,
     AgentStrategySurvivalScore,
@@ -37,10 +39,13 @@ from app.schemas import (
     FactoryStatsRead,
     FailedStrategyArchiveEntry,
     FailureModeCount,
+    FamilyResearchStats,
     LessonEvidenceSummary,
     LookAheadAuditResult,
+    ResearchDiscoveryCycleRecord,
     ResearchLessonRecord,
     ResearchLoopIterationRecord,
+    StrategyFamily,
     StrategyHypothesis,
     ModelValidationReport,
     ParameterSensitivityResult,
@@ -158,6 +163,19 @@ class SubmitResearchFactoryRunRequest(BaseModel):
     definition: CompiledStrategyDefinition
     max_generations: int | None = Field(default=None, alias="maxGenerations")
     max_total_backtests: int | None = Field(default=None, alias="maxTotalBacktests")
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
+
+
+class SubmitResearchDiscoveryCycleRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    concept_name: str = Field(alias="conceptName")
+    population_size: int = Field(alias="populationSize")
+    seed: str
+    proposed_by: AgentId = Field(alias="proposedBy")
+    families: list[StrategyFamily] | None = None
     symbols: list[str] | None = None
     timeframe: str | None = None
     candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
@@ -775,6 +793,78 @@ async def research_factory_stats() -> FactoryStatsRead:
         totalCompileRejected=sum(1 for r in runs for c in r.candidates if c.lifecycle_stage == "compile_rejected"),
         topRejectionReasons=[code for code, _count in rejection_counter.most_common(5)],
     )
+
+
+@router.post("/research-discovery/run", response_model=ResearchDiscoveryCycleRecord)
+async def run_research_discovery_cycle_endpoint(payload: SubmitResearchDiscoveryCycleRequest) -> ResearchDiscoveryCycleRecord:
+    """CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery
+    + Adversarial Research Engine" — the one real entry point for a full
+    discovery cycle: a controlled, deterministic candidate POPULATION
+    across multiple real, compiler-supported strategy families (see
+    app/strategy_families.py), each real near-duplicate pruned before
+    spending real research budget, each real survivor independently
+    backtested through the unmodified existing funnel AND attacked via
+    app/adversarial_research.py's real outlier/worst-period/sequence/
+    extended-cost/regime attack suite. Never calls Champion/Challenger
+    or any promotion path — see app/research_discovery.py's own module
+    docstring for the complete real architecture and disclosed scope
+    boundary (one real generation per population member, never full
+    recursive multi-generation evolution — any promising candidate can
+    still be hand-picked and evolved further via the existing,
+    unmodified `POST /research-factory/run`)."""
+    state, record = await game_state.submit_research_discovery_cycle(
+        concept_name=payload.concept_name,
+        population_size=payload.population_size,
+        seed=payload.seed,
+        proposed_by=payload.proposed_by,
+        families=tuple(payload.families) if payload.families else None,
+        symbols=payload.symbols,
+        timeframe=payload.timeframe,
+        candles_per_symbol=payload.candles_per_symbol,
+    )
+    persist_modules(state)
+    return record
+
+
+@router.get("/research-discovery/cycles", response_model=list[ResearchDiscoveryCycleRecord])
+async def research_discovery_cycles() -> list[ResearchDiscoveryCycleRecord]:
+    """Same directive — the full, real, permanent discovery-cycle
+    history, never overwritten. Read-only."""
+    state = await game_state.snapshot()
+    return state.discovery_cycles
+
+
+@router.get("/research-discovery/cycles/{cycle_id}", response_model=ResearchDiscoveryCycleRecord)
+async def research_discovery_cycle_detail(cycle_id: str) -> ResearchDiscoveryCycleRecord:
+    """Same directive — one real discovery cycle's full detail,
+    including every candidate's real adversarial attack results and
+    failure boundaries. 404 when no cycle with this id exists."""
+    state = await game_state.snapshot()
+    cycle = next((c for c in state.discovery_cycles if c.id == cycle_id), None)
+    if cycle is None:
+        raise HTTPException(status_code=404, detail=f"No real discovery cycle found with id '{cycle_id}'.")
+    return cycle
+
+
+@router.get("/research-discovery/families", response_model=list[FamilyResearchStats])
+async def research_discovery_family_stats() -> list[FamilyResearchStats]:
+    """Same directive, Section 8J — real, computed-fresh per-family
+    statistics across every real candidate ever generated, over every
+    real, persisted `ResearchDiscoveryCycleRecord`. Read-only."""
+    state = await game_state.snapshot()
+    all_candidates = [c for cycle in state.discovery_cycles for c in cycle.candidates]
+    return compute_family_research_stats(all_candidates)
+
+
+@router.get("/research-discovery/supported-families")
+async def research_discovery_supported_families() -> dict[str, object]:
+    """Same directive, Section 8A — the real, disclosed set of
+    compiler-supported families this codebase can safely generate, and
+    the real, disclosed reasons every requested-but-unsupported family
+    (mean_reversion/volatility_expansion/volatility_contraction/
+    regime_conditioned) was NOT faked. See app/strategy_families.py's
+    own module docstring for the full real trace."""
+    return {"supported": list(SUPPORTED_FAMILIES), "unsupported": UNSUPPORTED_FAMILIES}
 
 
 @router.post("/register-researchable-strategy", response_model=RegisterResearchableStrategyResponse)
