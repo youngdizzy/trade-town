@@ -97,11 +97,15 @@ import type {
   SignalChallenge,
   SignalChoice,
   BacktestSession,
+  CandidacyBinning,
   ConfidenceTier,
   ConstitutionState,
+  FactoryRunRecord,
+  FactoryStatsRead,
   FailedStrategyArchiveEntry,
   FailureModeCount,
   KnowledgeQualityScore,
+  LessonEvidenceSummary,
   ResearchLessonRecord,
   ResearchLoopIterationRecord,
   StrategyHypothesis,
@@ -943,10 +947,40 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ hypothesis, definition, symbols }),
     }),
-  getResearchLoopIterations: (strategyFamily?: string) =>
-    request<ResearchLoopIterationRecord[]>(`/sandbox/research-loop/iterations${strategyFamily ? `?strategyFamily=${encodeURIComponent(strategyFamily)}` : ""}`),
+  getResearchLoopIterations: (strategyFamily?: string, candidacy?: CandidacyBinning) => {
+    const params = new URLSearchParams();
+    if (strategyFamily) params.set("strategyFamily", strategyFamily);
+    if (candidacy) params.set("candidacy", candidacy);
+    const qs = params.toString();
+    return request<ResearchLoopIterationRecord[]>(`/sandbox/research-loop/iterations${qs ? `?${qs}` : ""}`);
+  },
   getResearchLoopLessons: (strategyFamily?: string) =>
     request<ResearchLessonRecord[]>(`/sandbox/research-loop/lessons${strategyFamily ? `?strategyFamily=${encodeURIComponent(strategyFamily)}` : ""}`),
+  getResearchLoopLessonEvidence: (strategyFamily?: string) =>
+    request<LessonEvidenceSummary[]>(`/sandbox/research-loop/lessons/evidence${strategyFamily ? `?strategyFamily=${encodeURIComponent(strategyFamily)}` : ""}`),
+  // CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+  // Engine." See backend/app/research_factory.py.
+  runResearchFactoryRun: (
+    hypothesis: StrategyHypothesis,
+    definition: CompiledStrategyDefinition,
+    options?: { maxGenerations?: number; maxTotalBacktests?: number; symbols?: string[] }
+  ) =>
+    request<FactoryRunRecord>("/sandbox/research-factory/run", {
+      method: "POST",
+      body: JSON.stringify({
+        hypothesis,
+        definition,
+        maxGenerations: options?.maxGenerations,
+        maxTotalBacktests: options?.maxTotalBacktests,
+        symbols: options?.symbols,
+      }),
+    }),
+  getResearchFactoryRuns: (strategyFamily?: string) =>
+    request<FactoryRunRecord[]>(`/sandbox/research-factory/runs${strategyFamily ? `?strategyFamily=${encodeURIComponent(strategyFamily)}` : ""}`),
+  getResearchFactoryRunDetail: (runId: string) => request<FactoryRunRecord>(`/sandbox/research-factory/runs/${encodeURIComponent(runId)}`),
+  getResearchFactoryLineage: (strategyFamily: string) =>
+    request<ResearchLoopIterationRecord[]>(`/sandbox/research-factory/lineage/${encodeURIComponent(strategyFamily)}`),
+  getResearchFactoryStats: () => request<FactoryStatsRead>("/sandbox/research-factory/stats"),
   // CEO directive "Strategy Intelligence + Live Strategy Attribution,"
   // Phase 1 — the real Strategy Lab <-> CompiledStrategyDefinition
   // identity bridge. See backend/app/strategy_registry.py's

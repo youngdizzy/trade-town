@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import { AGENT_IDS } from "@/types";
-import type { AgentId, CandidacyBinning, ResearchLoopIterationRecord, StrategyScorecard } from "@/types";
+import type { AgentId, CandidacyBinning, CandidateLifecycleStage, FactoryRunRecord, FactoryStatsRead, ResearchLoopIterationRecord, StrategyScorecard } from "@/types";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
 
 const CANDIDACY_TONE: Record<CandidacyBinning, "green" | "amber" | "red" | "purple"> = {
@@ -15,6 +15,18 @@ const CANDIDACY_TONE: Record<CandidacyBinning, "green" | "amber" | "red" | "purp
   benchmark_failed: "amber",
   risk_failed: "red",
 };
+
+const LIFECYCLE_TONE: Record<CandidateLifecycleStage, "green" | "amber" | "red" | "purple"> = {
+  generated: "purple",
+  compile_rejected: "red",
+  backtested: "purple",
+  candidate: "amber",
+  rejected: "red",
+  survivor: "green",
+  challenger_eligible: "green",
+};
+
+const FACTORY_PIPELINE_LABELS = ["OBSERVE", "GENERATE", "MUTATE", "COMPILE", "BACKTEST", "VALIDATE", "STRESS", "COMPARE", "ACCEPT / BIN"];
 
 const VERDICT_TONE: Record<string, "green" | "amber" | "red" | "purple"> = {
   clean: "green",
@@ -94,6 +106,11 @@ export function ResearchFactoryView() {
   const [runError, setRunError] = useState<string | null>(null);
   const [result, setResult] = useState<ResearchLoopIterationRecord | null>(null);
   const [history, setHistory] = useState<ResearchLoopIterationRecord[]>([]);
+  const [factoryRunning, setFactoryRunning] = useState(false);
+  const [factoryError, setFactoryError] = useState<string | null>(null);
+  const [factoryRun, setFactoryRun] = useState<FactoryRunRecord | null>(null);
+  const [factoryRuns, setFactoryRuns] = useState<FactoryRunRecord[]>([]);
+  const [factoryStats, setFactoryStats] = useState<FactoryStatsRead | null>(null);
 
   useEffect(() => {
     api
@@ -101,6 +118,53 @@ export function ResearchFactoryView() {
       .then(setHistory)
       .catch(() => undefined);
   }, [result?.id]);
+
+  useEffect(() => {
+    api
+      .getResearchFactoryRuns()
+      .then(setFactoryRuns)
+      .catch(() => undefined);
+    api
+      .getResearchFactoryStats()
+      .then(setFactoryStats)
+      .catch(() => undefined);
+  }, [factoryRun?.id]);
+
+  function buildHypothesis(timeframe: string): Parameters<typeof api.runResearchLoopIteration>[0] {
+    return {
+      id: `hyp-${Date.now()}`,
+      hypothesis: hypothesis || "No stated hypothesis.",
+      marketMechanism: marketMechanism || "Not stated.",
+      expectedEdge: expectedEdge || "Not stated.",
+      invalidationConditions: invalidationConditions || "Not stated.",
+      symbolUniverse: ["AAPL"],
+      timeframe,
+      entryConditions: "See compiled definition.",
+      exitConditions: "See compiled definition.",
+      stopLossLogic: "See compiled definition.",
+      takeProfitLogic: "See compiled definition.",
+      positionSizingLogic: "Fixed risk per trade (CEO-configured RiskLimits.riskPerTradePct).",
+      riskConstraints: "Standard.",
+      indicatorsFeatures: [],
+      regimeAssumptions: "",
+      researchRationale: "",
+      parentStrategyFamily: null,
+      parentDefinitionId: null,
+      parentDefinitionVersion: null,
+      proposedBy,
+      createdAt: new Date().toISOString(),
+      generation: 0,
+      lineageId: null,
+      reasonForGeneration: null,
+      lessonsUsed: [],
+      failureCodesAddressed: [],
+      mutationOperatorUsed: null,
+      expectedImprovement: null,
+      expectedRisk: null,
+      reproducibilitySeed: null,
+      sourceEvidenceIds: [],
+    };
+  }
 
   async function runFunnel() {
     setRunning(true);
@@ -111,37 +175,30 @@ export function ResearchFactoryView() {
         setRunError(definition.detail ?? "Compilation did not succeed — see ambiguities.");
         return;
       }
-      const iteration = await api.runResearchLoopIteration(
-        {
-          id: `hyp-${Date.now()}`,
-          hypothesis: hypothesis || "No stated hypothesis.",
-          marketMechanism: marketMechanism || "Not stated.",
-          expectedEdge: expectedEdge || "Not stated.",
-          invalidationConditions: invalidationConditions || "Not stated.",
-          symbolUniverse: ["AAPL"],
-          timeframe: definition.timeframe,
-          entryConditions: "See compiled definition.",
-          exitConditions: "See compiled definition.",
-          stopLossLogic: "See compiled definition.",
-          takeProfitLogic: "See compiled definition.",
-          positionSizingLogic: "Fixed risk per trade (CEO-configured RiskLimits.riskPerTradePct).",
-          riskConstraints: "Standard.",
-          indicatorsFeatures: [],
-          regimeAssumptions: "",
-          researchRationale: "",
-          parentStrategyFamily: null,
-          parentDefinitionId: null,
-          parentDefinitionVersion: null,
-          proposedBy,
-          createdAt: new Date().toISOString(),
-        },
-        definition
-      );
+      const iteration = await api.runResearchLoopIteration(buildHypothesis(definition.timeframe), definition);
       setResult(iteration);
     } catch (err) {
       setRunError(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function runFactory() {
+    setFactoryRunning(true);
+    setFactoryError(null);
+    try {
+      const definition = await api.compileStrategy(name, sourceText);
+      if (definition.status !== "compiled") {
+        setFactoryError(definition.detail ?? "Compilation did not succeed — see ambiguities.");
+        return;
+      }
+      const run = await api.runResearchFactoryRun(buildHypothesis(definition.timeframe), definition);
+      setFactoryRun(run);
+    } catch (err) {
+      setFactoryError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFactoryRunning(false);
     }
   }
 
@@ -209,16 +266,136 @@ export function ResearchFactoryView() {
           placeholder="Invalidation conditions — what would prove this wrong?"
           className="mt-1.5 w-full rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1.5 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
         />
-        <button
-          type="button"
-          disabled={running || !name.trim() || !sourceText.trim()}
-          onClick={runFunnel}
-          className="mt-2 rounded-sm border border-cmd-border px-3 py-1.5 text-[9px] uppercase text-cmd-textDim transition-colors hover:enabled:border-cmd-cyan/50 hover:enabled:text-cmd-cyan disabled:opacity-40"
-        >
-          {running ? "Running full funnel…" : "Run Research Funnel"}
-        </button>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            disabled={running || !name.trim() || !sourceText.trim()}
+            onClick={runFunnel}
+            className="rounded-sm border border-cmd-border px-3 py-1.5 text-[9px] uppercase text-cmd-textDim transition-colors hover:enabled:border-cmd-cyan/50 hover:enabled:text-cmd-cyan disabled:opacity-40"
+          >
+            {running ? "Running full funnel…" : "Run Research Funnel (single pass)"}
+          </button>
+          <button
+            type="button"
+            disabled={factoryRunning || !name.trim() || !sourceText.trim()}
+            onClick={runFactory}
+            title="Automatically generates, mutates, compiles, and re-tests successive real strategy versions — bounded, deterministic, never LLM-driven. See app/research_factory.py."
+            className="rounded-sm border border-cmd-purple/60 px-3 py-1.5 text-[9px] uppercase text-cmd-purple transition-colors hover:enabled:border-cmd-purple hover:enabled:text-cmd-text disabled:opacity-40"
+          >
+            {factoryRunning ? "Running autonomous factory cycle…" : "Run Autonomous Factory Cycle"}
+          </button>
+        </div>
         {runError && <div className="mt-1.5 text-[9px] text-cmd-red">{runError}</div>}
+        {factoryError && <div className="mt-1.5 text-[9px] text-cmd-red">{factoryError}</div>}
       </Glass>
+
+      {factoryRun && (
+        <>
+          <Glass className="p-3">
+            <TerminalLabel>Factory Status — Run {factoryRun.id}</TerminalLabel>
+            <p className="mt-1 text-[9px] text-cmd-textDim">
+              Automatic OBSERVE→GENERATE→MUTATE→COMPILE→BACKTEST→VALIDATE→STRESS→COMPARE→ACCEPT/BIN loop. Every generation reuses the same real funnel above —
+              never a second backtest engine. No candidate is ever auto-submitted to Champion/Challenger or given live/paper execution authority.
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
+              <DataRow label="Generations completed" value={factoryRun.generationsCompleted} />
+              <DataRow label="Candidates generated" value={factoryRun.candidatesGenerated} />
+              <DataRow label="Candidates compiled" value={factoryRun.candidatesCompiled} />
+              <DataRow label="Candidates backtested" value={factoryRun.candidatesBacktested} />
+              <DataRow label="Candidates rejected" value={factoryRun.candidatesRejected} />
+              <DataRow label="Survivors" value={factoryRun.survivorCandidateIds.length} />
+              <DataRow
+                label="Current champion"
+                value={factoryRun.currentChampionDefinitionId ? `${factoryRun.currentChampionDefinitionId} v${factoryRun.currentChampionDefinitionVersion}` : "none yet"}
+              />
+              <DataRow label="Budget (family)" value={`${factoryRun.config.maxIterationsPerFamily} iterations / ${factoryRun.config.maxMutationsPerParent} mutations/parent`} />
+              <DataRow label="Run budget" value={`${factoryRun.config.maxGenerations} generations / ${factoryRun.config.maxTotalBacktests} backtests`} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-cmd-border/40 pt-2 text-[8px] uppercase tracking-wide text-cmd-textDim">
+              {FACTORY_PIPELINE_LABELS.map((label, i) => (
+                <span key={label} className="flex items-center gap-1">
+                  <span className="rounded-sm border border-cmd-border/60 px-1.5 py-0.5">{label}</span>
+                  {i < FACTORY_PIPELINE_LABELS.length - 1 && <span className="text-cmd-textDim/50">→</span>}
+                </span>
+              ))}
+            </div>
+            <p className="mt-2 border-t border-cmd-border/40 pt-2 text-[9px] text-cmd-text">
+              <span className="text-cmd-cyan">Stop reason:</span> {factoryRun.stopReason}
+            </p>
+            {factoryRun.topRejectionReasons.length > 0 && (
+              <p className="mt-1 text-[9px] text-cmd-textDim">
+                <span className="text-cmd-cyan">Top rejection reasons:</span> {factoryRun.topRejectionReasons.join(", ")}
+              </p>
+            )}
+            {factoryRun.topLessons.length > 0 && (
+              <div className="mt-1 text-[9px] text-cmd-textDim">
+                <span className="text-cmd-cyan">Lessons filed this run:</span>
+                <ul className="ml-3 mt-0.5 list-disc space-y-0.5">
+                  {factoryRun.topLessons.map((lesson, i) => (
+                    <li key={i}>{lesson}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </Glass>
+
+          <Glass className="p-3">
+            <TerminalLabel>Candidate Lineage — every generation, real evidence, never deleted</TerminalLabel>
+            {factoryRun.candidates.map((candidate) => (
+              <div key={candidate.id} className="mt-2 border-t border-cmd-border/40 pt-2 first:mt-0 first:border-0 first:pt-0">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <span className="text-[9px] text-cmd-text">
+                    Gen {candidate.generation} — v{candidate.definitionVersion}
+                    {candidate.parentCandidateId && <span className="text-cmd-textDim"> (child of {candidate.parentCandidateId})</span>}
+                  </span>
+                  <StatusPill tone={LIFECYCLE_TONE[candidate.lifecycleStage]}>{candidate.lifecycleStage.replace(/_/g, " ")}</StatusPill>
+                </div>
+                <p className="mt-0.5 text-[9px] text-cmd-textDim">{candidate.hypothesis.hypothesis}</p>
+                {candidate.iteration && (
+                  <div className="mt-1 grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+                    <DataRow label="Trades" value={candidate.iteration.scorecard.tradeCount ?? "NOT VERIFIED"} />
+                    <DataRow label="PF" value={candidate.iteration.scorecard.profitFactor?.toFixed(2) ?? "NOT VERIFIED"} />
+                    <DataRow label="Max DD (R)" value={candidate.iteration.scorecard.maxDrawdownR?.toFixed(2) ?? "NOT VERIFIED"} />
+                    <DataRow label="Expectancy (R)" value={candidate.iteration.scorecard.expectancyR?.toFixed(3) ?? "NOT VERIFIED"} />
+                    <DataRow label="Excess return (approx.)" value={candidate.iteration.scorecard.excessReturnApproxPct !== null ? `${candidate.iteration.scorecard.excessReturnApproxPct.toFixed(1)}%` : "NOT VERIFIED"} />
+                    <DataRow label="Walk-forward" value={candidate.iteration.scorecard.walkForwardVerdict ?? "NOT VERIFIED"} />
+                    <DataRow label="Cost sensitivity" value={candidate.iteration.scorecard.costSensitivityVerdict ?? "NOT VERIFIED"} />
+                    <DataRow label="Regime" value={candidate.iteration.scorecard.regimeRobustnessVerdict ?? "NOT VERIFIED"} />
+                  </div>
+                )}
+                {candidate.mutationCandidate && (
+                  <p className="mt-1 text-[9px] text-cmd-text">
+                    <span className="text-cmd-cyan">Mutation ({candidate.mutationCandidate.mutationType.replace(/_/g, " ")}):</span> {candidate.mutationCandidate.rationale}
+                    {candidate.mutationCandidate.mutatedSourceText === null && <span className="text-cmd-textDim italic"> — no bounded automatic operator; {candidate.mutationCandidate.constraints}</span>}
+                  </p>
+                )}
+                <p className="mt-0.5 text-[9px] text-cmd-textDim">{candidate.decisionReason}</p>
+              </div>
+            ))}
+          </Glass>
+        </>
+      )}
+
+      {factoryRuns.length > 0 && (
+        <Glass className="p-3">
+          <div className="flex items-center justify-between">
+            <TerminalLabel>Factory Run History — permanent, never overwritten</TerminalLabel>
+            {factoryStats && (
+              <span className="text-[8px] text-cmd-textDim">
+                {factoryStats.totalRuns} runs · {factoryStats.totalCandidates} candidates · {factoryStats.totalSurvivors} survivors · {factoryStats.totalRejected} rejected
+              </span>
+            )}
+          </div>
+          {[...factoryRuns].reverse().slice(0, 10).map((r) => (
+            <div key={r.id} className="mt-1 flex items-center justify-between border-t border-cmd-border/40 pt-1 text-[9px] first:mt-0 first:border-0 first:pt-0">
+              <span className="text-cmd-text">
+                {r.strategyFamily} — {r.generationsCompleted} gen(s)
+              </span>
+              <StatusPill tone={r.survivorCandidateIds.length > 0 ? "green" : "red"}>{r.survivorCandidateIds.length > 0 ? "survivor found" : "no survivor"}</StatusPill>
+            </div>
+          ))}
+        </Glass>
+      )}
 
       {result && (
         <>

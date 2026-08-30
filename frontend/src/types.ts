@@ -2344,7 +2344,12 @@ export type FailureCode =
   | "founder_approval_rejected"
   // CEO directive "TradeTown — Next Major Implementation Pass, Phase
   // 4-6: Self-Improving Strategy Factory + Validation Funnel."
-  | "outlier_dependent";
+  | "outlier_dependent"
+  // CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+  // Engine" — a generated candidate's mutated source text failed to
+  // compile (status "ambiguous"/"invalid"), so no real backtest was
+  // ever attempted.
+  | "compile_rejected";
 
 export type FailureSeverity = "critical" | "high" | "medium" | "low";
 
@@ -7202,6 +7207,19 @@ export interface StrategyHypothesis {
   parentDefinitionVersion: number | null;
   proposedBy: AgentId;
   createdAt: string;
+  // CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
+  // Engine" — additive-only real lineage/generation fields. A
+  // hand-authored hypothesis is honestly generation 0 with no lineage.
+  generation: number;
+  lineageId: string | null;
+  reasonForGeneration: string | null;
+  lessonsUsed: string[];
+  failureCodesAddressed: FailureCode[];
+  mutationOperatorUsed: string | null;
+  expectedImprovement: string | null;
+  expectedRisk: string | null;
+  reproducibilitySeed: string | null;
+  sourceEvidenceIds: string[];
 }
 
 export interface MutationRecord {
@@ -7299,6 +7317,101 @@ export interface ResearchLoopIterationRecord {
   mutation: MutationRecord | null;
   budget: ResearchBudgetStatus;
   createdAt: string;
+}
+
+// ============================================================================
+// CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution Engine" —
+// closes the seam Phase 4-6 (above) deliberately left open: automatic
+// hypothesis generation, a bounded/deterministic mutation-to-text engine,
+// and a real multi-generation OBSERVE->GENERATE->MUTATE->COMPILE->BACKTEST->
+// VALIDATE->STRESS->COMPARE->ACCEPT-OR-BIN->LEARN loop. See
+// backend/app/research_factory.py's own module docstring for the complete
+// real architecture and every disclosed scope cut.
+// ============================================================================
+
+export type CandidateLifecycleStage = "generated" | "compile_rejected" | "backtested" | "candidate" | "rejected" | "survivor" | "challenger_eligible";
+
+export interface MutationCandidate {
+  id: string;
+  parentDefinitionId: string;
+  parentDefinitionVersion: number;
+  mutationType: string;
+  changedParameters: Record<string, string>;
+  hypothesis: string;
+  rationale: string;
+  expectedEffect: string;
+  constraints: string;
+  mutatedSourceText: string | null;
+  reproducibilitySeed: string;
+  createdAt: string;
+}
+
+export interface FactoryCandidateRecord {
+  id: string;
+  runId: string;
+  generation: number;
+  parentCandidateId: string | null;
+  lineageId: string;
+  strategyFamily: string;
+  definitionId: string;
+  definitionVersion: number;
+  hypothesis: StrategyHypothesis;
+  lifecycleStage: CandidateLifecycleStage;
+  compileStatus: CompiledStrategyStatus;
+  compileDetail: string;
+  iteration: ResearchLoopIterationRecord | null;
+  mutationCandidate: MutationCandidate | null;
+  survived: boolean;
+  decisionReason: string;
+  createdAt: string;
+}
+
+export interface FactoryRunConfig {
+  maxGenerations: number;
+  maxTotalBacktests: number;
+  maxMutationsPerParent: number;
+  maxIterationsPerFamily: number;
+}
+
+export interface FactoryRunRecord {
+  id: string;
+  strategyFamily: string;
+  seedDefinitionId: string;
+  seedDefinitionVersion: number;
+  lineageId: string;
+  config: FactoryRunConfig;
+  candidates: FactoryCandidateRecord[];
+  generationsCompleted: number;
+  candidatesGenerated: number;
+  candidatesCompiled: number;
+  candidatesBacktested: number;
+  candidatesValidated: number;
+  candidatesRejected: number;
+  survivorCandidateIds: string[];
+  bestSurvivorCandidateId: string | null;
+  topRejectionReasons: string[];
+  topLessons: string[];
+  stopReason: string;
+  currentChampionDefinitionId: string | null;
+  currentChampionDefinitionVersion: number | null;
+  createdAt: string;
+}
+
+export interface LessonEvidenceSummary {
+  lessonId: string;
+  supportingIterations: number;
+  contradictingIterations: number;
+  lastSeen: string;
+  strategiesAffected: string[];
+}
+
+export interface FactoryStatsRead {
+  totalRuns: number;
+  totalCandidates: number;
+  totalSurvivors: number;
+  totalRejected: number;
+  totalCompileRejected: number;
+  topRejectionReasons: string[];
 }
 
 export function isDaytime(time: TimeState): boolean {
