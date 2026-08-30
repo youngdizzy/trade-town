@@ -1823,6 +1823,20 @@ research conclusion), and `verdict`
 with a real, disclosed `reasoning` string. Never deleted, even a
 retained-champion or insufficient-evidence outcome.
 
+CEO directive "TradeTown — Research Engine Hardening +
+Self-Improvement Implementation Pass," Phase 7 — `verdict` now also
+applies a real, disclosed profit-factor non-regression guard
+(`MAX_PROFIT_FACTOR_REGRESSION_PCT = 20.0`) layered on top of the
+existing expectancy/drawdown tradeoff paths: a meaningful profit-factor
+regression blocks a promotion either path would otherwise recommend,
+named explicitly in `reasoning`. Phase 8 — `statisticalComparison.evidenceState`
+can now also read `invalid_evidence` (a real, distinct state from
+`insufficient_evidence`) whenever either side's real trade sample
+contains a non-finite value; every numeric field on
+`BootstrapComparisonResult` reads `null` in that case, and
+`classification` reads `invalid_evidence` too — never a fabricated
+confidence interval.
+
 ### `POST /api/sandbox/champion-challenger/promote`
 
 Same directive — the one real, explicit action that changes the
@@ -1906,10 +1920,25 @@ Lab archive. Body: `{ "definition": CompiledStrategyDefinition,
 departure from this directive family's usual compute-fresh-never-persist
 convention (see `QuantResearchExperiment`'s own docstring in
 `app/schemas.py`). Returns `{ "experiment": QuantResearchExperiment,
-"similarExperiments": QuantResearchExperimentSimilarity[] }` —
+"similarExperiments": QuantResearchExperimentSimilarity[],
+"similarFailedStrategies": SimilarFailedStrategyMatch[],
+"researchRelationship": ResearchRelationship }` —
 `similarExperiments` surfaces any real near-duplicate already on file
 (same compiled definition + timeframe, or overlapping hypothesis
 wording) without blocking the new filing.
+
+CEO directive "TradeTown — Research Engine Hardening +
+Self-Improvement Implementation Pass," Phase 3 —
+`similarFailedStrategies` extends that same real memory consultation
+to the PERMANENT Failed Strategy Archive (previously never searched at
+all): a real word-overlap match against each archived entry's own
+`strategyName`/`whatFailed` text, carrying that entry's own real
+`failureCodes`/evidence. `researchRelationship`
+(`novel`/`similar_success`/`similar_failure`/`near_duplicate`/
+`contradictory_evidence`) is a real, disclosed combination of both
+similarity searches — purely informational, never blocks the filing
+above, per the directive's own explicit "do NOT automatically reject a
+strategy merely because something similar failed."
 
 `QuantResearchExperiment.researchIntegrityFlag` (CEO directive
 "TradeTown — 11/10 Strategy Factory + Ruthless Backtesting Engine,"

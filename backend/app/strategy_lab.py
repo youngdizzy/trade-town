@@ -169,8 +169,6 @@ MAX_STRATEGY_LIQUIDITY_VALIDATIONS = 40
 MAX_STRATEGY_EXECUTIVE_REVIEWS = 40
 MAX_STRATEGY_FOUNDER_APPROVALS = 40
 MAX_STRATEGY_HEALTH_ASSESSMENTS = 40
-MAX_STRATEGY_HALL_OF_FAME = 40
-MAX_STRATEGY_FAILED_ARCHIVE = 40
 
 MONTE_CARLO_PATHS = 200
 RUIN_DRAWDOWN_PCT = 50.0  # a real, named "the strategy is effectively dead" bar for this bootstrap's own paths
@@ -668,6 +666,24 @@ def cap_strategy_executive_reviews(items: list[StrategyExecutiveReview]) -> list
 
 # ---------------------------------------------------------------------
 # Founder Approval — a new mode of founders.py's real threshold pattern.
+#
+# CEO directive "TradeTown — Research Engine Hardening +
+# Self-Improvement Implementation Pass," Phase 15 — a real, deliberate
+# clarification, not a new decision pipeline. This function is a real,
+# deterministic, threshold-based algorithmic verdict rendered in the
+# voice of the game's own named "Original Founders" characters
+# (Keystone/Compass — see app/founders.py) — the SAME real convention
+# every other in-fiction department/executive opinion in this codebase
+# already uses (Executive Review, Model Validation, the five-reviewer
+# StrategyReview). It is NEVER the human CEO/player's own decision —
+# that real, separate, player-clickable checkpoint is the distinct
+# "ceo_approval"/`StrategyReview.ceo_decision` requirement elsewhere in
+# this same Certification checklist (`ceo_decision: Literal["ceo",
+# "auto"]` on that model IS the real human-vs-automatic distinction;
+# `StrategyFounderApproval` deliberately carries no such field, because
+# it was never meant to represent a human click). Documented here
+# explicitly so neither this module nor the UI ever implies a human
+# founder personally reviewed anything.
 # ---------------------------------------------------------------------
 
 
@@ -1069,6 +1085,8 @@ def generate_strategy_retirement_outcome(
         max_avg_drawdown=HALL_OF_FAME_MAX_AVG_DRAWDOWN,
         min_win_rate=HALL_OF_FAME_MIN_WIN_RATE,
         latest_model_validation=latest_model_validation,
+        strategy_stage=strategy.stage,
+        latest_founder_approval=latest_founder_approval,
     )
 
     archive_entry = FailedStrategyArchiveEntry(
@@ -1088,14 +1106,30 @@ def generate_strategy_retirement_outcome(
 
 
 def cap_strategy_hall_of_fame(items: list[StrategyHallOfFameEntry]) -> list[StrategyHallOfFameEntry]:
-    if len(items) > MAX_STRATEGY_HALL_OF_FAME:
-        del items[: len(items) - MAX_STRATEGY_HALL_OF_FAME]
+    """CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 14 — a real, confirmed
+    contradiction the prior forensic audit found: this function used to
+    silently FIFO-evict past a 40-entry cap while `StrategyHallOfFameEntry`'s
+    own schema docstring claimed "permanent, never evicted." Rather than
+    quietly rewrite the docstring to match the eviction, this pass chose
+    the user's own stated preferred architecture and made the claim
+    literally true — deliberately uncapped, the same real precedent
+    app/strategy_registry.py's version history already established
+    ("preserve historical versions, never silently overwrite"). Hall of
+    Fame induction is a genuinely low-frequency event (one strategy
+    retirement at a time, gated by real Certification), so unbounded
+    growth here carries the same acceptable profile as that precedent.
+    Kept as a real (now identity) function, not deleted outright, so
+    every existing call site and its own intent stay legible in one
+    place, and so a future, deliberate re-introduction of a real cap
+    has one obvious home."""
     return items
 
 
 def cap_strategy_failed_archive(items: list[FailedStrategyArchiveEntry]) -> list[FailedStrategyArchiveEntry]:
-    if len(items) > MAX_STRATEGY_FAILED_ARCHIVE:
-        del items[: len(items) - MAX_STRATEGY_FAILED_ARCHIVE]
+    """See `cap_strategy_hall_of_fame()`'s own docstring immediately
+    above — the identical real fix, for the identical real reason,
+    applied to the Failed Strategy Archive."""
     return items
 
 

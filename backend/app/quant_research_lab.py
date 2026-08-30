@@ -58,7 +58,16 @@ from __future__ import annotations
 
 import re
 
-from app.schemas import AgentId, QuantResearchExperiment, QuantResearchExperimentSimilarity, QuantResearchOutcome, ResearchExperimentRecord, ResearchIntegrityFlag
+from app.schemas import (
+    AgentId,
+    QuantResearchExperiment,
+    QuantResearchExperimentSimilarity,
+    QuantResearchOutcome,
+    ResearchExperimentRecord,
+    ResearchIntegrityFlag,
+    ResearchRelationship,
+    SimilarFailedStrategyMatch,
+)
 
 HYPOTHESIS_OVERLAP_THRESHOLD = 0.6
 # CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless
@@ -70,13 +79,20 @@ HYPOTHESIS_OVERLAP_THRESHOLD = 0.6
 # "real, disclosed, simple threshold, never the only valid one" honesty
 # idiom this codebase's other per-module thresholds already use.
 OVERTESTED_FAMILY_THRESHOLD = 5
-# Matches the same bounded-growth convention every other permanent,
-# never-deleted archive in this codebase uses (app/strategy_lab.py's
-# MAX_STRATEGY_HALL_OF_FAME/MAX_STRATEGY_FAILED_ARCHIVE = 40,
-# app/hall_of_fame.py's MAX_HALL_OF_FAME = 40) — old records fall off
-# the FRONT of the list (oldest first), never the newest, which is
-# still an honest "never deleted merely because it looks bad" for any
-# realistically-sized research program.
+# Matches the same bounded-growth convention app/hall_of_fame.py's own
+# MAX_HALL_OF_FAME = 40 still uses — old records fall off the FRONT of
+# the list (oldest first), never the newest, which is still an honest
+# "never deleted merely because it looks bad" for any realistically-
+# sized research program. CEO directive "TradeTown — Research Engine
+# Hardening + Self-Improvement Implementation Pass," Phase 14 —
+# app/strategy_lab.py's own Hall of Fame/Failed Archive are
+# deliberately uncapped now (their own schema docstrings' "permanent,
+# never evicted" claim used to be contradicted by a real 40-entry FIFO
+# cap; fixed by making it literally true rather than rewording the
+# claim), so they're no longer this same example — quant research
+# experiments stay a genuinely higher-frequency event (every research
+# attempt, not just every retirement), so this list keeps its own real
+# cap for now.
 MAX_QUANT_RESEARCH_EXPERIMENTS = 100
 
 
@@ -169,7 +185,18 @@ def _normalized_words(text: str) -> set[str]:
     return {w for w in re.sub(r"[^a-z0-9\s]", " ", text.lower()).split() if len(w) > 2}
 
 
-def _word_overlap_score(a: str, b: str) -> float:
+def word_overlap_score(a: str, b: str) -> float:
+    """A real, disclosed, simple word-level Jaccard overlap — never a
+    claim of semantic/NLP understanding. Made public (not `_`-prefixed)
+    by CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 3, so
+    app/failure_taxonomy.py::find_similar_failed_strategies() can reuse
+    the exact same real technique against the Failed Strategy Archive
+    rather than maintaining a second, drift-prone copy — a deliberate
+    departure from this codebase's usual "each module keeps its own
+    private RNG/evidence-floor helper" convention, which exists for
+    reproducibility-methodology reasons that don't apply to a pure,
+    stateless text-similarity utility like this one."""
     words_a, words_b = _normalized_words(a), _normalized_words(b)
     if not words_a or not words_b:
         return 0.0
@@ -187,7 +214,7 @@ def find_similar_experiments(existing: list[QuantResearchExperiment], *, hypothe
     matches: list[QuantResearchExperimentSimilarity] = []
     for experiment in reversed(existing):
         same_definition = experiment.record.definition_id == definition_id and experiment.record.timeframe == timeframe
-        overlap = _word_overlap_score(hypothesis, experiment.hypothesis)
+        overlap = word_overlap_score(hypothesis, experiment.hypothesis)
         if same_definition:
             matches.append(
                 QuantResearchExperimentSimilarity(
@@ -211,3 +238,49 @@ def find_similar_experiments(existing: list[QuantResearchExperiment], *, hypothe
                 )
             )
     return matches
+
+
+# CEO directive "TradeTown — Research Engine Hardening +
+# Self-Improvement Implementation Pass," Phase 3 — a real, disclosed
+# "how similar counts as basically the same idea" bar, distinct from
+# (and higher than) HYPOTHESIS_OVERLAP_THRESHOLD above. One reasonable
+# convention, not derived from any statistical study.
+NEAR_DUPLICATE_OVERLAP_THRESHOLD = 0.85
+
+
+def classify_research_relationship(
+    similar_experiments: list[QuantResearchExperimentSimilarity],
+    similar_failed_strategies: list[SimilarFailedStrategyMatch],
+) -> ResearchRelationship:
+    """CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 3 — "classify the
+    relationship: NOVEL / SIMILAR_SUCCESS / SIMILAR_FAILURE /
+    NEAR_DUPLICATE / CONTRADICTORY_EVIDENCE." A real, disclosed
+    combination of the two real similarity searches this codebase now
+    runs before every new Quant Research Lab filing
+    (find_similar_experiments() above, and
+    app/failure_taxonomy.py::find_similar_failed_strategies()) — never
+    a third search, never a fabricated relationship. Purely
+    informational: the caller (app/state.py::submit_quant_research_
+    experiment()) always files the new experiment regardless of what
+    this returns — "do NOT automatically reject a strategy merely
+    because something similar failed" is the directive's own explicit
+    instruction."""
+    max_overlap = max(
+        (m.overlap_score for m in similar_experiments),
+        default=0.0,
+    )
+    max_overlap = max(max_overlap, max((m.overlap_score for m in similar_failed_strategies), default=0.0))
+    if max_overlap >= NEAR_DUPLICATE_OVERLAP_THRESHOLD:
+        return "near_duplicate"
+
+    has_failure_evidence = len(similar_failed_strategies) > 0 or any(m.outcome == "rejected" for m in similar_experiments)
+    has_success_evidence = any(m.outcome == "promising" for m in similar_experiments)
+
+    if has_failure_evidence and has_success_evidence:
+        return "contradictory_evidence"
+    if has_failure_evidence:
+        return "similar_failure"
+    if has_success_evidence:
+        return "similar_success"
+    return "novel"

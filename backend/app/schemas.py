@@ -1917,7 +1917,32 @@ class SimulationResult(CamelModel):
     FROM them, not the reverse — see app/simulation.py), so
     expected_value_pct/profit_factor/risk_reward_ratio below are real,
     internally-consistent derivations of this run's own numbers, never
-    independently invented."""
+    independently invented.
+
+    PROVENANCE — CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 1. `data_provenance`
+    reuses the existing whole-codebase `DataCategory` vocabulary (see
+    app/data_provenance.py) rather than inventing a new one. A dedicated
+    trace for this pass found there are actually THREE real construction
+    sites — app/simulation.py's RNG-only engine (`synthetic`), and TWO
+    genuinely real, price-series-driven engines
+    (app/strategy_engine.py::run_compiled_strategy_backtest(),
+    app/ema_pullback_research.py) whose real per-trade R-multiple math
+    earns `simulated`, the same category app/data_provenance.py already
+    uses for "real math over mock-but-price-series-driven candles." A
+    real, confirmed, disclosed fact this pass found: those two real
+    producers' own `SimulationResult` output is never merged into
+    `GameSaveState.simulation_results` — only app/simulation.py's
+    synthetic engine's output is (see app/nexus.py's tick(), the one
+    real write site) — so `evaluate_risk_gate()` (Paper Trading entry)
+    and the Hall-of-Fame/Certification numeric bars that read the
+    persisted list are, in practice, always reading `synthetic`
+    evidence today, regardless of this field's per-item honesty. This
+    field does not change that; it makes it visible at the point of
+    use rather than only discoverable by reading three separate module
+    docstrings. Defaults to `synthetic` (the true default for the one
+    producer whose output is actually ever persisted); the two real
+    producers set `simulated` explicitly."""
 
     id: str
     strategy_id: str = Field(alias="strategyId")
@@ -1940,6 +1965,7 @@ class SimulationResult(CamelModel):
     expected_value_pct: float = Field(default=0.0, alias="expectedValuePct")
     profit_factor: float = Field(default=0.0, alias="profitFactor")
     risk_reward_ratio: float = Field(default=0.0, alias="riskRewardRatio")
+    data_provenance: DataCategory = Field(default="synthetic", alias="dataProvenance")
 
 
 # v0.7 Feature 45 — auto-generated whenever a SimulationResult completes
@@ -5506,15 +5532,72 @@ class QuantResearchExperimentSimilarity(CamelModel):
     outcome_reason: str = Field(alias="outcomeReason")
 
 
+class SimilarFailedStrategyMatch(CamelModel):
+    """CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 3 — the real, disclosed
+    counterpart to `QuantResearchExperimentSimilarity` above, but
+    searching the PERMANENT Failed Strategy Archive
+    (`GameSaveState.strategy_failed_archive`) instead of the Quant
+    Research Lab's own experiment list. Closes a real, confirmed gap the
+    prior forensic audit proved: research memory checked prior
+    experiments but never the Failed Archive at all — the audit's own
+    named test case (a materially similar strategy to a real past
+    failure) had no code path to surface that failure. Same real,
+    disclosed word-overlap heuristic as its sibling above — never a
+    claim of semantic understanding. `failureCodes`/`evidence` are the
+    matched entry's own already-real, already-computed fields, copied
+    here (never recomputed, never invented) — never used to
+    automatically reject the new hypothesis; see
+    `app/failure_taxonomy.py::find_similar_failed_strategies()`'s own
+    docstring for exactly why."""
+
+    strategy_archive_id: str = Field(alias="strategyArchiveId")
+    strategy_name: str = Field(alias="strategyName")
+    overlap_score: float = Field(alias="overlapScore")
+    reason: str
+    failed_at_stage: StrategyStage = Field(alias="failedAtStage")
+    failure_codes: list[FailureCode] = Field(default_factory=list, alias="failureCodes")
+    evidence: list[str] = Field(default_factory=list)
+    sim_day: int = Field(alias="simDay")
+
+
+# CEO directive "TradeTown — Research Engine Hardening +
+# Self-Improvement Implementation Pass," Phase 3 — "classify the
+# relationship: NOVEL / SIMILAR_SUCCESS / SIMILAR_FAILURE /
+# NEAR_DUPLICATE / CONTRADICTORY_EVIDENCE... do NOT automatically
+# reject a strategy merely because something similar failed." A real,
+# disclosed combination of the two real similarity searches above — see
+# app/quant_research_lab.py's classify_research_relationship() for the
+# exact real derivation rule. Purely informational: never blocks
+# filing, matching this codebase's own established "surface prior
+# outcome feedback, never silently gate on it" convention
+# (`QuantResearchExperimentSimilarity` already works this way).
+ResearchRelationship = Literal[
+    "novel",
+    "similar_success",
+    "similar_failure",
+    "near_duplicate",
+    "contradictory_evidence",
+]
+
+
 class SubmitQuantResearchExperimentResult(CamelModel):
     """The real response to filing a new Quant Research Lab experiment
     — the newly-persisted record plus any real near-duplicate prior
     experiments this codebase found (the directive's own "check before
     creating a new experiment whether an equivalent one exists"),
-    surfaced for CEO/agent judgment rather than silently blocked."""
+    surfaced for CEO/agent judgment rather than silently blocked.
+
+    CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 3 —
+    `similar_failed_strategies`/`research_relationship` extend that
+    same real memory-consultation to the permanent Failed Strategy
+    Archive, previously never searched at all."""
 
     experiment: QuantResearchExperiment
     similar_experiments: list[QuantResearchExperimentSimilarity] = Field(default_factory=list, alias="similarExperiments")
+    similar_failed_strategies: list[SimilarFailedStrategyMatch] = Field(default_factory=list, alias="similarFailedStrategies")
+    research_relationship: ResearchRelationship = Field(default="novel", alias="researchRelationship")
 
 
 # CEO directive "TradeTown — 11/10 Self-Improving Quant Agent System,"
@@ -5542,7 +5625,17 @@ ChallengerVerdict = Literal["challenger_recommended", "champion_retained", "insu
 # bootstrap comparison, the same two-state convention every other real
 # evidence-floor field in this codebase already uses (never a forced
 # call below the real minimum sample).
-BootstrapEvidenceState = Literal["sufficient_evidence", "insufficient_evidence"]
+#
+# "invalid_evidence" — CEO directive "TradeTown — Research Engine
+# Hardening + Self-Improvement Implementation Pass," Phase 8. A real,
+# distinct third state (never conflated with "insufficient_evidence",
+# which means "not enough real observations yet" — this means "the
+# observations that exist include a non-finite value and cannot be
+# honestly resampled at all"). Closes a real, confirmed gap: before
+# this, a NaN/Inf value in either sample produced
+# `evidenceState="sufficient_evidence"` with a NaN/Inf confidence
+# interval — a "confident-looking" result built on invalid numbers.
+BootstrapEvidenceState = Literal["sufficient_evidence", "insufficient_evidence", "invalid_evidence"]
 
 
 class BootstrapComparisonResult(CamelModel):
@@ -5595,6 +5688,12 @@ StatisticalEconomicClassification = Literal[
     "economically_meaningful_only",
     "neither",
     "insufficient_sample",
+    # CEO directive "TradeTown — Research Engine Hardening +
+    # Self-Improvement Implementation Pass," Phase 8 — a real, distinct
+    # state for a real, non-finite (NaN/Inf) observation, never
+    # conflated with "insufficient_sample" (which means "too few real
+    # observations," a different, honest condition).
+    "invalid_evidence",
 ]
 
 
@@ -5856,7 +5955,20 @@ class StrategyFounderApproval(CamelModel):
     """The Founder Council's real, checkable verdict on a strategy — a
     new mode of the same real threshold-based approval pattern
     app/founders.py's generate_breakthrough_review() already established
-    for Black Box Projects, applied here to a Strategy instead."""
+    for Black Box Projects, applied here to a Strategy instead.
+
+    HONEST LABELING — CEO directive "TradeTown — Research Engine
+    Hardening + Self-Improvement Implementation Pass," Phase 15. This is
+    a real, deterministic, algorithmic verdict voiced as the game's
+    named "Original Founders" characters (Keystone/Compass) — the same
+    real in-fiction-opinion convention every other department/executive
+    verdict in this codebase uses. It is NEVER a human/CEO decision;
+    deliberately carries no `ceo`/`auto`-style field (unlike
+    `StrategyReview.ceo_decision`, the real, separate, player-clickable
+    checkpoint in the same Certification checklist) so nothing here
+    could be mistaken for one. See
+    app/strategy_lab.py::generate_strategy_founder_approval()'s own
+    docstring for the full rationale."""
 
     id: str
     strategy_id: str = Field(alias="strategyId")
@@ -5981,7 +6093,16 @@ class StrategyHallOfFameEntry(CamelModel):
     retirement (see app/strategy_lab.py's
     generate_strategy_retirement_outcome()). 'Historical return'/'avg R'
     below are real SimulationResult aggregates, never fabricated live
-    P&L — see StrategyHealthAssessment's own docstring for why."""
+    P&L — see StrategyHealthAssessment's own docstring for why.
+
+    CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 14 — this "permanent,
+    never evicted" claim used to be contradicted by a real 40-entry
+    FIFO cap (`app/strategy_lab.py::cap_strategy_hall_of_fame()`).
+    Fixed by making the claim literally true (deliberately uncapped,
+    matching app/strategy_registry.py's own real version-history
+    precedent) rather than quietly rewording the docstring to match
+    the eviction."""
 
     id: str
     strategy_id: str = Field(alias="strategyId")
@@ -6069,6 +6190,16 @@ FailureCode = Literal[
     "redundant_strategy",
     "failed_challenger",
     "champion_not_beaten",
+    # LIFECYCLE_FAILURE — CEO directive "TradeTown — Research Engine
+    # Hardening + Self-Improvement Implementation Pass," Phase 2. Closes
+    # a real, confirmed gap the prior forensic audit proved reachable: a
+    # strategy with excellent numeric metrics could retire into the
+    # Failed Archive with `failureCodes: []` when the real reason was
+    # non-numeric (never reached "approved," or a real Founder Council
+    # rejection) — see app/failure_taxonomy.py's own docstring for the
+    # exact derivation.
+    "never_reached_required_stage",
+    "founder_approval_rejected",
 ]
 
 # CEO directive "TradeTown — Statistical Validation + Research Failure
@@ -6103,7 +6234,12 @@ class FailedStrategyArchiveEntry(CamelModel):
     """v0.7 Feature 52 (Part 2) — every strategy retirement that did not
     clear the real Hall of Fame bar (see app/strategy_lab.py's
     generate_strategy_retirement_outcome()) — never deleted, always kept
-    as a real, citable lesson. 'What failed'/'lessons learned' are pulled
+    as a real, citable lesson (CEO directive "TradeTown — Research
+    Engine Hardening + Self-Improvement Implementation Pass," Phase 14
+    — this claim used to be contradicted by a real 40-entry FIFO cap;
+    fixed by making it literally true, see
+    app/strategy_lab.py::cap_strategy_failed_archive()'s own
+    docstring). 'What failed'/'lessons learned' are pulled
     from that strategy's own real StrategyReview verdicts and
     StrategyExecutiveReview concerns, never invented after the fact.
 

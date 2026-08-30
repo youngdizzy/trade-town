@@ -6,7 +6,15 @@ from __future__ import annotations
 
 import asyncio
 
-from app.quant_research_lab import OVERTESTED_FAMILY_THRESHOLD, count_experiments_for_family, file_quant_research_experiment, find_similar_experiments
+from app.quant_research_lab import (
+    NEAR_DUPLICATE_OVERLAP_THRESHOLD,
+    OVERTESTED_FAMILY_THRESHOLD,
+    classify_research_relationship,
+    count_experiments_for_family,
+    file_quant_research_experiment,
+    find_similar_experiments,
+)
+from app.schemas import FailedStrategyArchiveEntry, QuantResearchExperimentSimilarity
 from app.research_experiment import run_research_experiment
 from app.state import GameState
 from app.strategy_compiler import compile_strategy_text
@@ -87,6 +95,62 @@ class TestFindSimilarExperiments:
         assert matches[0].outcome_reason == prior.outcome_reason
 
 
+def _experiment_similarity(overlap: float, outcome: str) -> QuantResearchExperimentSimilarity:
+    return QuantResearchExperimentSimilarity(experimentId="exp-1", hypothesis="x", overlapScore=overlap, reason="x", outcome=outcome, outcomeReason="x")  # type: ignore[arg-type]
+
+
+def _failed_match(overlap: float = 0.5) -> object:
+    from app.schemas import SimilarFailedStrategyMatch
+
+    return SimilarFailedStrategyMatch(strategyArchiveId="a1", strategyName="x", overlapScore=overlap, reason="x", failedAtStage="market_simulation", failureCodes=[], evidence=[], simDay=1)
+
+
+class TestClassifyResearchRelationship:
+    """CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 3 — "classify the
+    relationship: NOVEL / SIMILAR_SUCCESS / SIMILAR_FAILURE /
+    NEAR_DUPLICATE / CONTRADICTORY_EVIDENCE." Purely informational —
+    every test here only proves the real classification, never a
+    reject/block path (this function has none)."""
+
+    def test_no_matches_at_all_reads_novel(self) -> None:
+        assert classify_research_relationship([], []) == "novel"
+
+    def test_a_real_failed_archive_match_reads_similar_failure(self) -> None:
+        assert classify_research_relationship([], [_failed_match()]) == "similar_failure"  # type: ignore[list-item]
+
+    def test_a_rejected_prior_experiment_reads_similar_failure(self) -> None:
+        matches = [_experiment_similarity(0.5, "rejected")]
+        assert classify_research_relationship(matches, []) == "similar_failure"
+
+    def test_a_promising_prior_experiment_reads_similar_success(self) -> None:
+        matches = [_experiment_similarity(0.5, "promising")]
+        assert classify_research_relationship(matches, []) == "similar_success"
+
+    def test_an_inconclusive_prior_experiment_alone_reads_novel(self) -> None:
+        matches = [_experiment_similarity(0.5, "inconclusive")]
+        assert classify_research_relationship(matches, []) == "novel"
+
+    def test_both_a_promising_match_and_a_real_failed_archive_match_reads_contradictory_evidence(self) -> None:
+        matches = [_experiment_similarity(0.5, "promising")]
+        assert classify_research_relationship(matches, [_failed_match()]) == "contradictory_evidence"  # type: ignore[list-item]
+
+    def test_both_a_promising_and_a_rejected_prior_experiment_reads_contradictory_evidence(self) -> None:
+        matches = [_experiment_similarity(0.5, "promising"), _experiment_similarity(0.5, "rejected")]
+        assert classify_research_relationship(matches, []) == "contradictory_evidence"
+
+    def test_an_overlap_at_or_above_the_near_duplicate_bar_always_wins_reads_near_duplicate(self) -> None:
+        matches = [_experiment_similarity(NEAR_DUPLICATE_OVERLAP_THRESHOLD, "promising")]
+        assert classify_research_relationship(matches, []) == "near_duplicate"
+
+    def test_an_overlap_just_below_the_near_duplicate_bar_does_not_read_near_duplicate(self) -> None:
+        matches = [_experiment_similarity(NEAR_DUPLICATE_OVERLAP_THRESHOLD - 0.01, "promising")]
+        assert classify_research_relationship(matches, []) != "near_duplicate"
+
+    def test_a_high_overlap_failed_archive_match_alone_reads_near_duplicate(self) -> None:
+        assert classify_research_relationship([], [_failed_match(overlap=NEAR_DUPLICATE_OVERLAP_THRESHOLD)]) == "near_duplicate"  # type: ignore[list-item]
+
+
 class TestSubmitQuantResearchExperimentState:
     def test_a_filed_experiment_is_really_persisted_and_searchable(self) -> None:
         state = GameState()
@@ -137,6 +201,33 @@ class TestSubmitQuantResearchExperimentState:
         _, result = asyncio.run(state.submit_quant_research_experiment(definition, hypothesis="No stated mechanism.", researcher_agent_id="quant", symbols=["AAPL"]))
         assert result.experiment.expected_mechanism is None
         assert result.experiment.falsification_criteria is None
+
+    def test_a_new_hypothesis_with_no_failed_archive_reads_novel_and_an_empty_match_list(self) -> None:
+        # CEO directive "TradeTown — Research Engine Hardening +
+        # Self-Improvement Implementation Pass," Phase 3.
+        state = GameState()
+        definition = compile_strategy_text(name="No Prior History Strategy", source_text=_TEXT)
+        _, result = asyncio.run(state.submit_quant_research_experiment(definition, hypothesis="A genuinely novel idea.", researcher_agent_id="quant", symbols=["AAPL"]))
+        assert result.similar_failed_strategies == []
+        assert result.research_relationship == "novel"
+
+    def test_the_directives_own_test_scenario_a_similar_failed_strategy_is_surfaced_and_never_blocks_filing(self) -> None:
+        state = GameState()
+        failed_entry = FailedStrategyArchiveEntry(
+            id="failedarchive-x", strategyId="x", strategyName="EMA Breakout Momentum", createdBy="quant",
+            failedAtStage="market_simulation", whatFailed=["Excessive drawdown"], lessonsLearned=["x"],
+            failureCodes=[], retiredReason="x", simDay=1, createdAt="2024-01-01T00:00:00+00:00",
+        )
+        state.data = state.data.model_copy(update={"strategy_failed_archive": [failed_entry]})
+        definition = compile_strategy_text(name="EMA Breakout Momentum", source_text=_TEXT)
+        saved, result = asyncio.run(
+            state.submit_quant_research_experiment(definition, hypothesis="excessive drawdown risk", researcher_agent_id="quant", symbols=["AAPL"])
+        )
+        assert len(result.similar_failed_strategies) == 1
+        assert result.similar_failed_strategies[0].strategy_name == "EMA Breakout Momentum"
+        assert result.research_relationship == "similar_failure"
+        # The directive's own explicit rule: never auto-reject. Filing still succeeds.
+        assert len(saved.quant_research_experiments) == 1
 
 
 class TestQuantResearchExperimentBackwardCompat:

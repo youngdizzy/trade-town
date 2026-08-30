@@ -14386,6 +14386,52 @@ than approving on a technicality. The new UI tab was confirmed
 rendering and functioning end-to-end via a temporary Playwright spec
 (removed after verification).
 
+**Follow-up — "TradeTown — Research Engine Hardening +
+Self-Improvement Implementation Pass."** A 20-phase directive; a
+dedicated Phase 0 forensic recon (before any code was written) found
+the top-priority ask — eliminate RNG evidence from strategy-selection
+paths — already substantially closed for the highest-stakes gate:
+`evaluate_certification_readiness()` (the real, enforced live-capital
+gate) already hard-requires a real `compiled_definition_id` plus
+clean look-ahead/cost-resilient/stable walk-forward evidence. The
+lower-stakes Paper Trading entry gate (`evaluate_risk_gate()`,
+RNY-based `SimulationResult` only) was deliberately left untouched —
+eliminating it would break the entire existing Sandbox game loop for
+no real safety gain. Six scoped fixes shipped: (1) real per-item
+`SimulationResult.dataProvenance` (reusing `DataCategory`) — a recon
+finding that TWO real, price-series-driven producers exist
+(`strategy_engine.py`, `ema_pullback_research.py`) but their own
+output is a local variable never merged into
+`GameSaveState.simulation_results`, so only `synthetic` (the RNG
+engine) is ever actually persisted; (2) two new real
+`never_reached_required_stage`/`founder_approval_rejected` failure
+codes closing the confirmed "missing failure reason" gap in
+`derive_failure_codes()`; (3) `find_similar_failed_strategies()` +
+`classify_research_relationship()` — research memory now checks the
+Failed Archive before filing, informational only, never blocks; (4) a
+real `MAX_PROFIT_FACTOR_REGRESSION_PCT` non-regression guard layered
+on `_decide_verdict()`'s existing tradeoff paths, the directive's own
+worked examples unaffected; (5) a real, distinct
+`invalid_evidence` bootstrap state rejecting NaN/Inf before the
+sample-size floor; (6) Hall of Fame/Failed Archive made genuinely
+uncapped (matching `strategy_registry.py`'s own precedent) rather than
+rewording a "permanent" docstring claim a real 40-entry cap
+contradicted; Founder Approval's docstrings and UI label ("Founder
+Council Review — algorithmic, not a human decision") made explicit
+about its real, always-algorithmic nature, confirmed consistent with
+the game's own established lore (Keystone/Compass as named AI
+"Original Founders," never the player). Explicitly deferred, with
+reasons: the full self-improvement loop and validation-funnel
+re-architecture (Phases 4-6, would need the compiled-definition
+backtest engine wired into the automatic Sandbox tick loop), Phase 9's
+renumbering of the separately-calibrated existing thresholds, Phases
+10/11/13/17. Full backend suite (3274 tests, +45), mypy/ruff clean;
+frontend tsc/lint/build clean. Live-verified via direct API calls
+against the real running dev stack; interactive Playwright
+verification of the three new UI elements was attempted but not
+completed (pre-existing harness flakiness) — disclosed as NOT
+VERIFIED rather than assumed.
+
 **Follow-up — "TradeTown — Statistical Validation + Research Failure
 Taxonomy."** Closes the two gaps the Champion/Challenger pass above
 explicitly disclosed as scope cuts, by extending those same real

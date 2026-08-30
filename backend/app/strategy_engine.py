@@ -802,6 +802,7 @@ def run_compiled_strategy_backtest(
                 avgLossPct=round(avg_loss_pct, 2),
                 expectedValuePct=round(expected_value_pct, 3),
                 profitFactor=round(profit_factor, 3),
+                dataProvenance="simulated",
                 riskRewardRatio=round(avg_win_pct / avg_loss_pct, 3) if avg_loss_pct > 0 else 0.0,
             )
         )

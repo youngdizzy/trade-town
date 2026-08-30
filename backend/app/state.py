@@ -162,7 +162,8 @@ from app.schemas import (
     RestrictionScope,
 )
 from app.champion_challenger import compare_champion_challenger, promote_challenger
-from app.quant_research_lab import cap_quant_research_experiments, file_quant_research_experiment, find_similar_experiments
+from app.failure_taxonomy import find_similar_failed_strategies
+from app.quant_research_lab import cap_quant_research_experiments, classify_research_relationship, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 from app.strategy_registry import default_researchable_strategies, register_researchable_strategy, register_strategy_version
@@ -2634,6 +2635,13 @@ class GameState:
 
         async with self.lock:
             similar = find_similar_experiments(self.data.quant_research_experiments, hypothesis=hypothesis, definition_id=definition.id, timeframe=resolved_timeframe)
+            # CEO directive "TradeTown — Research Engine Hardening +
+            # Self-Improvement Implementation Pass," Phase 3 — the same
+            # real memory consultation, extended to the permanent Failed
+            # Strategy Archive (previously never searched at all).
+            # Purely informational: never blocks the filing below.
+            similar_failed = find_similar_failed_strategies(self.data.strategy_failed_archive, hypothesis=hypothesis, strategy_name=definition.name)
+            relationship = classify_research_relationship(similar, similar_failed)
             experiment_id = f"experiment-{definition.id}-{definition.version}-{len(self.data.quant_research_experiments)}"
             experiment = file_quant_research_experiment(
                 record,
@@ -2647,7 +2655,12 @@ class GameState:
             )
             updated = cap_quant_research_experiments([*self.data.quant_research_experiments, experiment])
             self.data = self.data.model_copy(update={"quant_research_experiments": updated})
-            return self.data, SubmitQuantResearchExperimentResult(experiment=experiment, similarExperiments=similar)
+            return self.data, SubmitQuantResearchExperimentResult(
+                experiment=experiment,
+                similarExperiments=similar,
+                similarFailedStrategies=similar_failed,
+                researchRelationship=relationship,
+            )
 
     async def submit_champion_challenger_comparison(
         self,

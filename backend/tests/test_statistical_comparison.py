@@ -108,6 +108,67 @@ class TestBootstrapCompareSamples:
         assert result.challenger_sample_size == 0
 
 
+class TestInvalidEvidenceHardening:
+    """CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 8/20 — a real,
+    confirmed gap the prior forensic audit proved reachable: a NaN/Inf
+    observation used to produce `evidenceState="sufficient_evidence"`
+    with a NaN/Inf confidence interval. Every case below must produce
+    `invalid_evidence` with every numeric field `None` — never a
+    "confident-looking" result built on invalid numbers."""
+
+    def _assert_invalid(self, result: object) -> None:
+        assert result.evidence_state == "invalid_evidence"  # type: ignore[attr-defined]
+        assert result.difference_ci_low is None  # type: ignore[attr-defined]
+        assert result.difference_ci_high is None  # type: ignore[attr-defined]
+        assert result.probability_challenger_better_pct is None  # type: ignore[attr-defined]
+        assert result.champion_mean_r is None  # type: ignore[attr-defined]
+        assert result.challenger_mean_r is None  # type: ignore[attr-defined]
+        assert result.mean_difference_estimate is None  # type: ignore[attr-defined]
+
+    def test_nan_in_champion_sample_is_rejected(self) -> None:
+        champion = [float("nan")] + [1.0] * (MIN_TRADES_FOR_BOOTSTRAP - 1)
+        challenger = [1.0] * MIN_TRADES_FOR_BOOTSTRAP
+        self._assert_invalid(bootstrap_compare_samples(champion, challenger, seed_parts=("nan-champ",)))
+
+    def test_nan_in_challenger_sample_is_rejected(self) -> None:
+        champion = [1.0] * MIN_TRADES_FOR_BOOTSTRAP
+        challenger = [1.0] * (MIN_TRADES_FOR_BOOTSTRAP - 1) + [float("nan")]
+        self._assert_invalid(bootstrap_compare_samples(champion, challenger, seed_parts=("nan-chall",)))
+
+    def test_positive_infinity_is_rejected(self) -> None:
+        champion = [1.0] * MIN_TRADES_FOR_BOOTSTRAP
+        challenger = [float("inf")] + [1.0] * (MIN_TRADES_FOR_BOOTSTRAP - 1)
+        self._assert_invalid(bootstrap_compare_samples(champion, challenger, seed_parts=("inf",)))
+
+    def test_negative_infinity_is_rejected(self) -> None:
+        champion = [float("-inf")] + [1.0] * (MIN_TRADES_FOR_BOOTSTRAP - 1)
+        challenger = [1.0] * MIN_TRADES_FOR_BOOTSTRAP
+        self._assert_invalid(bootstrap_compare_samples(champion, challenger, seed_parts=("-inf",)))
+
+    def test_one_invalid_observation_among_many_valid_ones_still_invalidates_the_whole_sample(self) -> None:
+        champion = [1.0] * 500 + [float("nan")]
+        challenger = [1.0] * 500
+        self._assert_invalid(bootstrap_compare_samples(champion, challenger, seed_parts=("mostly-valid",)))
+
+    def test_non_finite_check_runs_before_the_sample_size_floor(self) -> None:
+        """Even a tiny, below-floor sample with a NaN in it must read
+        invalid_evidence, not insufficient_evidence — the non-finite
+        check is deliberately the very first thing checked."""
+        champion = [float("nan")]
+        challenger = [1.0]
+        self._assert_invalid(bootstrap_compare_samples(champion, challenger, seed_parts=("tiny-nan",)))
+
+    def test_classification_reads_invalid_evidence_not_insufficient_sample(self) -> None:
+        from app.champion_challenger import _classify_statistical_economic_evidence
+
+        champion = [float("nan")] * MIN_TRADES_FOR_BOOTSTRAP
+        challenger = [1.0] * MIN_TRADES_FOR_BOOTSTRAP
+        result = bootstrap_compare_samples(champion, challenger, seed_parts=("classify",))
+        classification = _classify_statistical_economic_evidence(verdict="champion_retained", statistical_comparison=result)
+        assert classification == "invalid_evidence"
+
+
 class TestRunStatisticalComparison:
     def test_two_real_compiled_definitions_over_real_candle_data_produce_a_real_result(self) -> None:
         champion_definition = compile_strategy_text(

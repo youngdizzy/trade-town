@@ -16,6 +16,7 @@ from app.champion_challenger import (
     HIGH_TUNING_VERSION_THRESHOLD,
     MAX_DRAWDOWN_REGRESSION_PCT,
     MAX_EXPECTANCY_REGRESSION_PCT,
+    MAX_PROFIT_FACTOR_REGRESSION_PCT,
     MIN_DRAWDOWN_IMPROVEMENT_PCT,
     MIN_EXPECTANCY_IMPROVEMENT_PCT,
     _classify_statistical_economic_evidence,
@@ -108,6 +109,92 @@ class TestDecideVerdict:
         assert MAX_DRAWDOWN_REGRESSION_PCT == 15.0
         assert MIN_DRAWDOWN_IMPROVEMENT_PCT == 20.0
         assert MAX_EXPECTANCY_REGRESSION_PCT == 10.0
+        assert MAX_PROFIT_FACTOR_REGRESSION_PCT == 20.0
+
+    def test_the_directives_own_two_worked_examples_are_unaffected_by_the_new_profit_factor_gate(self) -> None:
+        """Neither worked example test above passes profit_factor at
+        all — confirming the new, optional non-regression check is
+        skipped (never a forced call) when that evidence is absent,
+        exactly like every other missing-evidence case this function
+        already handles."""
+        blocked, _ = _decide_verdict(**_sufficient_kwargs(champion_expectancy_r=0.28, challenger_expectancy_r=0.30, champion_max_drawdown_r=-0.10, challenger_max_drawdown_r=-0.19))
+        assert blocked == "champion_retained"
+        promoted, _ = _decide_verdict(**_sufficient_kwargs(champion_expectancy_r=0.28, challenger_expectancy_r=0.27, champion_max_drawdown_r=-0.15, challenger_max_drawdown_r=-0.08))
+        assert promoted == "challenger_recommended"
+
+
+class TestProfitFactorNonRegression:
+    """CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 7 — closes the real,
+    confirmed gap the prior forensic audit found: `_decide_verdict()`
+    never read profit factor at all, so a challenger with a
+    dramatically worse profit factor could still be recommended purely
+    on the expectancy/drawdown tradeoff. Deliberately NOT a naive
+    `challenger_pf > champion_pf` — a real non-regression guard layered
+    on top of the existing tradeoff paths, never a replacement."""
+
+    def test_path_a_promotion_is_blocked_by_a_meaningful_profit_factor_regression(self) -> None:
+        # Path A alone (expectancy +50%, no drawdown regression) would recommend the challenger.
+        verdict, reason = _decide_verdict(
+            **_sufficient_kwargs(
+                champion_expectancy_r=0.20, challenger_expectancy_r=0.30, champion_max_drawdown_r=-0.10, challenger_max_drawdown_r=-0.10,
+                champion_profit_factor=2.0, challenger_profit_factor=1.4,  # -30%, past the real 20% bar
+            )
+        )
+        assert verdict == "champion_retained"
+        assert "profit factor regressed" in reason
+        assert "2.00" in reason and "1.40" in reason
+
+    def test_path_b_promotion_is_blocked_by_a_meaningful_profit_factor_regression(self) -> None:
+        # Path B alone (drawdown improved 46.7%, expectancy only -3.6%) would recommend the challenger.
+        verdict, reason = _decide_verdict(
+            **_sufficient_kwargs(
+                champion_expectancy_r=0.28, challenger_expectancy_r=0.27, champion_max_drawdown_r=-0.15, challenger_max_drawdown_r=-0.08,
+                champion_profit_factor=1.8, challenger_profit_factor=1.0,  # -44.4%, past the real 20% bar
+            )
+        )
+        assert verdict == "champion_retained"
+        assert "profit factor regressed" in reason
+
+    def test_a_small_profit_factor_regression_within_the_bar_still_promotes(self) -> None:
+        verdict, _ = _decide_verdict(
+            **_sufficient_kwargs(
+                champion_expectancy_r=0.20, challenger_expectancy_r=0.30, champion_max_drawdown_r=-0.10, challenger_max_drawdown_r=-0.10,
+                champion_profit_factor=2.0, challenger_profit_factor=1.7,  # -15%, within the real 20% bar
+            )
+        )
+        assert verdict == "challenger_recommended"
+
+    def test_an_improved_profit_factor_never_blocks_promotion(self) -> None:
+        verdict, _ = _decide_verdict(
+            **_sufficient_kwargs(
+                champion_expectancy_r=0.20, challenger_expectancy_r=0.30, champion_max_drawdown_r=-0.10, challenger_max_drawdown_r=-0.10,
+                champion_profit_factor=1.5, challenger_profit_factor=2.5,
+            )
+        )
+        assert verdict == "challenger_recommended"
+
+    def test_a_non_positive_champion_profit_factor_sets_no_proportional_bar_never_crashes(self) -> None:
+        verdict, _ = _decide_verdict(
+            **_sufficient_kwargs(
+                champion_expectancy_r=0.20, challenger_expectancy_r=0.30, champion_max_drawdown_r=-0.10, challenger_max_drawdown_r=-0.10,
+                champion_profit_factor=0.0, challenger_profit_factor=0.5,
+            )
+        )
+        assert verdict == "challenger_recommended"
+
+    def test_profit_factor_never_creates_a_promotion_on_its_own_the_base_tradeoff_still_gates_first(self) -> None:
+        """A real profit factor improvement never rescues a challenger
+        whose own expectancy/drawdown tradeoff didn't clear either
+        path's bar in the first place — this is a non-regression guard,
+        never a naive `challenger_pf > champion_pf` promotion rule."""
+        verdict, _ = _decide_verdict(
+            **_sufficient_kwargs(
+                champion_expectancy_r=0.20, challenger_expectancy_r=0.21, champion_max_drawdown_r=-0.10, challenger_max_drawdown_r=-0.099,
+                champion_profit_factor=1.0, challenger_profit_factor=5.0,
+            )
+        )
+        assert verdict == "champion_retained"
 
 
 class TestGetCurrentChampion:
@@ -313,6 +400,16 @@ class TestClassifyStatisticalEconomicEvidence:
         result = _bootstrap_result(differenceCiLow=-0.3, differenceCiHigh=-0.1)
         classification = _classify_statistical_economic_evidence(verdict="champion_retained", statistical_comparison=result)
         assert classification == "neither"
+
+    def test_invalid_bootstrap_evidence_reads_invalid_evidence_never_insufficient_sample(self) -> None:
+        # CEO directive "TradeTown — Research Engine Hardening +
+        # Self-Improvement Implementation Pass," Phase 8 — a real,
+        # distinct third state, never conflated with "insufficient
+        # sample" (a different, honest condition: too few real
+        # observations, not a non-finite one).
+        result = _bootstrap_result(evidenceState="invalid_evidence", differenceCiLow=None, differenceCiHigh=None, probabilityChallengerBetterPct=None, championMeanR=None, challengerMeanR=None, meanDifferenceEstimate=None)
+        classification = _classify_statistical_economic_evidence(verdict="challenger_recommended", statistical_comparison=result)
+        assert classification == "invalid_evidence"
 
 
 class TestCompareChampionChallengerStatisticalWiring:

@@ -141,6 +141,22 @@ MAX_DRAWDOWN_REGRESSION_PCT = 15.0
 MIN_DRAWDOWN_IMPROVEMENT_PCT = 20.0
 MAX_EXPECTANCY_REGRESSION_PCT = 10.0
 
+# CEO directive "TradeTown — Research Engine Hardening +
+# Self-Improvement Implementation Pass," Phase 7 — a real, confirmed
+# gap the prior forensic audit found and proved: `_decide_verdict()`
+# never read profit factor at all, so a challenger with a dramatically
+# worse profit factor could still be recommended purely on the
+# expectancy/drawdown tradeoff. This is deliberately NOT a naive
+# `challenger_pf > champion_pf` — it is a non-regression guard layered
+# on TOP of the existing tradeoff paths above: profit factor never has
+# to improve for a promotion, but it must not regress by more than this
+# real, disclosed percentage, or the tradeoff path that would otherwise
+# recommend the challenger is blocked and the champion is retained,
+# with the conflict named explicitly (never hidden). One reasonable
+# convention, matching MAX_DRAWDOWN_REGRESSION_PCT's own scale, not
+# derived from any statistical study.
+MAX_PROFIT_FACTOR_REGRESSION_PCT = 20.0
+
 
 def get_current_champion(champion_history: list[ChampionRecord], *, strategy_family: str) -> ChampionRecord | None:
     """The current champion for a family is always the most recent real
@@ -165,11 +181,25 @@ def _decide_verdict(
     challenger_expectancy_r: float | None,
     champion_max_drawdown_r: float | None,
     challenger_max_drawdown_r: float | None,
+    champion_profit_factor: float | None = None,
+    challenger_profit_factor: float | None = None,
 ) -> tuple[ChallengerVerdict, str]:
     """The one real, disclosed decision rule — see this module's own
     docstring for why it is an ECONOMIC tradeoff rule, not a
     statistical-significance test. Never called directly by a router;
-    always through compare_champion_challenger()."""
+    always through compare_champion_challenger().
+
+    `champion_profit_factor`/`challenger_profit_factor` are optional
+    (default `None`, matching this codebase's own "missing evidence
+    means honestly skip the check, never a forced call" convention) —
+    CEO directive "TradeTown — Research Engine Hardening +
+    Self-Improvement Implementation Pass," Phase 7. When both are real
+    numbers, a meaningful profit-factor regression (see
+    `MAX_PROFIT_FACTOR_REGRESSION_PCT`) blocks BOTH tradeoff paths below
+    even when their own expectancy/drawdown condition passed — a real,
+    named non-regression guard, layered on top of, never a replacement
+    for, the existing two-path rule the directive's own worked examples
+    calibrate."""
     if not (champion_evidence_sufficient and challenger_evidence_sufficient):
         return "insufficient_evidence", (
             f"Below the real {DEFAULT_MIN_TRADES_FOR_BUCKET_VERDICT}-trade evidence floor on at least one side — "
@@ -183,6 +213,20 @@ def _decide_verdict(
     expectancy_delta_pct = _relative_change_pct(champion_expectancy_r, challenger_expectancy_r)
     drawdown_delta_pct = _relative_change_pct(abs(champion_max_drawdown_r), abs(challenger_max_drawdown_r))
 
+    profit_factor_delta_pct: float | None = None
+    profit_factor_meaningfully_worse = False
+    if champion_profit_factor is not None and challenger_profit_factor is not None and champion_profit_factor > 0:
+        profit_factor_delta_pct = _relative_change_pct(champion_profit_factor, challenger_profit_factor)
+        profit_factor_meaningfully_worse = profit_factor_delta_pct is not None and profit_factor_delta_pct <= -MAX_PROFIT_FACTOR_REGRESSION_PCT
+
+    def _blocked_by_profit_factor_regression(tradeoff_reason: str) -> tuple[ChallengerVerdict, str]:
+        return "champion_retained", (
+            f"{tradeoff_reason} — but real profit factor regressed {profit_factor_delta_pct}% "
+            f"(champion {champion_profit_factor:.2f} -> challenger {challenger_profit_factor:.2f}), past the real "
+            f"{MAX_PROFIT_FACTOR_REGRESSION_PCT:.0f}% non-regression bar. The tradeoff that would otherwise promote "
+            "this challenger is blocked by this real, unacceptable degradation in another critical metric."
+        )
+
     # A champion with a non-positive real expectancy sets no real bar to clear proportionally —
     # any real positive challenger expectancy is itself the real improvement.
     expectancy_meaningfully_better = (
@@ -190,18 +234,24 @@ def _decide_verdict(
     )
     drawdown_not_meaningfully_worse = drawdown_delta_pct is not None and drawdown_delta_pct <= MAX_DRAWDOWN_REGRESSION_PCT
     if expectancy_meaningfully_better and drawdown_not_meaningfully_worse:
-        return "challenger_recommended", (
+        tradeoff_reason = (
             f"Real expectancy improved {expectancy_delta_pct if expectancy_delta_pct is not None else 'from a non-positive champion baseline'}% "
-            f"without a meaningfully worse real max drawdown ({drawdown_delta_pct}% change)."
+            f"without a meaningfully worse real max drawdown ({drawdown_delta_pct}% change)"
         )
+        if profit_factor_meaningfully_worse:
+            return _blocked_by_profit_factor_regression(tradeoff_reason)
+        return "challenger_recommended", f"{tradeoff_reason}."
 
     drawdown_meaningfully_better = drawdown_delta_pct is not None and drawdown_delta_pct <= -MIN_DRAWDOWN_IMPROVEMENT_PCT
     expectancy_not_meaningfully_worse = expectancy_delta_pct is not None and expectancy_delta_pct >= -MAX_EXPECTANCY_REGRESSION_PCT
     if drawdown_meaningfully_better and expectancy_not_meaningfully_worse:
-        return "challenger_recommended", (
+        tradeoff_reason = (
             f"Real max drawdown improved {drawdown_delta_pct}% without a meaningfully worse real expectancy ({expectancy_delta_pct}% change) — "
-            "superior on a risk-adjusted basis."
+            "superior on a risk-adjusted basis"
         )
+        if profit_factor_meaningfully_worse:
+            return _blocked_by_profit_factor_regression(tradeoff_reason)
+        return "challenger_recommended", f"{tradeoff_reason}."
 
     return "champion_retained", (
         f"Real expectancy change {expectancy_delta_pct}%, real max drawdown change {drawdown_delta_pct}% — "
@@ -221,6 +271,8 @@ def _classify_statistical_economic_evidence(*, verdict: ChallengerVerdict, stati
     informational — never fed back into `verdict`."""
     if statistical_comparison.evidence_state == "insufficient_evidence":
         return "insufficient_sample"
+    if statistical_comparison.evidence_state == "invalid_evidence":
+        return "invalid_evidence"
     statistically_supported = statistical_comparison.difference_ci_low is not None and statistical_comparison.difference_ci_low > 0
     economically_meaningful = verdict == "challenger_recommended"
     if statistically_supported and economically_meaningful:
@@ -273,6 +325,8 @@ def compare_champion_challenger(
         challenger_expectancy_r=challenger_bucket.expectancy_r,
         champion_max_drawdown_r=champion_bucket.max_drawdown_r,
         challenger_max_drawdown_r=challenger_bucket.max_drawdown_r,
+        champion_profit_factor=champion_bucket.profit_factor,
+        challenger_profit_factor=challenger_bucket.profit_factor,
     )
 
     statistical_comparison = run_statistical_comparison(

@@ -248,6 +248,12 @@ def _collect_completed(sessions: list[BacktestSession], results: list[Simulation
                     expectedValuePct=expected_value_pct,
                     profitFactor=profit_factor,
                     riskRewardRatio=risk_reward_ratio,
+                    # CEO directive "TradeTown — Research Engine
+                    # Hardening + Self-Improvement Implementation
+                    # Pass," Phase 1 — explicit, honest, matches this
+                    # module's own docstring: entirely placeholder math,
+                    # no real price series behind it.
+                    dataProvenance="synthetic",
                 )
             )
         else:

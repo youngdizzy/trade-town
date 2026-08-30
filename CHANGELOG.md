@@ -340,6 +340,127 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Research Engine Hardening + Self-Improvement Implementation Pass" — the
+  highest-value, safely-scoped subset of a 20-phase directive, following its own explicit
+  "without destroying existing architecture" constraint.** A dedicated Phase 0 forensic recon
+  (before any code was written) traced the real Sandbox stage machine and found the directive's
+  own top-priority ask — eliminate RNG evidence from strategy-selection paths — was already
+  substantially closed for the highest-stakes gate: `evaluate_certification_readiness()` (the
+  real, enforced gate on `begin_strategy_limited_live()`, i.e. live capital) already hard-requires
+  a real `compiled_definition_id` plus clean look-ahead/cost-resilient/stable walk-forward
+  evidence from the separate Research Desk pipeline — a fact this pass's own recon surfaced but
+  did not build. Attempting to eliminate the earlier, lower-stakes RNG-based Paper Trading entry
+  gate (`evaluate_risk_gate()`) would have broken the entire existing Sandbox game loop and its
+  full test suite for zero real safety gain (paper trading is fake money); that gate is
+  deliberately left untouched, per the directive's own "if an existing gate conflicts with a
+  proposed improvement, preserve the gate and redesign around it." Six real, scoped, safely-tested
+  fixes shipped instead:
+  - **Phase 1 (scoped) — real, honest per-item data provenance.** New `SimulationResult.dataProvenance`
+    field reuses the existing whole-codebase `DataCategory` vocabulary (`app/data_provenance.py`)
+    rather than inventing a new one. A dedicated trace for this pass found THREE real construction
+    sites, not one: `app/simulation.py`'s RNG-only engine (`synthetic`), and two genuinely real,
+    price-series-driven engines (`app/strategy_engine.py::run_compiled_strategy_backtest()`,
+    `app/ema_pullback_research.py`) whose real per-trade math earns `simulated` — but a real,
+    disclosed fact this pass's own recon confirmed: those two real producers' own `SimulationResult`
+    output is a local variable, never merged into `GameSaveState.simulation_results` (only the
+    synthetic engine's output is, via `app/nexus.py`'s one real write site) — so the persisted list
+    Paper Trading eligibility reads is, in practice, always `synthetic` today regardless of this
+    field. This field does not change that; it makes it visible at the point of use instead of only
+    discoverable by reading three separate module docstrings — never a claim of `real`, which no
+    producer in this codebase can honestly make.
+  - **Phase 2 — the confirmed "missing failure reason" gap, closed.** The prior forensic audit
+    proved (with executed code) that a strategy clearing every one of the four numeric Hall-of-Fame
+    bars could still retire into the Failed Archive with `failureCodes: []`, because
+    `qualifies_for_hall_of_fame` also requires `stage == "approved"` and a real approved Founder
+    Approval — two real, independent conditions `derive_failure_codes()` never read. Two new,
+    real, evidence-backed `FailureCode` values (`never_reached_required_stage`,
+    `founder_approval_rejected`, both `research_failure`/`medium`) close it — `derive_failure_codes()`
+    now optionally accepts `strategy_stage`/`latest_founder_approval` (both real, both already
+    computed by the caller) and `generate_strategy_retirement_outcome()` always passes them. Human-readable
+    `whatFailed`/`lessonsLearned` untouched, matching the directive's own "keep both, never
+    replace." 8 of the directive's own 37 codes (35 + these 2) are now honestly derivable, up from 6.
+  - **Phase 3 (scoped) — research memory now checks the Failed Strategy Archive, never blocks.**
+    Confirmed gap: `find_similar_experiments()` only ever searched `quant_research_experiments`,
+    never `strategy_failed_archive`. New `app/failure_taxonomy.py::find_similar_failed_strategies()`
+    (the same real, disclosed word-overlap technique — `app/quant_research_lab.py`'s
+    `word_overlap_score()` made public, not duplicated, for honest cross-module reuse) searches the
+    permanent archive before every new Quant Research Lab filing. New
+    `classify_research_relationship()` combines both real similarity searches into
+    NOVEL/SIMILAR_SUCCESS/SIMILAR_FAILURE/NEAR_DUPLICATE/CONTRADICTORY_EVIDENCE — purely
+    informational, the filing always succeeds regardless, per the directive's own explicit "do NOT
+    automatically reject a strategy merely because something similar failed." New
+    `SubmitQuantResearchExperimentResult.similarFailedStrategies`/`.researchRelationship` fields;
+    new "Research relationship" card in `QuantResearchLabView.tsx`.
+  - **Phase 7 — Champion/Challenger's confirmed profit-factor gap, closed as a real non-regression
+    guard, never a naive comparison.** `_decide_verdict()` never read profit factor at all before
+    this pass. New optional `champion_profit_factor`/`challenger_profit_factor` parameters (default
+    `None`, so the directive's own two worked-example tests — pure expectancy/drawdown, no profit
+    factor — are completely unaffected) add a real `MAX_PROFIT_FACTOR_REGRESSION_PCT = 20.0`
+    non-regression check layered ON TOP of both existing tradeoff paths: a meaningful profit-factor
+    regression blocks a promotion either path would otherwise recommend, with the real conflict
+    named explicitly in `reasoning` — never hidden, never a silent override.
+  - **Phase 8 — a real, confirmed NaN/Inf gap in the statistical bootstrap, closed as
+    defense-in-depth.** Adversarial testing (0/1/5/99/100/1000 trades, identical/superior/inferior
+    samples, extreme outliers, mismatched sizes, NaN, +Inf, -Inf) found `bootstrap_compare_samples()`
+    previously returned `evidenceState: "sufficient_evidence"` paired with a NaN/Inf confidence
+    interval whenever a non-finite value appeared in either sample — a "confident-looking" result
+    built on invalid numbers. New, real, distinct `"invalid_evidence"` state (added to
+    `BootstrapEvidenceState` and `StatisticalEconomicClassification`) is checked BEFORE the
+    sample-size floor; every numeric field reads `None`, never a fabricated interval. Reachability
+    check, honestly disclosed: `app/backtest_primitives.py::simulate_exit()` already guards the
+    zero-risk division that could produce this — not known to be reachable via the real backtest
+    pipeline today — but the primitive never trusts that guarantee blindly.
+  - **Phase 14 — the archive-permanence contradiction, resolved by making the claim literally
+    true.** The prior forensic audit found `StrategyHallOfFameEntry`/`FailedStrategyArchiveEntry`'s
+    own "permanent, never evicted" docstring claim was contradicted by a real 40-entry FIFO cap
+    (`cap_strategy_hall_of_fame()`/`cap_strategy_failed_archive()`). Per the directive's own stated
+    preference ("historical research records should remain permanently retrievable... do NOT
+    silently change behavior"), both functions are now real, documented identity (no-op) functions
+    — deliberately uncapped, matching `app/strategy_registry.py`'s own real, already-established
+    version-history precedent (a genuinely low-frequency event, one entry per real retirement).
+    Docstrings updated to describe reality, not reworded around it.
+  - **Phase 15 — Founder Approval's real nature made explicit, no new decision pipeline.** The
+    prior audit found "Founder Approval" is a real, deterministic threshold verdict
+    (`generate_strategy_founder_approval()`) with zero human/CEO decision path — unlike
+    `StrategyReview.ceo_decision: Literal["ceo","auto"]`, `StrategyFounderApproval` has no such
+    field at all. Confirmed via the game's own established lore (`FoundersPanel.tsx`'s "Original
+    Founders," Keystone/Compass — real, named AI characters, not the player) that this was always
+    meant to be an in-fiction algorithmic verdict, the same convention every other department/
+    executive opinion in this codebase already uses — never a claim of human approval to begin
+    with, but previously undocumented as such. Docstrings on both the schema and the generating
+    function now say so explicitly; the UI label changed from "Founder Approval" to "Founder
+    Council Review — algorithmic, not a human decision," with an explicit note pointing to the
+    real, separate, player-clickable "Final CEO Approval" checklist item as the actual
+    human-verifiable checkpoint.
+  - **Explicitly deferred this pass, with reasons** (per the directive's own "anything you
+    deliberately did NOT change and why"): Phases 4/5/6 (a full OBSERVE→...→ACCEPT-OR-BIN
+    self-improvement loop and a re-architected multi-stage validation funnel — both would require
+    wiring the compiled-definition backtest engine into the automatic Sandbox tick loop, a
+    multi-day-scale rewrite, not a hardening pass); Phase 9's literal 100-trade/20%-drawdown/
+    PF>1.10 renumbering of the EXISTING, separately-calibrated Hall-of-Fame/Certification
+    thresholds (would risk silently changing already-tested, already-relied-upon behavior; the
+    directive's own numbers are a NEW bar, not confirmed identical to the existing one); Phase 10's
+    hard wiring of the already-real buy-and-hold baseline into a Champion/Challenger requirement;
+    Phase 11's regime-aware hypothesis-generation loop; Phase 13's full lineage schema beyond what
+    `app/strategy_registry.py` already provides; Phase 17's full structured
+    success/failure/hypothesis/tuning/lineage memory subsystem. Each is real, tractable, disclosed
+    future work — not attempted here rather than shipped shallow.
+  - **Verified:** full backend suite (3274 tests, up from 3229 — 45 new/extended tests across 5
+    files, including a dedicated adversarial `TestInvalidEvidenceHardening` class covering NaN/
+    +Inf/-Inf/mixed-validity/below-floor-with-NaN cases), `mypy app/`/`ruff app/ tests/` clean.
+    Frontend `tsc`/lint/build clean. Live-verified against the real running dev stack via direct
+    API calls: a real Champion/Challenger comparison correctly carried real profit-factor values
+    (4.759/4.467) alongside a `sufficient_evidence` statistical comparison; a real Quant Research
+    Lab filing against an empty Failed Archive correctly read `similarFailedStrategies: []`,
+    `researchRelationship: "novel"`. Interactive Playwright verification of the new UI elements
+    (Statistical Evidence `invalid_evidence` badge, Research Relationship card, Founder Council
+    label) was attempted but not completed within this pass — a pre-existing test-harness
+    tab-navigation flakiness (unrelated to this pass's own code, already seen in earlier sessions)
+    blocked it; the underlying data is proven correct via the live API calls above and the
+    component code was reviewed directly. **NOT VERIFIED**: full interactive UI confirmation of
+    these three specific elements — a real, disclosed gap in this pass's own verification, not
+    silently claimed as done.
+
 - **"TradeTown — Statistical Validation + Research Failure Taxonomy" — closing the two gaps this
   session's own Champion/Challenger final report explicitly disclosed as scope cuts: a real
   statistical comparison layer between Champion and Challenger, and a structured, coded failure

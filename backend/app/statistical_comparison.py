@@ -75,10 +75,24 @@ app/executive_intelligence.py's/app/control_effectiveness.py's own
 independent `_evaluation_state()` helpers), seeded from both sides'
 own real definition id/version so the exact same comparison always
 produces the exact same real interval.
+
+DEFENSE-IN-DEPTH AGAINST NON-FINITE INPUT. CEO directive "TradeTown —
+Research Engine Hardening + Self-Improvement Implementation Pass,"
+Phase 8. `app/backtest_primitives.py::simulate_exit()` already guards
+the zero-risk division that could theoretically produce a NaN/Inf
+`r_multiple_realized` — this path is not known to be reachable today
+through real trade generation. But `bootstrap_compare_samples()` never
+trusts that guarantee blindly: every observation is checked for
+finiteness BEFORE the sample-size floor, and a single non-finite value
+anywhere in either sample produces a real, distinct
+`evidenceState="invalid_evidence"` with every numeric field `None` —
+never `"sufficient_evidence"` paired with a NaN/Inf confidence
+interval, which was a real, confirmed gap before this pass.
 """
 from __future__ import annotations
 
 import hashlib
+import math
 import random
 
 from app.market_data import market_data_provider
@@ -89,6 +103,15 @@ MIN_TRADES_FOR_BOOTSTRAP = 20
 BOOTSTRAP_RESAMPLES = 2000
 CONFIDENCE_LEVEL_PCT = 95.0
 BOOTSTRAP_METHOD = "iid_percentile_bootstrap"
+
+_INVALID_EVIDENCE_LIMITATION_NOTE = (
+    "At least one real observation on at least one side was not a finite number (NaN or +/-Infinity). "
+    "CEO directive \"TradeTown — Research Engine Hardening + Self-Improvement Implementation Pass,\" Phase 8 — "
+    "defense-in-depth: the real backtest pipeline (app/backtest_primitives.py::simulate_exit()) already guards "
+    "the zero-risk division that could produce this, so this path is not known to be reachable today through "
+    "real trade generation — but this primitive never trusts that guarantee blindly. No real confidence interval "
+    "can be honestly computed from a non-finite observation, so none is fabricated."
+)
 
 def _seeded_rng(*parts: str) -> random.Random:
     """This module's own private copy of app/strategy_lab.py's real
@@ -127,6 +150,23 @@ def bootstrap_compare_samples(champion_r_multiples: list[float], challenger_r_mu
     limitation."""
     champion_n = len(champion_r_multiples)
     challenger_n = len(challenger_r_multiples)
+
+    # CEO directive "TradeTown — Research Engine Hardening +
+    # Self-Improvement Implementation Pass," Phase 8 — checked BEFORE
+    # the sample-size floor, since a non-finite observation makes the
+    # sample itself untrustworthy regardless of how many observations
+    # there are. Real defense-in-depth: never returns
+    # "sufficient_evidence" paired with a NaN/Inf confidence interval.
+    if any(not math.isfinite(v) for v in (*champion_r_multiples, *challenger_r_multiples)):
+        return BootstrapComparisonResult(
+            championSampleSize=champion_n,
+            challengerSampleSize=challenger_n,
+            confidenceLevelPct=CONFIDENCE_LEVEL_PCT,
+            method=BOOTSTRAP_METHOD,
+            resamples=BOOTSTRAP_RESAMPLES,
+            evidenceState="invalid_evidence",
+            limitationNote=_INVALID_EVIDENCE_LIMITATION_NOTE,
+        )
 
     if champion_n < MIN_TRADES_FOR_BOOTSTRAP or challenger_n < MIN_TRADES_FOR_BOOTSTRAP:
         return BootstrapComparisonResult(
