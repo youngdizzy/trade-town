@@ -7,6 +7,76 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Phase 11: Strategy Intelligence + Hard-Risk
+  Refinement," Section 2 (Hard-Risk Template System) + Section 7
+  (Risk-Survival Scorecard) — a second bounded increment, same session.**
+  Per the directive's own required Section 0 forensic recon (performed
+  before writing any code): `app/position_sizing.py` already implements
+  Section 3's exact real position-sizing formula on the live trade
+  pipeline; `app/gatekeeper.py::evaluate_gatekeeper()` remains the one
+  real centralized risk gate; `app/adversarial_research.py::run_adversarial_research()`
+  already runs the real outlier-removal/worst-period/sequence-reshuffle/
+  extended-cost-stress/regime-robustness attack suite the directive's
+  Section 12 asks for. None of that was rebuilt. What was genuinely
+  missing and built this pass:
+  - **`app/risk_survival.py` — `RISK_PROFILE_TEMPLATES`** (Section 2):
+    three named, REFERENCE-ONLY risk templates (`conservative`/
+    `professional`/`aggressive`) matching the directive's own literal
+    numbers exactly. Nothing reads these automatically into any live
+    risk limit — the CEO-configured `RiskLimits` + `app/gatekeeper.py`
+    remain the one real, live-enforced boundary, entirely untouched.
+  - **`build_risk_survival_scorecard()`** (Section 7): "Do NOT create a
+    fake single AI quality score... instead create an evidence
+    breakdown" — the directive's own words. Produces 13 independently
+    visible checks (`historical_robustness`/`walk_forward_robustness`/
+    `cost_resilience`/`outlier_resilience`/`sequence_resilience`/
+    `regime_resilience`/`benchmark_performance`/`holdout_evidence`/
+    `statistical_evidence`/`portfolio_interaction`/`drawdown_behavior`/
+    `failure_concentration`/`evidence_quality`), each
+    `pass`/`warn`/`fail`/`insufficient_evidence`/`not_available` — never
+    collapsed into one number. Every check reads an already-real,
+    already-computed signal (the same `classify_candidacy()`/
+    `derive_research_failure_codes()` inputs Paper Readiness already
+    uses, plus — new — the real `AdversarialResearchResult`/
+    `PortfolioResearchReport` axes when a caller supplies them). Zero new
+    backtest/statistical computation.
+  - **`GET /api/sandbox/risk-profile-templates`**, **`POST /api/sandbox/risk-survival/evaluate`**
+    — new stateless (CAGS) endpoints. `adversarial`/`portfolio`/`holdout`
+    are all optional on the evaluate endpoint and never auto-computed
+    (adversarial testing alone costs real, meaningful compute) — omitting
+    one produces an honest `not_available` check, never a silent pass.
+  - **Never a promotion authority** — proven by source-inspection tests,
+    same discipline as every other module this session.
+  - Live-verified against the running dev stack: the risk-profile
+    templates endpoint returns the real literal numbers; a real compiled
+    strategy's risk-survival scorecard returns a genuinely mixed real
+    result (7 pass, 2 fail — cost-sensitivity and its resulting
+    failure-concentration code — 1 insufficient-evidence, 3
+    not-available for the adversarial/holdout/portfolio axes that were
+    not supplied this call) — an honest, non-cherry-picked result.
+  - 18 new backend tests (`tests/test_risk_survival.py`).
+  - **Deliberately NOT implemented this pass** (see the directive's own
+    remaining Sections 3-6, 8-31): position sizing (already exists,
+    reused, not rebuilt); dynamic risk scaling / automated risk
+    refinement / refinement budget & lineage (Sections 4/5/17-20 — would
+    require a persisted, versioned `RiskContract` touching the save
+    schema and live trading loop, a substantially larger and riskier
+    change deferred rather than rushed); holdout freeze/lock state
+    machine (Section 9 — Phase 10's `freeze_strategy()` already provides
+    the real freeze-identity mechanism this reuses; an explicit
+    persisted `FROZEN_FOR_HOLDOUT` state machine is separate, larger
+    work); strategy redundancy detection beyond Portfolio Analyst's
+    existing `high_redundancy` classification (Section 11); execution
+    friction beyond existing cost-sensitivity/extended-cost-attack
+    (Section 13 — already substantially covered); Research Council
+    extension (Section 16 — the pattern already exists via Champion/
+    Challenger and Portfolio Analyst); caching (Section 25 — still
+    deferred, same reasoning as Phase 10); UI (Section 26 — not built
+    this pass, honestly disclosed rather than stubbed).
+  - Verified: targeted suite (209 tests) passed; full backend suite
+    (3634 passed, up from 3616 — the 18 new tests, zero regressions).
+    `mypy`/`ruff` clean.
+
 - **CEO directive "TradeTown — Paper-Trading Readiness + Professional
   Strategy Validation Hardening," Section 1 (Paper-Trading Readiness Gate)
   + Section 2 (Evidence Quality Hierarchy) + Section 3 (Paper-Trading Data

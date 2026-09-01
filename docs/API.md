@@ -1944,6 +1944,36 @@ omit it for an honest `"not_available"` (never a silent pass). Writes
 nothing — this is a research-readiness read, never a promotion: it has
 no path to Champion/Challenger, Certification, or order execution.
 
+### `GET /api/sandbox/risk-profile-templates`
+
+CEO directive "Phase 11: Strategy Intelligence + Hard-Risk Refinement,"
+Section 2. Returns `{ "conservative": RiskProfileTemplate, "professional": ..., "aggressive": ... }`
+— three named, REFERENCE-ONLY risk templates matching the directive's
+own literal numbers. Nothing in this codebase reads these automatically
+into any live risk limit; the CEO-configured `RiskLimits` +
+`app/gatekeeper.py::evaluate_gatekeeper()` remain the one real,
+live-enforced risk boundary.
+
+### `POST /api/sandbox/risk-survival/evaluate`
+
+Same directive, Section 7. Body:
+`{ "definition": CompiledStrategyDefinition, "symbols": [...] | null, "timeframe": "1h", "candlesPerSymbol": 6000, "holdout": HoldoutValidationReport | null, "adversarial": AdversarialResearchResult | null, "portfolio": PortfolioResearchReport | null }`.
+Returns a `RiskSurvivalScorecard` — 13 independently visible
+`checks: RiskSurvivalCheck[]` (`historical_robustness`/
+`walk_forward_robustness`/`cost_resilience`/`outlier_resilience`/
+`sequence_resilience`/`regime_resilience`/`benchmark_performance`/
+`holdout_evidence`/`statistical_evidence`/`portfolio_interaction`/
+`drawdown_behavior`/`failure_concentration`/`evidence_quality`), each
+`"pass" | "warn" | "fail" | "insufficient_evidence" | "not_available"`
+— NEVER collapsed into a single score (see `app/risk_survival.py`'s own
+module docstring). `holdout`/`adversarial`/`portfolio` are all optional
+and never auto-computed by this endpoint — adversarial testing alone
+costs real, meaningful compute; pass a prior `POST /holdout/evaluate` /
+a Research Factory candidate's own real `adversarialResult` / `POST
+/portfolio-analyst/analyze` result to include each as a real axis, or
+omit for an honest `"not_available"`. Writes nothing — research-evidence
+only, never a promotion.
+
 ### `POST /api/sandbox/register-strategy-version`
 
 CEO directive "Professional Quant Firm Phase," Feature 37 — real,

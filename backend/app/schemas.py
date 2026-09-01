@@ -5445,6 +5445,54 @@ class PaperReadinessReport(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+# CEO directive "TradeTown — Phase 11: Strategy Intelligence + Hard-Risk
+# Refinement," Section 2 (Hard-Risk Template System). Three named,
+# reference-only risk templates — NOT trading recommendations, NEVER
+# live-enforced by this schema alone (the one real, already-centralized
+# live risk gate stays `app/gatekeeper.py::evaluate_gatekeeper()` /
+# the CEO-configured `RiskLimits`, both entirely unmodified by this
+# directive). See app/risk_survival.py's own module docstring.
+class RiskProfileTemplate(CamelModel):
+    name: Literal["conservative", "professional", "aggressive"]
+    risk_per_trade_pct_min: float = Field(alias="riskPerTradePctMin")
+    risk_per_trade_pct_max: float = Field(alias="riskPerTradePctMax")
+    max_daily_loss_pct: float = Field(alias="maxDailyLossPct")
+    max_weekly_loss_pct: float | None = Field(default=None, alias="maxWeeklyLossPct")
+    max_open_risk_pct: float = Field(alias="maxOpenRiskPct")
+    max_positions: int = Field(alias="maxPositions")
+    drawdown_scaling: str = Field(alias="drawdownScaling")
+    kill_switch_drawdown_pct: float = Field(alias="killSwitchDrawdownPct")
+    detail: str
+
+
+# Section 7 (Risk-Survival Scorecard). "Do NOT create a fake single AI
+# quality score. Instead create an evidence breakdown" — the directive's
+# own words. Every check below is a real classification over an
+# already-computed real signal (see app/risk_survival.py's own module
+# docstring for the exact source of each) — this schema adds no new
+# backtest/statistical computation of its own.
+RiskSurvivalCheckStatus = Literal["pass", "warn", "fail", "insufficient_evidence", "not_available"]
+
+
+class RiskSurvivalCheck(CamelModel):
+    name: str
+    status: RiskSurvivalCheckStatus
+    detail: str
+
+
+class RiskSurvivalScorecard(CamelModel):
+    """The one real, disclosed evidence breakdown. Never collapsed into
+    a single score — a caller reads `checks` for the full, itemized
+    picture, exactly as Section 7 demands. Read-only, computed fresh
+    every call, nothing persisted."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    checks: list[RiskSurvivalCheck]
+    generated_at: str = Field(alias="generatedAt")
+
+
 class LineageIntegrityIssue(CamelModel):
     """CEO directive "Phase 10: Real Data + True Holdout + Portfolio
     Intelligence," Section H — a real, disclosed lineage-break flag.

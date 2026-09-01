@@ -23,17 +23,19 @@ from app.lineage import check_lineage_integrity
 from app.market_data import ExternalMarketDataProvider, market_data_provider
 from app.market_intelligence import compute_strategy_match
 from app.paper_readiness import evaluate_paper_readiness
+from app.risk_survival import RISK_PROFILE_TEMPLATES, build_risk_survival_scorecard
 from app.portfolio_analyst import analyze_portfolio
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.persistence import persist_modules
 from app.research_experiment import run_research_experiment
 from app.research_discovery import compute_family_research_stats
 from app.research_factory import summarize_lesson_evidence
-from app.research_loop import compute_benchmark_comparisons, compute_outlier_dependence
+from app.research_loop import compute_benchmark_comparisons, compute_outlier_dependence, derive_research_failure_codes
 from app.failure_taxonomy import find_similar_failed_strategies
 from app.quant_research_lab import classify_research_relationship, count_experiments_for_family, find_similar_experiments
 from app.strategy_families import SUPPORTED_FAMILIES, UNSUPPORTED_FAMILIES
 from app.schemas import (
+    AdversarialResearchResult,
     AgentId,
     AgentStrategySurvivalScore,
     BacktestSession,
@@ -64,6 +66,8 @@ from app.schemas import (
     ResearchDiscoveryCycleRecord,
     ResearchLessonRecord,
     ResearchLoopIterationRecord,
+    RiskProfileTemplate,
+    RiskSurvivalScorecard,
     StrategyFamily,
     StrategyHypothesis,
     ModelValidationReport,
@@ -194,6 +198,27 @@ class PaperReadinessRequest(BaseModel):
     # holdout as a real readiness axis. `None` (the default) is honest:
     # this endpoint never runs holdout evaluation automatically.
     holdout: HoldoutValidationReport | None = None
+
+
+# CEO directive "TradeTown — Phase 11: Strategy Intelligence + Hard-Risk
+# Refinement," Section 7. `holdout`/`adversarial`/`portfolio` are all
+# optional and never auto-computed here — adversarial testing alone
+# costs real, meaningful compute (~40s, per this directive's own
+# Section 25 performance note), so this endpoint stays a fast,
+# stateless combination layer; pass a prior real result from
+# `POST /holdout/evaluate` / a Research Factory candidate's own
+# `adversarialResult` / `POST /portfolio-analyst/analyze` to include
+# each as a real axis.
+class RiskSurvivalRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    definition: CompiledStrategyDefinition
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int = Field(default=ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol")
+    holdout: HoldoutValidationReport | None = None
+    adversarial: AdversarialResearchResult | None = None
+    portfolio: PortfolioResearchReport | None = None
 
 
 class CompareChampionChallengerRequest(BaseModel):
@@ -774,6 +799,76 @@ async def paper_readiness_evaluate(payload: PaperReadinessRequest) -> PaperReadi
         tuning_version=payload.definition.version,
         holdout=payload.holdout,
         report_id=f"paper-readiness-{payload.definition.id}-v{payload.definition.version}",
+        generated_at=record.generated_at,
+    )
+
+
+@router.get("/risk-profile-templates", response_model=dict[str, RiskProfileTemplate])
+async def risk_profile_templates() -> dict[str, RiskProfileTemplate]:
+    """CEO directive "Phase 11: Strategy Intelligence + Hard-Risk
+    Refinement," Section 2 — the three named, REFERENCE-ONLY risk
+    templates. Nothing reads these automatically into any live risk
+    limit; the one real, already-centralized live risk gate remains the
+    CEO-configured `RiskLimits` + `app/gatekeeper.py`, both untouched by
+    this endpoint."""
+    return RISK_PROFILE_TEMPLATES
+
+
+@router.post("/risk-survival/evaluate", response_model=RiskSurvivalScorecard)
+async def risk_survival_evaluate(payload: RiskSurvivalRequest) -> RiskSurvivalScorecard:
+    """CEO directive "Phase 11," Section 7 — the one real, itemized
+    evidence breakdown, never a fake single AI quality score (see
+    app/risk_survival.py's own module docstring). `adversarial`/
+    `portfolio` are optional and never auto-computed here (adversarial
+    testing alone costs real, meaningful compute) — pass a prior real
+    result to include each as a real axis; omitting one produces an
+    honest `not_available` check, never a silent pass."""
+    resolved_timeframe = payload.timeframe or payload.definition.timeframe
+    record = run_research_experiment(payload.definition, symbols=payload.symbols, timeframe=resolved_timeframe, candles_per_symbol=payload.candles_per_symbol)
+    primary_symbol = record.symbols_tested[0] if record.symbols_tested else "AAPL"
+    candles = market_data_provider.get_candles(primary_symbol, record.timeframe, payload.candles_per_symbol)
+    quality_report = validate_candle_series(candles, symbol=primary_symbol, timeframe=record.timeframe)
+    evidence_quality = build_evidence_quality_report(
+        definition_id=payload.definition.id,
+        definition_version=payload.definition.version,
+        data_provenance=(record.dataset_metadata.data_category if record.dataset_metadata is not None else "unavailable"),
+        data_quality_valid=quality_report.data_valid,
+        point_in_time_verified=record.point_in_time_verified,
+        holdout_status=payload.holdout.status if payload.holdout is not None else None,
+        sample_size=record.backtest.overall.trade_count,
+        external_provider_available=ExternalMarketDataProvider().is_available(),
+        benchmark_available=len(record.buy_and_hold_baseline) > 0,
+        adversarial_coverage=payload.adversarial is not None,
+        report_id=f"evidence-{payload.definition.id}-v{payload.definition.version}",
+    )
+
+    state = await game_state.snapshot()
+    benchmark_comparisons = compute_benchmark_comparisons(record, risk_per_trade_pct=state.risk_limits.risk_per_trade_pct)
+    outlier_dependent, _largest_win_share = compute_outlier_dependence(record.backtest.overall)
+    similar_experiments = find_similar_experiments(state.quant_research_experiments, hypothesis=payload.definition.source_text, definition_id=payload.definition.id, timeframe=resolved_timeframe)
+    similar_failed = find_similar_failed_strategies(state.strategy_failed_archive, hypothesis=payload.definition.source_text, strategy_name=payload.definition.name)
+    research_relationship = classify_research_relationship(similar_experiments, similar_failed)
+    research_family_experiment_count = count_experiments_for_family(state.quant_research_experiments, definition_name=payload.definition.name)
+    failure_codes = derive_research_failure_codes(
+        record,
+        outlier_dependent=outlier_dependent,
+        benchmark_comparisons=benchmark_comparisons,
+        research_relationship=research_relationship,
+        research_family_experiment_count=research_family_experiment_count,
+        tuning_version=payload.definition.version,
+        risk_per_trade_pct=state.risk_limits.risk_per_trade_pct,
+    )
+
+    return build_risk_survival_scorecard(
+        record,
+        evidence_quality=evidence_quality,
+        benchmark_comparisons=benchmark_comparisons,
+        failure_codes=failure_codes,
+        risk_per_trade_pct=state.risk_limits.risk_per_trade_pct,
+        holdout=payload.holdout,
+        adversarial=payload.adversarial,
+        portfolio=payload.portfolio,
+        report_id=f"risk-survival-{payload.definition.id}-v{payload.definition.version}",
         generated_at=record.generated_at,
     )
 
