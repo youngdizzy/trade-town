@@ -338,7 +338,163 @@ development milestones, not semver releases.
   and making a session-boundary assertion non-deterministic depending on when the suite happened to
   run. Fixed by passing an explicit, confirmed-closed timestamp.
 
+- **`backend/tests/test_research_loop.py` — a real, confirmed floating-point-precision flake in
+  `test_high_risk_per_trade_pct_is_reflected_honestly_in_the_approximation`.** The assertion compared
+  an UNROUNDED product (`low_risk... * 5`) against a value production code built via
+  `round(total_return_r * risk_per_trade_pct, 3)` — for most real `total_return_r` values these land
+  on the same float, but for others (confirmed: `total_return_r=42.91` under the full suite's own
+  particular run order, itself real and order-dependent because `app/market_data.py`'s shared
+  `market_data_provider` singleton's live-quote-price walk is genuinely unseeded — see that module's
+  own docstring) `round(42.91 * 5, 3)` and the literal `42.91 * 5` are different IEEE-754 bit
+  patterns, so `==` spuriously failed. Fixed with a tolerance-based comparison (`pytest.approx(...,
+  abs=0.01)`) proving the same real 5x scaling relationship without being sensitive to which side's
+  rounding artifact lands where — production code is untouched. Verified stable and unrelated to any
+  other change in this pass (confirmed via `git diff` showing zero prior changes to that test file,
+  `app/research_loop.py`, or `app/baseline_comparison.py`).
+
 ### Added
+
+- **"TradeTown — Phase 9: Full Autonomous Quant Research Factory" — closes the two real gaps this
+  session's own Phase 7/8 work had already disclosed as future milestones: research_factory.py's
+  single-lineage mutation loop never ran an adversarial attack (only the population-based discovery
+  path did), and it only ever produced ONE mutation child per parent (never a real ranked sibling
+  set). A Phase 0 recon (before any code) found the overwhelming majority of this directive's own
+  19-phase ask ALREADY real and shipped from Phase 4-8: automatic mutation application, failure-driven
+  operator selection (`_MUTATION_OPERATOR_TYPE`), the real ≥100-trade/≤20%-drawdown/>1.10-PF research
+  candidacy gate, a hard benchmark gate already wired into `classify_candidacy()`, Champion/Challenger
+  isolation (import-shape enforced), a real red-team engine (Phase 8's adversarial suite), and
+  similar-failed-lineage memory (`find_similar_failed_strategies()`, already wired into every
+  iteration). This pass adds only the real, disclosed remainder.**
+  - **Adversarial attack + Research Council on every real candidate.** `run_research_factory_cycle()`
+    (`app/research_factory.py`) now runs a real `run_adversarial_research()` pass and a new
+    `app/research_council.py::convene_research_council()` pass for every generation's own primary
+    candidate (reusing `CompiledStrategyBacktestResult.trades` — no second fetch/backtest, same
+    established pattern as `app/research_discovery.py`).
+  - **`app/research_council.py`** (new) — a deterministic, NO-LLM evidence-aggregation report:
+    RESEARCHER/QUANT/RISK_MANAGER/ADVERSARIAL_RESEARCHER/REGIME_ANALYST/STATISTICIAN/REVIEWER findings,
+    each citing the exact real field it read, plus a real, disclosed, priority-ordered
+    CONTINUE/MUTATE/RETEST/ARCHIVE/INSUFFICIENT_EVIDENCE recommendation derived from the SAME already-
+    decided `candidacy` `classify_candidacy()` computed — never a second judgment, never a gate (proven
+    by a source-inspection test: `research_council` appears nowhere in `research_loop.py`/
+    `champion_challenger.py`/`strategy_lab.py`). PORTFOLIO_ANALYST explicitly NOT IMPLEMENTED — a
+    single candidate's own record carries no real cross-strategy/portfolio evidence to route.
+  - **`app/research_fitness.py`** (new) — `rank_candidates()`, a real, disclosed, robustness-first sort
+    (never raw-return-first, matching the directive's own explicit example: $100k profit/35% drawdown
+    must not beat $30k profit/10% drawdown): lifecycle tier → evidence floor → drawdown severity →
+    profit factor → expectancy → complexity (the real, already-existing `StrategyComplexityScore`, now
+    finally wired in as Phase 12's own tie-breaker) — a sort key and a real, cited explanation string
+    (`describe_fitness_rank()`), never a fabricated single "fitness score."
+  - **Real multi-child branching.** `run_research_factory_cycle()` gained `max_children_per_parent`
+    (pure-function default `1`, exactly reproducing every pre-existing single-child behavior — see
+    below) and `max_runtime_seconds` (a real wall-clock safety net, default `0`/disabled). When
+    `>1`, each generation builds up to that many real mutation-candidate SIBLINGS — one per DISTINCT
+    real diagnosed `FailureCode` in that generation's own `iteration.failure_codes` (never a fabricated
+    split of one code; a generation with only one real diagnosed code still produces exactly one real
+    child). Each sibling is independently compiled/backtested/adversarially attacked, then ranked; only
+    the best-ranked COMPILED child continues the lineage — every sibling, winning or not, is
+    permanently recorded with its own real `siblingRank`/`fitnessRationale` (`null` for every
+    single-child generation, never a vacuous "rank 1 of 1"). A real, confirmed correctness fix along
+    the way: reusing the top-priority failure code's own descriptive text for a DIFFERENT code would
+    have misdescribed the actual mutation, so `_mutation_record_for_code()` looks up each code's own
+    real template independently (hoisted `FAILURE_CODE_MUTATION_PRIORITY` from a function-local list
+    inside `app/research_loop.py::propose_mutation()` to a shared module constant so both stay in sync).
+  - **Structured lesson-memory retrieval.** `ResearchLessonRecord` gained a `failureCodes` field (real,
+    additive, defaulted empty); `app/research_factory.py::retrieve_relevant_lessons()` filters by EXACT
+    match (same strategy family AND an overlapping real failure code), most-recent-first — deliberately
+    NOT `app/failure_taxonomy.py::find_similar_failed_strategies()`'s fuzzy word-overlap match, which
+    already serves a different purpose (screening a brand-new proposal against the permanent failed
+    archive) and stays untouched. Retrieved lesson ids feed into each child's own `lessonsUsed`.
+  - **`DataSplit` (Phase 1 — True Holdout Architecture).** A real, disclosed `train`/`validation`/
+    `test`/`holdout`/`unavailable` Literal; `DatasetMetadata.dataSplit` defaults to (and
+    `app/dataset_registry.py::build_dataset_metadata()` always sets) `"unavailable"` — this codebase's
+    mock provider has no real date-partitioned historical dataset to carve a genuine split from (same
+    honest limitation `evaluate_holdout_availability()` already disclosed for holdout specifically).
+    The field exists so a real historical provider can plug into it later with no further schema change.
+  - **Real hard limits, disclosed.** `FactoryRunConfig` gained `maxChildrenPerParent`/
+    `maxRuntimeSeconds`; `FactoryRunRecord` gained a real, observed `runtimeSeconds`. A real, confirmed
+    double-append bug caught and fixed DURING this pass's own testing (before it ever reached a
+    committed test): the original branching draft appended a chosen best child to `candidates` both via
+    the sibling batch and again at the top of the next loop iteration — fixed by appending each real
+    candidate exactly once and updating an already-appended record in place, by id, wherever it landed
+    (never assumed to be `candidates[-1]`, which is false once a chosen child isn't the last sibling
+    tested) — proven by a new dedicated `test_no_duplicate_candidate_ids` test.
+  - **Live default vs. pure-function default, deliberately different.** `run_research_factory_cycle()`
+    itself defaults `max_children_per_parent=1`/`max_runtime_seconds=0` — the exact original Phase 7
+    shape — so all 49 pre-existing `test_research_factory.py` tests are completely unaffected with zero
+    risk. `app/state.py::submit_research_factory_run()` (the real live entry point behind
+    `POST /research-factory/run`) applies the richer module constants
+    (`MAX_CHILDREN_PER_PARENT=3`/`MAX_RUNTIME_SECONDS=300`) by default for every NEW run, with both
+    explicitly overridable via the endpoint's own optional request fields.
+  - **Scope cuts, disclosed rather than hidden**: no real external market-data adapter (unchanged —
+    still no API keys in this environment); no real holdout dataset (see `DataSplit` above); entry/
+    exit-condition/timeframe/position-sizing mutation operators remain NOT IMPLEMENTED (same real
+    compiler-grammar limitation Phase 7 already found and disclosed — tracing
+    `compile_strategy_text()`'s trigger-matching confirmed this is unchanged); PORTFOLIO_ANALYST role
+    NOT IMPLEMENTED (see above); the Research Council's "roles" are real, deterministic, evidence-
+    citing functions, never new agent personas/dialogue (this codebase runs no LLM at runtime anywhere).
+  - 42 new backend tests (`test_research_fitness.py` 11, `test_research_council.py` 14,
+    `test_research_factory_branching.py` 14, `test_state_research_factory.py` 3) plus all 49 pre-
+    existing `test_research_factory.py` tests re-run clean against the enriched, backward-compatible
+    function. Verified: full backend suite, `mypy`/`ruff` clean; frontend `tsc`/lint/build clean.
+
+- **"TradeTown — Phase 9: Real Market Data + Evidence Integrity Foundation" — a real, versioned,
+  disclosed provenance/quality/feature layer under the existing Research Loop/Discovery Engine/
+  Adversarial Engine, and elimination of a real, previously-identified redundant candle-fetch.**
+  RESEARCH FIRST found this codebase already had more of this directive's own scope built than
+  expected: `app/market_data.py`'s `MarketDataProvider` abstraction (mock is the only real
+  implementation — no API keys, no external adapter), `app/leakage_audit.py`'s real structural
+  point-in-time ("truncate and re-detect") proof, and `app/technical_indicators.py`'s single
+  authoritative indicator implementation were all already real. This pass adds only the real,
+  disclosed gaps on top of that foundation — never a second data provider, never a second
+  backtesting engine, never a weakened hard gate, and no claim of production/live readiness.
+  - **`app/dataset_registry.py`** (new) — `build_dataset_metadata()` builds a real `DatasetMetadata`
+    record (symbols/timeframe/coverage/missing-bar disclosure/`dataCategory`) from candles a caller
+    already retrieved, versioned by a real SHA-256 content hash of the actual retrieved OHLCV values
+    — never a fabricated or incrementing counter. Honestly disclosed: since the mock provider is
+    deterministically seeded from `(symbol, timeframe)` only (never wall-clock time), the same
+    request shape hashes to the same version today — a real, disclosed property of the mock provider,
+    not a hidden limitation.
+  - **`app/data_quality.py`** (new) — `validate_candle_series()` runs real, mechanical structural
+    checks (never an ML "quality score") over a candle series: timestamp ordering, duplicate
+    timestamps, gaps against the timeframe's expected bar spacing, impossible OHLC relationships,
+    non-positive prices, negative volume, timeframe/symbol mismatches, insufficient history, and
+    unparseable/timezone-naive timestamps. Exposed standalone via `GET /api/sandbox/data-quality`.
+  - **`app/feature_registry.py`** (new) — `FEATURE_REGISTRY` maps every `StrategyIndicatorName` to a
+    real `FeatureDescriptor` (version/source fields/lookback/warmup/provenance) describing an
+    already-real, already-shared function in `app/technical_indicators.py` or one of the AHL-directive
+    research wrappers — metadata only, never a second indicator implementation or a computed-value
+    cache. `feature_versions_for_definition()` resolves the distinct indicators a compiled strategy's
+    own sequence references.
+  - **Redundant backtest/candle-fetch elimination** — `run_compiled_strategy_backtest()`
+    (`app/strategy_engine.py`) already computed a real per-trade sequence internally but discarded it
+    after aggregation; it now exposes that sequence via a new `CompiledStrategyBacktestResult.trades`
+    field. `run_adversarial_research()` (`app/adversarial_research.py`) gained an optional
+    `closed_trades` parameter — when a caller (now `app/research_discovery.py`) already has the real
+    trades from its own backtest, it passes them straight through instead of `run_adversarial_research`
+    independently re-fetching candles and re-running `backtest_symbol_over_candles()` a second time.
+    `None` (the default) preserves the original standalone behavior for every existing caller/test.
+    Proven, not assumed: a new test monkeypatches `market_data_provider.get_candles` and asserts zero
+    calls when `closed_trades` is supplied, and exactly one call per symbol when it isn't.
+  - **`ResearchExperimentRecord`** gained `datasetMetadata`/`pointInTimeVerified`/`featureVersions`
+    (all `Optional`/defaulted for backward compatibility with every existing hand-built test fixture),
+    populated by `run_research_experiment()` — `datasetMetadata` from one extra, cheap (pure in-memory,
+    no I/O), disclosed `get_candles()` call solely for content-hashing (never a second backtest or
+    strategy execution); `pointInTimeVerified` is a direct, unmodified read of
+    `look_ahead_audit.verdict == "clean"` (never a second, independent look-ahead check); `featureVersions`
+    from `feature_registry.py`. Since `QuantResearchExperiment.record` already embeds
+    `ResearchExperimentRecord` directly, every persisted `GameSaveState.quant_research_experiments`
+    entry now carries this same real provenance with no further schema change.
+  - **Scope cuts, disclosed rather than hidden**: no real external market-data adapter was built (no
+    API keys in this environment — the mock provider remains the only real implementation); no
+    holdout/point-in-time-correct out-of-sample dataset exists to certify against (unchanged from
+    Phase 8's own disclosed `evaluate_holdout_availability()` → `"not_available"`); walk-forward's own
+    per-window candle fetches are not individually dataset-tagged this pass; data-quality validation
+    is exposed standalone (`GET /api/sandbox/data-quality`) rather than folded into every research
+    record, to avoid bloating an already-large schema mid-session.
+  - 32 new backend tests (`test_dataset_registry.py`, `test_data_quality.py`, `test_feature_registry.py`,
+    `test_redundant_fetch_elimination.py`) plus the existing `test_research_experiment.py`/
+    `test_strategy_engine.py`/`test_adversarial_research.py`/`test_research_discovery.py` suites
+    re-run clean against the new fields/parameter. Verified: full backend suite, `mypy`/`ruff` clean.
 
 - **"TradeTown — Phase 8: Autonomous Strategy Discovery + Adversarial Research Engine" — turns the
   factory from "mutate one parent" into a real, miniature quantitative research department: generate

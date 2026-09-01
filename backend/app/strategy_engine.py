@@ -829,6 +829,13 @@ def run_compiled_strategy_backtest(
         regimeVolatilityBreakdown=regime_volatility_breakdown,
         modelValidation=model_validation,
         monteCarlo=monte_carlo,
+        # CEO directive "Phase 9 / Real Market Data + Evidence Integrity
+        # Foundation," Section 10 — the real per-trade sequence this
+        # function already computed above (never a second backtest),
+        # exposed so callers (app/adversarial_research.py via
+        # app/research_discovery.py) can reuse it directly instead of
+        # independently re-fetching candles and re-backtesting.
+        trades=all_trades,
         dataHonestyNote=(
             "Every candle in this run is app/market_data.py's own real, procedurally-generated (seeded, "
             "reproducible) mock OHLCV series — never real historical market data. All win/loss/expectancy "

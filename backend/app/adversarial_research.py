@@ -445,12 +445,25 @@ def run_adversarial_research(
     symbols: list[str] | None = None,
     timeframe: str = DEFAULT_TIMEFRAME,
     candles_per_symbol: int = DEFAULT_CANDLES_PER_SYMBOL,
+    closed_trades: list[EmaPullbackTradeRecord] | None = None,
 ) -> AdversarialResearchResult:
     """Section 8D's one real orchestrator. Fetches the real closed-trade
     sequence ONCE and reuses it across every attack that needs raw
-    trades — never a second, independent backtest per attack."""
+    trades — never a second, independent backtest per attack.
+
+    CEO directive "Phase 9 / Real Market Data + Evidence Integrity
+    Foundation," Section 10 — `closed_trades` lets a caller that already
+    ran `run_compiled_strategy_backtest()` (which now exposes its own
+    real per-trade sequence via `CompiledStrategyBacktestResult.trades`)
+    pass those trades straight through, eliminating this function's own
+    independent re-fetch-and-re-backtest entirely (see
+    app/research_discovery.py). `None` (the default) preserves the
+    original standalone behavior for every existing caller/test."""
     resolved_symbols = symbols if symbols is not None else [s for s, _name, _cat in SEED_SYMBOLS]
-    closed_trades = _closed_trades(definition, resolved_symbols, timeframe, candles_per_symbol)
+    if closed_trades is None:
+        closed_trades = _closed_trades(definition, resolved_symbols, timeframe, candles_per_symbol)
+    else:
+        closed_trades = sorted((t for t in closed_trades if t.outcome != "open"), key=lambda t: t.entry_timestamp)
 
     outlier_result = run_outlier_removal_attack(closed_trades)
     worst_period_result = run_worst_period_attack(closed_trades)

@@ -56,6 +56,21 @@ never blended with `backtest`'s own R-multiple-based stats into a single
 "beat the market by X%" figure (different units — see that module's own
 docstring); it exists purely as real regime context, not a performance
 comparison.
+
+CEO directive "Phase 9 / Real Market Data + Evidence Integrity
+Foundation" adds `dataset_metadata`/`point_in_time_verified`/
+`feature_versions`. `dataset_metadata` (app/dataset_registry.py) needs
+the actual retrieved candle content to content-hash — `backtest` above
+computes trades from candles internally but never returns the raw
+series, and returning full OHLCV on every `CompiledStrategyBacktestResult`
+would bloat every existing caller's payload for a metadata-only need. So
+this function fetches candles ONE extra time, here only, solely to
+version them — a real, disclosed, cheap (`get_candles()` is pure
+in-memory generation, no I/O) extra data-fetch, never a second backtest
+or a second execution of any strategy logic. `point_in_time_verified` is
+a direct, unmodified read of `look_ahead_audit.verdict == "clean"` —
+never a second, independent look-ahead check. `feature_versions` comes
+straight from app/feature_registry.py's real registry.
 """
 from __future__ import annotations
 
@@ -63,7 +78,10 @@ from datetime import datetime, timezone
 
 from app.baseline_comparison import compute_buy_and_hold_baseline
 from app.cost_sensitivity import run_cost_sensitivity
+from app.dataset_registry import build_dataset_metadata
+from app.feature_registry import feature_versions_for_definition
 from app.leakage_audit import audit_definition_for_look_ahead
+from app.market_data import market_data_provider
 from app.overfitting_diagnostics import classify_overfitting_risk
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.schemas import CompiledStrategyDefinition, ResearchExperimentRecord
@@ -142,6 +160,16 @@ def run_research_experiment(
     conclusion = _synthesize_conclusion((model_validation_verdict, walk_forward.verdict, parameter_sensitivity.verdict, cost_sensitivity.verdict, look_ahead_audit.verdict))
     overfitting_diagnosis = classify_overfitting_risk(walk_forward, parameter_sensitivity, cost_sensitivity)
 
+    candles_by_symbol = {symbol: market_data_provider.get_candles(symbol, timeframe, candles_per_symbol) for symbol in resolved_symbols}
+    dataset_metadata = build_dataset_metadata(
+        candles_by_symbol,
+        symbols=resolved_symbols,
+        timeframe=timeframe,
+        candles_per_symbol_requested=candles_per_symbol,
+    )
+    point_in_time_verified = look_ahead_audit.verdict == "clean"
+    feature_versions = feature_versions_for_definition(definition)
+
     return ResearchExperimentRecord(
         id=f"experiment-{definition.id}-{definition.version}",
         definitionId=definition.id,
@@ -160,6 +188,9 @@ def run_research_experiment(
         overfittingDiagnosis=overfitting_diagnosis,
         conclusion=conclusion,
         buyAndHoldBaseline=buy_and_hold_baseline,
+        datasetMetadata=dataset_metadata,
+        pointInTimeVerified=point_in_time_verified,
+        featureVersions=feature_versions,
         dataHonestyNote=(
             "Every real number in this record comes from app/market_data.py's own real, procedurally-generated (seeded, reproducible) "
             "mock OHLCV series — never real historical market data, and 'candlesPerSymbol' above is this record's own honest substitute "

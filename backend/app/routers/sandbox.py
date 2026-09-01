@@ -10,10 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.champion_challenger import get_current_champion
 from app.cost_sensitivity import run_cost_sensitivity
+from app.data_quality import validate_candle_series
 from app.ema_pullback_research import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, run_ema_pullback_research
 from app.evaluation_simulator import compare_evaluation_policies
 from app.failure_taxonomy import compute_top_failure_modes
 from app.leakage_audit import audit_definition_for_look_ahead
+from app.market_data import market_data_provider
 from app.market_intelligence import compute_strategy_match
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.persistence import persist_modules
@@ -33,6 +35,7 @@ from app.schemas import (
     CompiledStrategyDefinition,
     CompileStrategyRequest,
     CostSensitivityResult,
+    DataQualityReport,
     EmaPullbackResearchResult,
     EvaluationPolicyComparisonReport,
     FactoryRunRecord,
@@ -166,6 +169,13 @@ class SubmitResearchFactoryRunRequest(BaseModel):
     symbols: list[str] | None = None
     timeframe: str | None = None
     candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
+    # CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+    # Factory," Phase 5 — `None` (the default) lets app/state.py's
+    # submit_research_factory_run() apply its own real, richer defaults
+    # (app/research_factory.py's MAX_CHILDREN_PER_PARENT/
+    # MAX_RUNTIME_SECONDS) for every NEW live run.
+    max_children_per_parent: int | None = Field(default=None, alias="maxChildrenPerParent")
+    max_runtime_seconds: int | None = Field(default=None, alias="maxRuntimeSeconds")
 
 
 class SubmitResearchDiscoveryCycleRequest(BaseModel):
@@ -532,6 +542,22 @@ async def survivorship_bias(symbol: str = Query(..., min_length=1, max_length=16
     return check_survivorship_bias(symbol)
 
 
+@router.get("/data-quality", response_model=DataQualityReport)
+async def data_quality(
+    symbol: str = Query(..., min_length=1, max_length=16),
+    timeframe: str = Query(DEFAULT_TIMEFRAME),
+    candles_per_symbol: int = Query(ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol", ge=1, le=20000),
+) -> DataQualityReport:
+    """CEO directive "Phase 9 / Real Market Data + Evidence Integrity
+    Foundation," Section 3 — real, mechanical structural checks (never
+    an ML "quality score") over one symbol/timeframe's actual retrieved
+    candle series (see app/data_quality.py's own module docstring for
+    the exact real checks). Read-only, computed fresh every call,
+    nothing persisted."""
+    candles = market_data_provider.get_candles(symbol, timeframe, candles_per_symbol)
+    return validate_candle_series(candles, symbol=symbol, timeframe=timeframe)
+
+
 @router.post("/research-experiment", response_model=ResearchExperimentRecord)
 async def research_experiment(
     definition: CompiledStrategyDefinition,
@@ -717,7 +743,16 @@ async def run_research_factory_run_endpoint(payload: SubmitResearchFactoryRunReq
     and re-testing each real, bounded, deterministic mutation. Never
     calls Champion/Challenger or any promotion path — a real survivor
     is only ever LABELED eligible; a separate, explicit, unmodified
-    `POST /champion-challenger/compare` call is still required."""
+    `POST /champion-challenger/compare` call is still required.
+
+    CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+    Factory" — every generation now also runs a real adversarial attack
+    + Research Council pass (see app/research_factory.py's own updated
+    module docstring), and `maxChildrenPerParent`/`maxRuntimeSeconds`
+    (both optional; `None` applies this codebase's own real, disclosed
+    defaults) enable real, bounded tree-shaped branching: up to that
+    many real sibling mutation candidates per generation, ranked by a
+    robustness-first (never raw-return-first) comparator."""
     state, run = await game_state.submit_research_factory_run(
         payload.hypothesis,
         payload.definition,
@@ -726,6 +761,8 @@ async def run_research_factory_run_endpoint(payload: SubmitResearchFactoryRunReq
         symbols=payload.symbols,
         timeframe=payload.timeframe,
         candles_per_symbol=payload.candles_per_symbol,
+        max_children_per_parent=payload.max_children_per_parent,
+        max_runtime_seconds=payload.max_runtime_seconds,
     )
     persist_modules(state)
     return run

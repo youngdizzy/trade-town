@@ -5094,6 +5094,138 @@ class CompileStrategyRequest(CamelModel):
     previous_version: int | None = Field(default=None, alias="previousVersion")
 
 
+# ============================================================================
+# CEO directive "TradeTown — Phase 9: Real Market Data + Evidence Integrity
+# Foundation." See app/dataset_registry.py, app/data_quality.py, and
+# app/feature_registry.py's own module docstrings for the complete real
+# architecture and every disclosed scope cut.
+# ============================================================================
+
+# Section 1/2 — `app/market_data.py` already has a real, clean
+# `MarketDataProvider(ABC)` interface with exactly one real implementation
+# today (`MockMarketDataProvider`, every `Candle.data_status == "simulated"`,
+# never silently upgraded). `DatasetSource` names that real fact — a second
+# literal value is reserved for a real future adapter, never implemented
+# here (this repo holds no API keys/real market-data credentials — see that
+# module's own docstring).
+DatasetSource = Literal["mock_provider", "external_real_provider"]
+
+# CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+# Factory," Phase 1 (True Holdout Architecture) — a real, disclosed
+# partition concept. This codebase's mock candle provider has no real
+# date-partitioned historical dataset to carve a genuine train/
+# validation/test/holdout split from (same disclosed limitation
+# app/adversarial_research.py's `evaluate_holdout_availability()`
+# already established for holdout specifically) — every dataset this
+# codebase can actually build today is honestly "unavailable" for this
+# purpose, never fabricated as one of the other four values. The Literal
+# exists so a real historical provider can plug into this SAME field
+# later without a schema change.
+DataSplit = Literal["train", "validation", "test", "holdout", "unavailable"]
+
+
+class DatasetMetadata(CamelModel):
+    """Section 6 — a real, immutable identifier for the EXACT candle data
+    one research pass actually consumed. `dataset_version` is a real
+    SHA-256 checksum of the actual retrieved OHLCV values (see
+    app/dataset_registry.py's `build_dataset_metadata()`) — because
+    `MockMarketDataProvider` is fully deterministic (seeded from
+    `(symbol, timeframe)` only, NEVER wall-clock time — see that module's
+    own docstring), the SAME real input combo always produces the SAME
+    real hash today; the "new source data -> new dataset version"
+    requirement is enforced BY CONSTRUCTION (the hash changes if and only
+    if the retrieved content changes), not merely asserted, but has never
+    yet been OBSERVED to fire since this mock source never changes over
+    time — an honest, disclosed state of affairs until a real,
+    time-varying data source exists. `coverage_pct`/`missing_bar_symbols`
+    are real (candles actually returned vs. requested), never fabricated
+    as 100%."""
+
+    dataset_id: str = Field(alias="datasetId")
+    dataset_version: str = Field(alias="datasetVersion")
+    source: DatasetSource
+    data_category: DataCategory = Field(alias="dataCategory")
+    symbols: list[str]
+    timeframe: str
+    candles_per_symbol_requested: int = Field(alias="candlesPerSymbolRequested")
+    candles_per_symbol_retrieved: dict[str, int] = Field(default_factory=dict, alias="candlesPerSymbolRetrieved")
+    coverage_pct: float = Field(alias="coveragePct")
+    missing_bar_symbols: list[str] = Field(default_factory=list, alias="missingBarSymbols")
+    adjustment_policy: str = Field(alias="adjustmentPolicy")
+    retrieved_at: str = Field(alias="retrievedAt")
+    # CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+    # Factory," Phase 1 — see DataSplit's own docstring above. Defaulted
+    # to "unavailable" (never a silently-omitted field) for backward
+    # compatibility with every pre-existing persisted record.
+    data_split: DataSplit = Field(default="unavailable", alias="dataSplit")
+
+
+# Section 3 — a real, disclosed, checkable subset of the directive's own
+# requested list. Corporate-action/split-dividend consistency is
+# deliberately NOT one of these codes — `MockMarketDataProvider` models no
+# corporate actions at all (see `DatasetMetadata.adjustment_policy`'s own
+# real, honest disclosure), so a real check would have nothing to check
+# against; adding one would be exactly the "invented assumption dressed up
+# as rigor" this whole codebase's own engineering discipline forbids.
+DataQualityCode = Literal[
+    "timestamp_out_of_order",
+    "duplicate_timestamp",
+    "missing_bars",
+    "impossible_ohlc",
+    "non_positive_price",
+    "negative_volume",
+    "timeframe_mismatch",
+    "symbol_mismatch",
+    "insufficient_history",
+    "timezone_invalid",
+]
+
+
+# Named `CandleDataQualityIssue` (not `DataQualityIssue`) — that shorter
+# name is already real and in use for a materially different concept
+# (trade/decision-record data-quality monitoring — see
+# `DataQualityIssueCategory` above); never renamed or reused for this,
+# distinct, candle-series concept.
+class CandleDataQualityIssue(CamelModel):
+    code: DataQualityCode
+    evidence: str
+
+
+class DataQualityReport(CamelModel):
+    """Section 3's formal report. `data_valid` is real and derived
+    directly from `issues` being empty — never independently asserted.
+    See app/data_quality.py's own `validate_candle_series()` for the
+    exact real checks. Bad records are never silently discarded — every
+    one that fails a check is named in `issues` with real evidence."""
+
+    id: str
+    symbol: str
+    timeframe: str
+    candle_count: int = Field(alias="candleCount")
+    data_valid: bool = Field(alias="dataValid")
+    issues: list[CandleDataQualityIssue] = Field(default_factory=list)
+    generated_at: str = Field(alias="generatedAt")
+
+
+class FeatureDescriptor(CamelModel):
+    """Section 5's real feature-store METADATA (never a second indicator
+    implementation — every real value here describes an already-real,
+    already-shared function in `app/technical_indicators.py`, the SAME
+    single authoritative implementation research/backtest/paper/live all
+    already call). See app/feature_registry.py's own module docstring for
+    the full real registry and why persisting this metadata (rather than
+    a computed-value cache) is this pass's own honest, disclosed scope."""
+
+    name: str
+    version: str
+    parameters: dict[str, str] = Field(default_factory=dict)
+    source_fields: list[str] = Field(default_factory=list, alias="sourceFields")
+    lookback_bars: int | None = Field(default=None, alias="lookbackBars")
+    warmup_bars: int | None = Field(default=None, alias="warmupBars")
+    timestamp_semantics: str = Field(alias="timestampSemantics")
+    provenance: str
+
+
 class CompiledStrategyBacktestResult(CamelModel):
     """A real bar-by-bar replay of one `CompiledStrategyDefinition`
     (status == "compiled" only) against real (mock) candle history —
@@ -5132,6 +5264,18 @@ class CompiledStrategyBacktestResult(CamelModel):
     monte_carlo: StrategyMonteCarloResult | None = Field(default=None, alias="monteCarlo")
     data_honesty_note: str = Field(alias="dataHonestyNote")
     generated_at: str = Field(alias="generatedAt")
+    # CEO directive "TradeTown — Phase 9: Real Market Data + Evidence
+    # Integrity Foundation," Section 10 — the real, individually-traceable
+    # closed-trade sequence this engine already computes internally
+    # (`all_trades` in `run_compiled_strategy_backtest()`) but previously
+    # discarded after aggregation. Exposed here so
+    # app/adversarial_research.py can consume it directly instead of
+    # independently re-fetching candles and re-running the backtest — the
+    # real, confirmed redundant-compute this pass eliminates.
+    # `default_factory=list` — a result built before this field existed
+    # (e.g. a hand-built test fixture) reads an honestly empty list, never
+    # a fabricated trade.
+    trades: list[EmaPullbackTradeRecord] = Field(default_factory=list)
 
 
 class WalkForwardWindowResult(CamelModel):
@@ -5410,6 +5554,22 @@ class ResearchExperimentRecord(CamelModel):
     buy_and_hold_baseline: list[BuyAndHoldBaseline] = Field(default_factory=list, alias="buyAndHoldBaseline")
     data_honesty_note: str = Field(alias="dataHonestyNote")
     generated_at: str = Field(alias="generatedAt")
+    # CEO directive "TradeTown — Phase 9: Real Market Data + Evidence
+    # Integrity Foundation" — real dataset/feature/point-in-time provenance
+    # for this exact research pass. `dataset_metadata` covers the PRIMARY
+    # backtest's own real candle retrieval (see app/dataset_registry.py) —
+    # walk-forward's own per-window candle fetches are NOT individually
+    # tagged this pass (a real, disclosed scope cut, not an oversight).
+    # `point_in_time_verified` is a direct, unmodified read of
+    # `look_ahead_audit.verdict == "clean"` (app/leakage_audit.py's own
+    # real, already-tested structural truncate-and-redetect proof) — never
+    # a second, independent look-ahead check. `feature_versions` are real
+    # `FeatureDescriptor.version` strings for every indicator this
+    # definition's own compiled sequence actually references (see
+    # app/feature_registry.py's `feature_versions_for_definition()`).
+    dataset_metadata: DatasetMetadata | None = Field(default=None, alias="datasetMetadata")
+    point_in_time_verified: bool | None = Field(default=None, alias="pointInTimeVerified")
+    feature_versions: list[str] = Field(default_factory=list, alias="featureVersions")
 
 
 QuantResearchOutcome = Literal["promising", "rejected", "inconclusive"]
@@ -12433,6 +12593,18 @@ class ResearchLessonRecord(CamelModel):
     confidence_pct: float = Field(alias="confidencePct")
     lesson: str
     created_at: str = Field(alias="createdAt")
+    # CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+    # Factory," Phase 8 — the real, already-diagnosed `FailureCode`s
+    # (app/failure_taxonomy.py) this iteration's own backtest produced,
+    # so a future iteration can retrieve lessons by STRUCTURED match
+    # (same family AND overlapping failure code) rather than only
+    # app/failure_taxonomy.py's fuzzy word-overlap search (a different,
+    # already-real mechanism for a different purpose — screening a NEW
+    # proposal against the PERMANENT failed archive). Empty for every
+    # pre-existing persisted lesson (this field did not exist when they
+    # were created) and for a lesson with no real diagnosed failure
+    # (an accepted candidate) — never backfilled, never guessed.
+    failure_codes: list[FailureCode] = Field(default_factory=list, alias="failureCodes")
 
 
 class ResearchLoopIterationRecord(CamelModel):
@@ -12781,6 +12953,50 @@ class MutationCandidate(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+# Factory," Phases 14-15 (Agent Roles / Research Council). NO LLM runs
+# at runtime anywhere in this codebase (see app/strategy_compiler.py's
+# own module docstring) — so a "role" here is a deterministic Python
+# function reading ALREADY-REAL evidence this same candidate's own
+# `ResearchLoopIterationRecord`/`AdversarialResearchResult`/
+# `StrategyComplexityScore` already computed, never a persona with its
+# own invented opinion. Every `finding` cites the exact real field(s)
+# it read via `evidence_references` — this is real, disclosed evidence
+# routing, never an "AI score." See app/research_council.py's own
+# module docstring for the exact per-role rule and the aggregate
+# recommendation's own priority order (which can never override the
+# real research-candidate gate `classify_candidacy()` already applies).
+ResearchCouncilRole = Literal["researcher", "quant", "risk_manager", "adversarial_researcher", "regime_analyst", "statistician", "reviewer"]
+ResearchCouncilRecommendation = Literal["continue", "mutate", "retest", "archive", "insufficient_evidence"]
+
+
+class ResearchCouncilFinding(CamelModel):
+    role: ResearchCouncilRole
+    finding: str
+    evidence_references: list[str] = Field(default_factory=list, alias="evidenceReferences")
+    # A real, disclosed confidence read tied to evidence sufficiency
+    # (e.g. trade count vs. the real RESEARCH_CANDIDATE_MIN_TRADE_COUNT
+    # floor) — never a subjective vibe.
+    confidence: Literal["high", "medium", "low"]
+
+
+class ResearchCouncilReport(CamelModel):
+    """Section 15's real, deterministic evidence-aggregation report for
+    one candidate. `recommendation` is derived by a real, disclosed
+    priority rule over the findings above (see
+    app/research_council.py::convene_research_council()) — advisory
+    only, never wired into `classify_candidacy()`/Champion-Challenger/
+    Certification/Hall-of-Fame, exactly like `StrategyComplexityScore`
+    and `OverfittingDiagnosis` before it."""
+
+    id: str
+    candidate_id: str = Field(alias="candidateId")
+    findings: list[ResearchCouncilFinding] = Field(default_factory=list)
+    recommendation: ResearchCouncilRecommendation
+    recommendation_reason: str = Field(alias="recommendationReason")
+    generated_at: str = Field(alias="generatedAt")
+
+
 class FactoryCandidateRecord(CamelModel):
     """One real node in a Research Factory run's lineage tree. `iteration`
     is `None` only when `lifecycle_stage == "compile_rejected"` — a
@@ -12823,6 +13039,18 @@ class FactoryCandidateRecord(CamelModel):
     duplicate_of_candidate_id: str | None = Field(default=None, alias="duplicateOfCandidateId")
     adversarial_result: AdversarialResearchResult | None = Field(default=None, alias="adversarialResult")
     scorecard_classification: ResearchScorecardClassification | None = Field(default=None, alias="scorecardClassification")
+    # CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+    # Factory," Phase 5/6/15 — additive-only. `sibling_rank`/
+    # `fitness_rationale` are set only when this generation produced
+    # more than one real mutation-child sibling to rank (see
+    # app/research_fitness.py); `None` for every single-child generation
+    # (including every pre-Phase-9.2 record), never a fabricated "rank 1
+    # of 1." `research_council` is `None` whenever the candidate never
+    # reached a real backtest (compile_rejected) — a council with
+    # nothing to read produces no real findings, never invented ones.
+    sibling_rank: int | None = Field(default=None, alias="siblingRank")
+    fitness_rationale: str | None = Field(default=None, alias="fitnessRationale")
+    research_council: ResearchCouncilReport | None = Field(default=None, alias="researchCouncil")
 
 
 class FactoryRunConfig(CamelModel):
@@ -12836,6 +13064,12 @@ class FactoryRunConfig(CamelModel):
     max_total_backtests: int = Field(alias="maxTotalBacktests")
     max_mutations_per_parent: int = Field(alias="maxMutationsPerParent")
     max_iterations_per_family: int = Field(alias="maxIterationsPerFamily")
+    # CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
+    # Phase 5 — real, disclosed, additive-only hard limits. Defaulted so
+    # every pre-existing hand-built `FactoryRunConfig` test fixture in
+    # this suite keeps constructing without change.
+    max_children_per_parent: int = Field(default=1, alias="maxChildrenPerParent")
+    max_runtime_seconds: int = Field(default=0, alias="maxRuntimeSeconds")
 
 
 class FactoryRunRecord(CamelModel):
@@ -12868,6 +13102,12 @@ class FactoryRunRecord(CamelModel):
     current_champion_definition_id: str | None = Field(default=None, alias="currentChampionDefinitionId")
     current_champion_definition_version: int | None = Field(default=None, alias="currentChampionDefinitionVersion")
     created_at: str = Field(alias="createdAt")
+    # CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
+    # Phase 5/16 — the real, observed wall-clock duration of this run,
+    # for the UI's own "RESEARCH BUDGET"/"STOP REASON" disclosure.
+    # `None` for every pre-existing persisted run (this field did not
+    # exist when it was created — never backfilled, never guessed).
+    runtime_seconds: float | None = Field(default=None, alias="runtimeSeconds")
 
 
 class LessonEvidenceSummary(CamelModel):

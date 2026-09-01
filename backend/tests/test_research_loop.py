@@ -10,6 +10,8 @@ strategy and real (mock) candle data end to end.
 """
 from __future__ import annotations
 
+import pytest
+
 from app.research_loop import (
     MAX_ITERATIONS_PER_FAMILY,
     MAX_MUTATIONS_PER_PARENT,
@@ -542,4 +544,12 @@ class TestRunResearchLoopIterationIntegration:
             risk_per_trade_pct=5.0, iteration_id="iter-5b", mutation_id="mut-5b", created_at=_CREATED_AT, symbols=["AAPL"],
         )
         if low_risk.benchmark_comparisons and high_risk.benchmark_comparisons:
-            assert high_risk.benchmark_comparisons[0].strategy_equity_return_approx_pct == low_risk.benchmark_comparisons[0].strategy_equity_return_approx_pct * 5
+            # A real, confirmed pre-existing flake, unrelated to risk scaling itself: production
+            # rounds each side independently (`round(total_return_r * risk_pct, 3)`), so comparing
+            # that against an UNROUNDED `low * 5` here can hit a genuine IEEE-754 rounding boundary
+            # (e.g. `round(42.91 * 5, 3) == 214.55` as a float, but the literal `42.91 * 5 ==
+            # 214.54999999999998` — different bit patterns) depending on which exact total_return_r
+            # this run's shared, order-dependent mock market data produces. Tolerance-based
+            # comparison verifies the same real 5x scaling relationship without being sensitive to
+            # which side's rounding artifact lands where.
+            assert high_risk.benchmark_comparisons[0].strategy_equity_return_approx_pct == pytest.approx(low_risk.benchmark_comparisons[0].strategy_equity_return_approx_pct * 5, abs=0.01)

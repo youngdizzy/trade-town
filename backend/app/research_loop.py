@@ -330,6 +330,26 @@ def classify_candidacy(
     return "promising", "Real evidence is favorable so far but has not yet cleared every real research-candidate requirement (commonly: not enough symbols with a real benchmark comparison yet, or below the full trade-count bar)."
 
 
+# Section 3 — the real, disclosed severity order `propose_mutation()`
+# uses to pick ITS single most-severe code. Hoisted to a module-level
+# constant (was a local inside that function) so
+# app/research_factory.py's own multi-child branching (CEO directive
+# "TradeTown — Phase 9: Full Autonomous Quant Research Factory," Phase
+# 5/9) can build one real mutation candidate per DISTINCT diagnosed
+# failure code in this SAME priority order, rather than re-deriving or
+# duplicating it.
+FAILURE_CODE_MUTATION_PRIORITY: list[FailureCode] = [
+    "excessive_drawdown",
+    "negative_net_return",
+    "low_profit_factor",
+    "walk_forward_failure",
+    "cost_sensitivity",
+    "parameter_sensitivity",
+    "outlier_dependent",
+    "regime_failure",
+    "benchmark_underperformance",
+]
+
 # Section 3 — a real, disclosed, deterministic (never LLM-generated)
 # mapping from a real failure code to a real, concrete next step. One
 # reasonable, disclosed template per code; a strategy with multiple
@@ -404,19 +424,8 @@ def propose_mutation(
     auto-applied strategy rewrite."""
     if not failure_codes:
         return None
-    ordered_priority: list[FailureCode] = [
-        "excessive_drawdown",
-        "negative_net_return",
-        "low_profit_factor",
-        "walk_forward_failure",
-        "cost_sensitivity",
-        "parameter_sensitivity",
-        "outlier_dependent",
-        "regime_failure",
-        "benchmark_underperformance",
-    ]
     present = {c.code for c in failure_codes}
-    target = next((code for code in ordered_priority if code in present), None)
+    target = next((code for code in FAILURE_CODE_MUTATION_PRIORITY if code in present), None)
     if target is None or target not in _MUTATION_TEMPLATES:
         return None
     proposed_change, reason, expected_effect = _MUTATION_TEMPLATES[target]
@@ -479,11 +488,19 @@ def generate_research_lesson(
     scorecard: StrategyScorecard,
     trade_count: int,
     created_at: str,
+    failure_codes: list[FailureCode] | None = None,
 ) -> ResearchLessonRecord:
     """Section 9 — a real, persisted, deterministic, templated lesson
     (never an LLM prompt saying "remember this") filed after EVERY
     completed iteration, success or failure. `confidence_pct` is a
-    real, disclosed function of real sample size — never fabricated."""
+    real, disclosed function of real sample size — never fabricated.
+
+    CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
+    Phase 8 — `failure_codes` (optional, defaults to none for backward
+    compatibility with every existing caller) threads this iteration's
+    own real diagnosed codes onto the persisted lesson so a later
+    generation can retrieve it by STRUCTURED match (see
+    app/research_factory.py's `retrieve_relevant_lessons()`)."""
     key_metrics = []
     if scorecard.expectancy_r is not None:
         key_metrics.append(f"expectancy {scorecard.expectancy_r:+.3f}R")
@@ -510,6 +527,7 @@ def generate_research_lesson(
         confidencePct=confidence_pct,
         lesson=lesson,
         createdAt=created_at,
+        failureCodes=list(failure_codes) if failure_codes else [],
     )
 
 

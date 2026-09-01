@@ -170,7 +170,13 @@ from app.failure_taxonomy import find_similar_failed_strategies
 from app.quant_research_lab import cap_quant_research_experiments, classify_research_relationship, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
 from app.research_loop import generate_research_lesson, run_research_loop_iteration
-from app.research_factory import MAX_GENERATIONS_PER_FACTORY_RUN, MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN, run_research_factory_cycle
+from app.research_factory import (
+    MAX_CHILDREN_PER_PARENT,
+    MAX_GENERATIONS_PER_FACTORY_RUN,
+    MAX_RUNTIME_SECONDS,
+    MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN,
+    run_research_factory_cycle,
+)
 from app.research_discovery import run_research_discovery_cycle
 from app.strategy_families import SUPPORTED_FAMILIES
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
@@ -2803,6 +2809,7 @@ class GameState:
             scorecard=iteration.scorecard,
             trade_count=iteration.scorecard.trade_count or 0,
             created_at=iteration.created_at,
+            failure_codes=[fc.code for fc in iteration.failure_codes],
         )
         async with self.lock:
             updated_iterations = [*self.data.research_iterations, iteration]
@@ -2820,6 +2827,8 @@ class GameState:
         symbols: list[str] | None = None,
         timeframe: str | None = None,
         candles_per_symbol: int | None = None,
+        max_children_per_parent: int | None = None,
+        max_runtime_seconds: int | None = None,
     ) -> tuple[GameSaveState, FactoryRunRecord]:
         """CEO directive "TradeTown — Phase 7: Autonomous Strategy
         Evolution Engine" — see app/research_factory.py's own module
@@ -2848,6 +2857,15 @@ class GameState:
             registry_snapshot = self.data.compiled_strategy_versions
         resolved_max_generations = max_generations if max_generations is not None else MAX_GENERATIONS_PER_FACTORY_RUN
         resolved_max_total_backtests = max_total_backtests if max_total_backtests is not None else MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN
+        # CEO directive "TradeTown — Phase 9: Full Autonomous Quant
+        # Research Factory," Phase 5 — every NEW live factory run
+        # started through this real entry point defaults to the richer,
+        # tree-shaped branching behavior (module constants, not the
+        # pure function's own conservative default of 1/0, which exists
+        # solely so every pre-existing direct caller/test of
+        # run_research_factory_cycle() is unaffected).
+        resolved_max_children_per_parent = max_children_per_parent if max_children_per_parent is not None else MAX_CHILDREN_PER_PARENT
+        resolved_max_runtime_seconds = max_runtime_seconds if max_runtime_seconds is not None else MAX_RUNTIME_SECONDS
         run_record, updated_registry, all_iterations, all_lessons = run_research_factory_cycle(
             hypothesis,
             definition,
@@ -2865,6 +2883,8 @@ class GameState:
             symbols=symbols,
             timeframe=resolved_timeframe,
             candles_per_symbol=resolved_candles,
+            max_children_per_parent=resolved_max_children_per_parent,
+            max_runtime_seconds=resolved_max_runtime_seconds,
         )
         new_iterations = all_iterations[len(research_iterations_snapshot):]
         new_lessons = all_lessons[len(research_lessons_snapshot):]

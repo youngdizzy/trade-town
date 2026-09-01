@@ -150,13 +150,19 @@ same disclosed cut as Phase 4-6.
 from __future__ import annotations
 
 import hashlib
+import time
 from collections import Counter
 from typing import Literal
 
+from app.adversarial_research import run_adversarial_research
 from app.champion_challenger import ChampionRecord, get_current_champion
+from app.research_council import convene_research_council
+from app.research_fitness import describe_fitness_rank, rank_candidates
 from app.research_loop import (
+    FAILURE_CODE_MUTATION_PRIORITY,
     MAX_ITERATIONS_PER_FAMILY,
     MAX_MUTATIONS_PER_PARENT,
+    _MUTATION_TEMPLATES,
     evaluate_research_budget,
     generate_research_lesson,
     run_research_loop_iteration,
@@ -201,6 +207,18 @@ from app.strategy_registry import register_strategy_version
 # still enforces every generation via evaluate_research_budget().
 MAX_GENERATIONS_PER_FACTORY_RUN = 5
 MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN = 10
+
+# CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+# Factory," Phase 5 — real, disclosed hard limits for the multi-child
+# ("branching") mode `run_research_factory_cycle()`'s own
+# `max_children_per_parent` parameter enables. NOT the pure function's
+# own default (which stays 1 — see that parameter's own docstring for
+# why every existing caller/test keeps the original single-child
+# behavior unless it explicitly opts in); these are the values
+# `app/routers/sandbox.py`'s `/research-factory/run` endpoint passes
+# for a NEW, real, tree-shaped factory run going forward.
+MAX_CHILDREN_PER_PARENT = 3
+MAX_RUNTIME_SECONDS = 300
 
 # Section 2's own bounded-mutation-operator caps — one reasonable,
 # disclosed convention per parameter, not derived from any study,
@@ -369,6 +387,77 @@ _MUTATION_OPERATOR_TYPE: dict[FailureCode, str] = {
 }
 
 
+def _mutation_record_for_code(
+    code: FailureCode,
+    *,
+    parent_definition_id: str,
+    parent_definition_version: int,
+    parent_iteration_id: str,
+    mutation_number: int,
+    mutation_id: str,
+    created_at: str,
+) -> MutationRecord | None:
+    """CEO directive "TradeTown — Phase 9: Full Autonomous Quant
+    Research Factory," Phase 5/9 (Recursive Evolution / Failure-Driven
+    Evolution) — the SAME real template lookup
+    `app/research_loop.py::propose_mutation()` uses for ITS single
+    highest-priority code, applied here to an EXPLICIT code so multiple
+    real, distinctly-diagnosed failure codes from the SAME iteration can
+    each get their own correctly-worded `MutationRecord` (never reusing
+    the top-priority code's own `proposed_change`/`reason`/
+    `expected_effect` text for a DIFFERENT code, which would misdescribe
+    the actual mutation being tested). `None` when `code` has no
+    template — same real, disclosed limitation `propose_mutation()`
+    already has for `regime_failure`."""
+    if code not in _MUTATION_TEMPLATES:
+        return None
+    proposed_change, reason, expected_effect = _MUTATION_TEMPLATES[code]
+    return MutationRecord(
+        id=mutation_id,
+        parentDefinitionId=parent_definition_id,
+        parentDefinitionVersion=parent_definition_version,
+        parentIterationId=parent_iteration_id,
+        mutationNumber=mutation_number,
+        observedFailureCodes=[code],
+        proposedChange=proposed_change,
+        reason=reason,
+        expectedEffect=expected_effect,
+        validationRequirements="Must clear the same real research funnel this parent went through — historical backtest, cost stress, walk-forward, regime, parameter robustness, statistical evidence, and benchmark comparison — before any candidacy decision is honored.",
+        createdAt=created_at,
+    )
+
+
+def retrieve_relevant_lessons(
+    lessons: list[ResearchLessonRecord],
+    *,
+    strategy_family: str,
+    failure_codes: list[FailureCode],
+    max_matches: int = 5,
+) -> list[ResearchLessonRecord]:
+    """CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
+    Phase 8 (Self-Improvement Memory) — STRUCTURED retrieval (exact
+    field matches: same `strategy_family` AND at least one overlapping
+    real `failure_code`), most-recent-first, capped at `max_matches`.
+    Deliberately NOT `app/failure_taxonomy.py::find_similar_failed_
+    strategies()`'s fuzzy word-overlap match — that already-real
+    function serves a different purpose (screening a brand-new proposal
+    against the PERMANENT failed archive before it is even filed; see
+    `run_research_loop_iteration()`'s own `similar_failed_strategies`
+    field) and this module never duplicates it. An empty result is
+    itself a real, honest outcome (no relevant memory on file yet),
+    never fabricated as "no similar history."" """
+    matches: list[ResearchLessonRecord] = []
+    for lesson in reversed(lessons):
+        if lesson.strategy_family != strategy_family:
+            continue
+        if not any(code in lesson.failure_codes for code in failure_codes):
+            continue
+        matches.append(lesson)
+        if len(matches) >= max_matches:
+            break
+    return matches
+
+
 def build_mutation_candidate(
     mutation: MutationRecord, definition: CompiledStrategyDefinition, *, mutation_candidate_id: str, created_at: str
 ) -> MutationCandidate:
@@ -508,10 +597,19 @@ def run_research_factory_cycle(
     symbols: list[str] | None = None,
     timeframe: str | None = None,
     candles_per_symbol: int | None = None,
+    # CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+    # Factory," Phase 5 — additive, opt-in. Both default to the exact
+    # original Phase 7 behavior (one child per parent, no wall-clock
+    # cap) so every existing caller/test is completely unaffected unless
+    # it explicitly passes a larger value — see this function's own
+    # updated docstring below for what changes when it does.
+    max_children_per_parent: int = 1,
+    max_runtime_seconds: int = 0,
 ) -> tuple[FactoryRunRecord, dict[str, list[CompiledStrategyDefinition]], list[ResearchLoopIterationRecord], list[ResearchLessonRecord]]:
     """Section 26's one real entry point — the complete, bounded,
     deterministic, multi-generation OBSERVE->GENERATE->MUTATE->COMPILE->
-    BACKTEST->VALIDATE->STRESS->COMPARE->ACCEPT-OR-BIN->LEARN loop.
+    BACKTEST->ADVERSARIAL-ATTACK->VALIDATE->STRESS->COMPARE->
+    ACCEPT-OR-BIN->LEARN loop.
 
     A PURE function, matching this codebase's own established
     app/*.py-is-pure/app/state.py-persists-under-lock convention (see
@@ -525,19 +623,47 @@ def run_research_factory_cycle(
     already persists, never a second, parallel copy) for the caller
     (app/state.py) to persist under its own lock.
 
+    CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+    Factory" closed two real, previously-disclosed gaps in this SAME
+    loop: (1) every generation's own primary candidate now ALSO runs a
+    real adversarial attack suite (app/adversarial_research.py) and a
+    real Research Council evidence-aggregation pass
+    (app/research_council.py) — this module's own Phase 7/8 docstring
+    (see git history) and app/research_discovery.py's own module
+    docstring both explicitly flagged this as the "next real milestone"
+    (population-based discovery already ran adversarial tests per
+    candidate; this single-lineage mutation loop never did). (2) when
+    `max_children_per_parent > 1`, each generation branches into up to
+    that many real sibling mutation candidates — one per DISTINCT real
+    diagnosed `FailureCode` in that generation's own `iteration.
+    failure_codes` (never a fabricated split of one code into several;
+    a generation with only one real diagnosed code still produces
+    exactly one real child, identical to the original Phase 7 behavior)
+    — each independently compiled, backtested, and adversarially
+    attacked, then ranked by app/research_fitness.py's real,
+    robustness-first (never raw-return-first) comparator. Every
+    sibling, winning or not, is permanently recorded with its own real
+    `sibling_rank`/`fitness_rationale`; only the best-ranked COMPILED
+    child continues the lineage into the next generation — the rest
+    stay in `candidates`, never deleted (Section 17).
+
     Stops the first time ANY of the following becomes true, and always
     records a real, disclosed `stop_reason`: a generation's mutated text
     fails to compile (`compile_rejected`); the real
     app/research_loop.py budget (family iteration count / mutations for
     this parent) is exhausted; this run's own `max_total_backtests` is
-    reached; `max_generations` is reached; a generation reaches
-    `candidacy == "accepted"` (a real SURVIVOR — Section 26's own
-    "repeat within budget" stops once a qualified survivor exists, since
-    further mutating an already-accepted candidate is not this
-    directive's own ask); or the diagnosed failure code has no real
-    mutation to propose, or that mutation has no bounded automatic text
-    operator (Section 15's own "STOP and explain the constraint" rule,
-    applied per-lineage rather than only in prose)."""
+    reached; `max_runtime_seconds` real wall-clock elapses (0 disables
+    this check — a real safety net, not a reproducibility mechanism, so
+    disabled by default for deterministic test runs); `max_generations`
+    is reached; a generation (or, in branching mode, any of its real
+    siblings) reaches `candidacy == "accepted"` (a real SURVIVOR —
+    Section 26's own "repeat within budget" stops once a qualified
+    survivor exists, since further mutating an already-accepted
+    candidate is not this directive's own ask); or none of this
+    generation's diagnosed failure code(s) has a real mutation template,
+    or none of the resulting mutation candidates has a bounded automatic
+    text operator (Section 15's own "STOP and explain the constraint"
+    rule, applied per-lineage rather than only in prose)."""
     resolved_timeframe = timeframe if timeframe is not None else (seed_definition.timeframe or DEFAULT_TIMEFRAME)
     resolved_candles = candles_per_symbol if candles_per_symbol is not None else DEFAULT_CANDLES_PER_SYMBOL
     lineage_id = run_id
@@ -546,56 +672,43 @@ def run_research_factory_cycle(
     all_lessons = list(research_lessons)
     run_lessons: list[ResearchLessonRecord] = []
     candidates: list[FactoryCandidateRecord] = []
-
-    current_hypothesis = seed_hypothesis.model_copy(update={"lineage_id": lineage_id})
-    current_definition = seed_definition
-    generation = current_hypothesis.generation
-    parent_candidate_id: str | None = None
     backtests_run = 0
-    stop_reason = f"Reached the real {max_generations}-generation cap for this factory run."
+    start_time = time.monotonic()
 
-    while True:
-        gen_label = f"{run_id}-gen{generation}"
+    def _test_definition(
+        definition: CompiledStrategyDefinition, hypothesis: StrategyHypothesis, *, generation_num: int, parent_id: str | None, gen_label: str
+    ) -> FactoryCandidateRecord:
+        """Runs ONE real definition through the full funnel + a real
+        adversarial attack + a real Research Council pass, and packages
+        the result — never called twice for the same real (definition,
+        hypothesis) pair (see this closure's two call sites below:
+        once for the seed, once per real sibling)."""
+        nonlocal backtests_run
         candidate_id = f"{gen_label}-candidate"
-
-        if current_definition.status != "compiled":
-            candidates.append(
-                FactoryCandidateRecord(
-                    id=candidate_id,
-                    runId=run_id,
-                    generation=generation,
-                    parentCandidateId=parent_candidate_id,
-                    lineageId=lineage_id,
-                    strategyFamily=current_definition.name,
-                    definitionId=current_definition.id,
-                    definitionVersion=current_definition.version,
-                    hypothesis=current_hypothesis,
-                    lifecycleStage="compile_rejected",
-                    compileStatus=current_definition.status,
-                    compileDetail=current_definition.detail,
-                    iteration=None,
-                    mutationCandidate=None,
-                    survived=False,
-                    decisionReason=f"Compilation status '{current_definition.status}': {current_definition.detail}",
-                    createdAt=created_at,
-                )
+        if definition.status != "compiled":
+            return FactoryCandidateRecord(
+                id=candidate_id,
+                runId=run_id,
+                generation=generation_num,
+                parentCandidateId=parent_id,
+                lineageId=lineage_id,
+                strategyFamily=definition.name,
+                definitionId=definition.id,
+                definitionVersion=definition.version,
+                hypothesis=hypothesis,
+                lifecycleStage="compile_rejected",
+                compileStatus=definition.status,
+                compileDetail=definition.detail,
+                iteration=None,
+                mutationCandidate=None,
+                survived=False,
+                decisionReason=f"Compilation status '{definition.status}': {definition.detail}",
+                createdAt=created_at,
             )
-            stop_reason = f"Generation {generation}'s mutated source text did not compile (status={current_definition.status!r}) — a legitimate research failure; this lineage stops here."
-            break
-
-        budget = evaluate_research_budget(
-            quant_research_experiments, all_iterations, strategy_family=current_definition.name, parent_definition_id=current_hypothesis.parent_definition_id
-        )
-        if budget.stopped:
-            stop_reason = f"Real research budget exhausted before generation {generation}: {budget.stop_reason}"
-            break
-        if backtests_run >= max_total_backtests:
-            stop_reason = f"Reached the real {max_total_backtests}-backtest cap for this single factory run."
-            break
 
         iteration = run_research_loop_iteration(
-            current_hypothesis,
-            current_definition,
+            hypothesis,
+            definition,
             quant_research_experiments=quant_research_experiments,
             research_iterations=all_iterations,
             failed_archive=failed_archive,
@@ -613,22 +726,45 @@ def run_research_factory_cycle(
         lesson = generate_research_lesson(
             lesson_id=f"{gen_label}-lesson",
             strategy_family=iteration.strategy_family,
-            definition_id=current_definition.id,
-            definition_version=current_definition.version,
+            definition_id=definition.id,
+            definition_version=definition.version,
             iteration_id=iteration.id,
-            parent_definition_id=current_hypothesis.parent_definition_id,
+            parent_definition_id=hypothesis.parent_definition_id,
             mutation_id=(iteration.mutation.id if iteration.mutation is not None else None),
-            hypothesis=current_hypothesis.hypothesis,
+            hypothesis=hypothesis.hypothesis,
             candidacy=iteration.candidacy,
             candidacy_reason=iteration.candidacy_reason,
             scorecard=iteration.scorecard,
             trade_count=iteration.scorecard.trade_count or 0,
             created_at=created_at,
+            failure_codes=[fc.code for fc in iteration.failure_codes],
         )
         all_lessons.append(lesson)
         run_lessons.append(lesson)
 
-        lifecycle_stage = derive_lifecycle_stage(compile_status=current_definition.status, candidacy=iteration.candidacy)
+        # CEO directive "Phase 9: Full Autonomous Quant Research
+        # Factory" — every real candidate now gets a real adversarial
+        # attack, reusing the real trades this same backtest already
+        # computed (never a second fetch/backtest — see
+        # CompiledStrategyBacktestResult.trades's own docstring).
+        adversarial_result = run_adversarial_research(
+            definition,
+            regime_trend_breakdown=iteration.experiment.backtest.regime_trend_breakdown,
+            regime_volatility_breakdown=iteration.experiment.backtest.regime_volatility_breakdown,
+            parameter_sensitivity=iteration.experiment.parameter_sensitivity,
+            risk_per_trade_pct=risk_per_trade_pct,
+            result_id=f"{gen_label}-adversarial",
+            generated_at=created_at,
+            symbols=symbols,
+            timeframe=resolved_timeframe,
+            candles_per_symbol=resolved_candles,
+            closed_trades=iteration.experiment.backtest.trades,
+        )
+        council = convene_research_council(
+            iteration, report_id=f"{gen_label}-council", candidate_id=candidate_id, generated_at=created_at, adversarial_result=adversarial_result
+        )
+
+        lifecycle_stage = derive_lifecycle_stage(compile_status=definition.status, candidacy=iteration.candidacy)
         survived = lifecycle_stage == "survivor"
         decision_reason = iteration.candidacy_reason
         if survived:
@@ -637,83 +773,218 @@ def run_research_factory_cycle(
                 "unmodified POST /api/sandbox/champion-challenger/compare endpoint (never auto-submitted by this factory)."
             )
 
-        candidate = FactoryCandidateRecord(
+        return FactoryCandidateRecord(
             id=candidate_id,
             runId=run_id,
-            generation=generation,
-            parentCandidateId=parent_candidate_id,
+            generation=generation_num,
+            parentCandidateId=parent_id,
             lineageId=lineage_id,
-            strategyFamily=current_definition.name,
-            definitionId=current_definition.id,
-            definitionVersion=current_definition.version,
-            hypothesis=current_hypothesis,
+            strategyFamily=definition.name,
+            definitionId=definition.id,
+            definitionVersion=definition.version,
+            hypothesis=hypothesis,
             lifecycleStage=lifecycle_stage,
-            compileStatus=current_definition.status,
-            compileDetail=current_definition.detail,
+            compileStatus=definition.status,
+            compileDetail=definition.detail,
             iteration=iteration,
             mutationCandidate=None,
             survived=survived,
             decisionReason=decision_reason,
             createdAt=created_at,
+            adversarialResult=adversarial_result,
+            researchCouncil=council,
         )
 
-        if survived:
-            candidates.append(candidate)
+    def _replace_candidate(updated: FactoryCandidateRecord) -> None:
+        """Updates the already-appended record with `updated.id` in
+        place, wherever it landed in `candidates` — never assumes it is
+        the last element (a chosen best child is frequently NOT the
+        last sibling tested; see the ranking step below)."""
+        for idx, existing in enumerate(candidates):
+            if existing.id == updated.id:
+                candidates[idx] = updated
+                return
+        raise AssertionError(f"_replace_candidate: {updated.id!r} was never appended to candidates — a real bug, not a legitimate research outcome.")
+
+    current_hypothesis = seed_hypothesis.model_copy(update={"lineage_id": lineage_id})
+    current_definition = seed_definition
+    generation = current_hypothesis.generation
+    parent_candidate_id: str | None = None
+    stop_reason = f"Reached the real {max_generations}-generation cap for this factory run."
+    current_candidate: FactoryCandidateRecord | None = None
+    # True whenever `current_definition`/`current_hypothesis` still need
+    # their own real test — true for the seed; false for a generation
+    # whose `current_candidate` already came from the branching step
+    # below (already tested there — never re-tested here).
+    needs_test = True
+
+    while True:
+        gen_label = f"{run_id}-gen{generation}"
+
+        if needs_test:
+            if current_definition.status != "compiled":
+                current_candidate = _test_definition(current_definition, current_hypothesis, generation_num=generation, parent_id=parent_candidate_id, gen_label=gen_label)
+                candidates.append(current_candidate)
+                stop_reason = f"Generation {generation}'s mutated source text did not compile (status={current_candidate.compile_status!r}) — a legitimate research failure; this lineage stops here."
+                break
+
+            budget = evaluate_research_budget(
+                quant_research_experiments, all_iterations, strategy_family=current_definition.name, parent_definition_id=current_hypothesis.parent_definition_id
+            )
+            if budget.stopped:
+                stop_reason = f"Real research budget exhausted before generation {generation}: {budget.stop_reason}"
+                break
+            if backtests_run >= max_total_backtests:
+                stop_reason = f"Reached the real {max_total_backtests}-backtest cap for this single factory run."
+                break
+            if max_runtime_seconds > 0 and (time.monotonic() - start_time) >= max_runtime_seconds:
+                stop_reason = f"Reached the real {max_runtime_seconds}-second wall-clock runtime cap for this factory run."
+                break
+
+            current_candidate = _test_definition(current_definition, current_hypothesis, generation_num=generation, parent_id=parent_candidate_id, gen_label=gen_label)
+            candidates.append(current_candidate)
+
+        assert current_candidate is not None
+        if current_candidate.survived:
             stop_reason = f"Generation {generation} produced a real SURVIVOR clearing every research-candidate requirement — this lineage stops here (repeat-within-budget is for un-accepted lineages)."
             break
         if generation >= max_generations:
-            candidates.append(candidate)
             stop_reason = f"Reached the real {max_generations}-generation cap for this factory run without a surviving candidate."
             break
+        iteration = current_candidate.iteration
+        assert iteration is not None  # guaranteed by compile_status == "compiled" above
         if iteration.mutation is None:
-            candidates.append(candidate)
             stop_reason = f"Generation {generation} had no real diagnosed failure code this module has a mutation template for — nothing further to try automatically."
             break
 
-        mutation_candidate = build_mutation_candidate(
-            iteration.mutation, current_definition, mutation_candidate_id=f"{gen_label}-mutation-candidate", created_at=created_at
-        )
-        candidate = candidate.model_copy(update={"mutation_candidate": mutation_candidate})
-        candidates.append(candidate)
+        # Real, distinct, priority-ordered failure codes this generation
+        # actually diagnosed (never fabricated splits of one code) —
+        # app/research_loop.py's own FAILURE_CODE_MUTATION_PRIORITY,
+        # capped at max_children_per_parent (1 by default: reproduces
+        # the exact original single-child behavior).
+        diagnosed_codes = [fc.code for fc in iteration.failure_codes] or list(iteration.mutation.observed_failure_codes)
+        seen: set[str] = set()
+        distinct_codes: list[FailureCode] = []
+        for code in FAILURE_CODE_MUTATION_PRIORITY:
+            if code in diagnosed_codes and code not in seen:
+                distinct_codes.append(code)
+                seen.add(code)
+            if len(distinct_codes) >= max(1, max_children_per_parent):
+                break
 
-        if mutation_candidate.mutated_source_text is None:
-            stop_reason = f"Generation {generation}'s diagnosed failure code has no bounded, deterministic textual operator: {mutation_candidate.constraints}"
+        sibling_mutation_records = [
+            mr
+            for i, code in enumerate(distinct_codes, start=1)
+            if (
+                mr := _mutation_record_for_code(
+                    code,
+                    parent_definition_id=current_definition.id,
+                    parent_definition_version=current_definition.version,
+                    parent_iteration_id=iteration.id,
+                    mutation_number=i,
+                    mutation_id=f"{gen_label}-mutation-record-{i}",
+                    created_at=created_at,
+                )
+            )
+            is not None
+        ]
+        if not sibling_mutation_records:
+            stop_reason = f"Generation {generation}: none of the real diagnosed failure code(s) {distinct_codes} has a real mutation template."
             break
 
-        new_definition, registry = register_strategy_version(
-            registry,
-            name=current_definition.name,
-            source_text=mutation_candidate.mutated_source_text,
-            timeframe=resolved_timeframe,
-            created_by=current_hypothesis.proposed_by,
-        )
+        sibling_mutation_candidates = [
+            build_mutation_candidate(mr, current_definition, mutation_candidate_id=f"{gen_label}-mutation-candidate-{mr.mutation_number}", created_at=created_at)
+            for mr in sibling_mutation_records
+        ]
+        current_candidate = current_candidate.model_copy(update={"mutation_candidate": sibling_mutation_candidates[0]})
+        _replace_candidate(current_candidate)
+
+        viable = [(mc, mr) for mc, mr in zip(sibling_mutation_candidates, sibling_mutation_records) if mc.mutated_source_text is not None]
+        if not viable:
+            stop_reason = f"Generation {generation}: none of the {len(sibling_mutation_candidates)} diagnosed failure code(s) tested have a bounded, deterministic textual operator ({[mc.constraints for mc in sibling_mutation_candidates]})."
+            break
 
         # Section 13 — real duplicate/redundancy control is already
-        # applied to every generation, including the next one this loop
-        # is about to create: run_research_loop_iteration() (called at
-        # the top of this loop, every iteration) internally runs
+        # applied to every generation, including every sibling this loop
+        # is about to create: run_research_loop_iteration() (inside
+        # _test_definition() above) internally runs
         # app/quant_research_lab.py's find_similar_experiments()/
         # classify_research_relationship() against the mutated
         # definition's own real name/hypothesis before this loop ever
         # sees the result — surfaced on each candidate's own real
         # iteration.research_relationship field. No second, duplicate
         # duplicate-check is added here.
+        child_entries: list[tuple[FactoryCandidateRecord, CompiledStrategyDefinition, StrategyHypothesis]] = []
+        for sib_idx, (mc, mr) in enumerate(viable, start=1):
+            if backtests_run >= max_total_backtests:
+                break
+            child_gen_label = f"{run_id}-gen{generation + 1}" if len(viable) == 1 else f"{run_id}-gen{generation + 1}-sibling{sib_idx}"
+            assert mc.mutated_source_text is not None  # guaranteed by the `viable` filter above
+            new_definition, registry = register_strategy_version(
+                registry, name=current_definition.name, source_text=mc.mutated_source_text, timeframe=resolved_timeframe, created_by=current_hypothesis.proposed_by
+            )
+            relevant_lessons = retrieve_relevant_lessons(all_lessons, strategy_family=current_definition.name, failure_codes=mr.observed_failure_codes)
+            # Deterministic derivation of the parent's OWN lesson id
+            # (never `all_lessons[-1]`, which would drift once earlier
+            # siblings this same loop have appended their own lessons
+            # ahead of this point) — see _test_definition()'s own
+            # `f"{gen_label}-lesson"` naming convention.
+            parent_lesson_id = f"{current_candidate.id.removesuffix('-candidate')}-lesson"
+            child_hypothesis = generate_next_hypothesis(
+                current_hypothesis,
+                current_definition,
+                mc,
+                lesson_ids_used=[parent_lesson_id, *[rl.id for rl in relevant_lessons]],
+                failure_codes_addressed=list(mr.observed_failure_codes),
+                hypothesis_id=f"{child_gen_label}-hypothesis",
+                lineage_id=lineage_id,
+                created_at=created_at,
+            )
+            child_candidate = _test_definition(new_definition, child_hypothesis, generation_num=generation + 1, parent_id=current_candidate.id, gen_label=child_gen_label)
+            child_entries.append((child_candidate, new_definition, child_hypothesis))
 
-        next_hypothesis = generate_next_hypothesis(
-            current_hypothesis,
-            current_definition,
-            mutation_candidate,
-            lesson_ids_used=[lesson.id],
-            failure_codes_addressed=list(iteration.mutation.observed_failure_codes),
-            hypothesis_id=f"{run_id}-gen{generation + 1}-hypothesis",
-            lineage_id=lineage_id,
-            created_at=created_at,
-        )
+        if not child_entries:
+            stop_reason = f"Reached the real {max_total_backtests}-backtest cap for this single factory run before any generation {generation + 1} sibling could be tested."
+            break
 
-        parent_candidate_id = candidate.id
-        current_definition = new_definition
-        current_hypothesis = next_hypothesis
+        tested_children = [c for c, _, _ in child_entries]
+        ranked_children = rank_candidates(tested_children)
+        rank_by_id = {c.id: i + 1 for i, c in enumerate(ranked_children)}
+        total_siblings = len(tested_children)
+        # Section 6/15's real, disclosed ranking only means something
+        # among ACTUAL siblings — a lone real child (max_children_per_
+        # parent=1, the exact original Phase 7 shape, or every other
+        # code simply having no template this generation) stays
+        # `sibling_rank=None`/`fitness_rationale=None`, matching
+        # FactoryCandidateRecord's own schema docstring, never a vacuous
+        # "rank 1 of 1."
+        if total_siblings > 1:
+            child_entries = [
+                (child.model_copy(update={"sibling_rank": rank_by_id[child.id], "fitness_rationale": describe_fitness_rank(child, rank=rank_by_id[child.id], total_siblings=total_siblings)}), d, h)
+                for child, d, h in child_entries
+            ]
+        candidates.extend(c for c, _, _ in child_entries)
+
+        survivors = [c for c, _, _ in child_entries if c.survived]
+        if survivors:
+            best_survivor = min(survivors, key=lambda c: rank_by_id[c.id])
+            rank_note = f" (rank {best_survivor.sibling_rank}/{total_siblings} among {total_siblings} real mutation children)" if total_siblings > 1 else ""
+            stop_reason = f"A generation {generation + 1} sibling{rank_note} produced a real SURVIVOR — this lineage stops here."
+            break
+
+        compiled_children = [(c, d, h) for c, d, h in child_entries if c.compile_status == "compiled"]
+        if not compiled_children:
+            stop_reason = f"All {total_siblings} real generation {generation + 1} sibling(s) failed to compile — this lineage stops here."
+            break
+
+        compiled_ids = {c.id for c, _, _ in compiled_children}
+        best_candidate, best_definition, best_hypothesis = next((c, d, h) for c, d, h in compiled_children if c.id == next(rc.id for rc in ranked_children if rc.id in compiled_ids))
+
+        current_candidate = best_candidate
+        current_definition = best_definition
+        current_hypothesis = best_hypothesis
         generation += 1
+        needs_test = False  # already tested above — the top of the next loop pass must not re-test it
 
     candidates_generated = len(candidates)
     candidates_compiled = sum(1 for c in candidates if c.compile_status == "compiled")
@@ -737,6 +1008,8 @@ def run_research_factory_cycle(
         maxTotalBacktests=max_total_backtests,
         maxMutationsPerParent=MAX_MUTATIONS_PER_PARENT,
         maxIterationsPerFamily=MAX_ITERATIONS_PER_FAMILY,
+        maxChildrenPerParent=max_children_per_parent,
+        maxRuntimeSeconds=max_runtime_seconds,
     )
     run_record = FactoryRunRecord(
         id=run_id,
@@ -760,6 +1033,7 @@ def run_research_factory_cycle(
         currentChampionDefinitionId=(current_champion.definition_id if current_champion is not None else None),
         currentChampionDefinitionVersion=(current_champion.definition_version if current_champion is not None else None),
         createdAt=created_at,
+        runtimeSeconds=round(time.monotonic() - start_time, 3),
     )
     return run_record, registry, all_iterations, all_lessons
 

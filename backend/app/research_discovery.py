@@ -329,6 +329,7 @@ def run_research_discovery_cycle(
             scorecard=iteration.scorecard,
             trade_count=iteration.scorecard.trade_count or 0,
             created_at=created_at,
+            failure_codes=[fc.code for fc in iteration.failure_codes],
         )
         all_lessons.append(lesson)
 
@@ -343,6 +344,13 @@ def run_research_discovery_cycle(
             symbols=symbols,
             timeframe=resolved_timeframe,
             candles_per_symbol=resolved_candles,
+            # CEO directive "Phase 9 / Real Market Data + Evidence
+            # Integrity Foundation," Section 10 — reuse the real trades
+            # `run_compiled_strategy_backtest()` already computed for
+            # this iteration's own experiment instead of letting
+            # run_adversarial_research() independently re-fetch candles
+            # and re-backtest the same definition a second time.
+            closed_trades=iteration.experiment.backtest.trades,
         )
 
         lifecycle_stage = derive_lifecycle_stage(compile_status=definition.status, candidacy=iteration.candidacy)

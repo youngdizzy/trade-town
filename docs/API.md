@@ -1631,6 +1631,18 @@ refuses to guess rather than silently skipping unsupported conditions.
 Read-only, computed fresh every call; never wired into any agent or live
 trading decision.
 
+`CompiledStrategyBacktestResult.trades` (CEO directive "Phase 9: Real
+Market Data + Evidence Integrity Foundation") — the real, complete,
+per-trade `EmaPullbackTradeRecord[]` sequence this backtest already
+computes internally before aggregating into `overall`/the breakdown
+buckets, now exposed directly. Exists primarily so a caller that already
+ran this endpoint (e.g. `app/research_discovery.py`) can reuse the exact
+same real trades when calling adversarial research, instead of that
+module independently re-fetching candles and re-backtesting a second
+time (see `run_adversarial_research()`'s `closedTrades` parameter,
+internal-only — not a request field on any HTTP endpoint). Empty on the
+`400` refusal path.
+
 ### `POST /api/sandbox/walk-forward-validation?candlesPerSymbol=6000&windowBars=1000`
 
 CEO directive "...Quant Intelligence + Market Analysis Completion Phase
@@ -1737,6 +1749,24 @@ This codebase's research universe (`app/watchlist.py`'s `SEED_SYMBOLS`/
 `EXTRA_SYMBOL_POOL`) is a fixed, static, always-present pool with no
 historical constituent/delisting data source behind it.
 
+### `GET /api/sandbox/data-quality?symbol=...&timeframe=1h&candlesPerSymbol=6000`
+
+CEO directive "Phase 9: Real Market Data + Evidence Integrity
+Foundation," Section 3 — real, mechanical structural checks over one
+symbol/timeframe's actual retrieved candle series (see
+`app/data_quality.py`'s own module docstring for the exact checks:
+timestamp ordering, duplicate timestamps, missing-bar gaps against the
+timeframe's expected spacing, impossible OHLC relationships,
+non-positive prices, negative volume, timeframe/symbol mismatches,
+insufficient history, and timezone-naive/unparseable timestamps).
+Never an ML/statistical "quality score." Returns a `DataQualityReport`
+(`dataValid`, `candleCount`, `issues: CandleDataQualityIssue[]` each
+with a real `code`/`evidence` string). Read-only, computed fresh every
+call, nothing persisted. `app/market_data.py`'s mock provider never
+produces most of these defects by construction (no concept of a
+missing bar) — `dataValid` reads `true` for mock data today, disclosed
+honestly rather than hidden by skipping the checks.
+
 ### `POST /api/sandbox/research-experiment?candlesPerSymbol=6000`
 
 Same directive, item 11 — the Research Desk's one reproducible
@@ -1777,6 +1807,27 @@ backtest's own R-multiple-based stats into a single "beat the market"
 figure — different units — and exists purely as real regime context
 (was the underlying market itself strongly trending during the tested
 window).
+
+`ResearchExperimentRecord.datasetMetadata`/`pointInTimeVerified`/
+`featureVersions` (CEO directive "Phase 9: Real Market Data + Evidence
+Integrity Foundation") — `datasetMetadata` is a `DatasetMetadata` record
+(`datasetId`/`datasetVersion`/`source`/`dataCategory`/`symbols`/
+`timeframe`/`coveragePct`/`missingBarSymbols`/`adjustmentPolicy`/
+`retrievedAt`) built by `app/dataset_registry.py::build_dataset_metadata()`
+from the actual candles this experiment tested, versioned by a real
+SHA-256 hash of that retrieved OHLCV content — `source` is always
+`"mock_provider"` and `dataCategory` always `"simulated"` today (no real
+external adapter exists in this codebase). `pointInTimeVerified` is a
+direct, unmodified boolean read of `lookAheadAudit.verdict == "clean"`
+— never a second, independent look-ahead check. `featureVersions` is
+the sorted list of `FeatureDescriptor.version` strings
+(`app/feature_registry.py`) for every distinct indicator this
+definition's own compiled sequence references. All three fields are
+`Optional`/defaulted for backward compatibility with pre-Phase-9 test
+fixtures. Since `QuantResearchExperiment.record` embeds
+`ResearchExperimentRecord` directly, every permanently-persisted
+`GameSaveState.quantResearchExperiments` entry also carries this same
+real provenance.
 
 ### `POST /api/sandbox/register-strategy-version`
 
@@ -1921,9 +1972,10 @@ STRESS→COMPARE→ACCEPT-OR-BIN→LEARN loop (see `app/research_factory.py`'s
 own module docstring for the complete real architecture). Body:
 `{ "hypothesis": StrategyHypothesis, "definition": CompiledStrategyDefinition,
 "maxGenerations": 5, "maxTotalBacktests": 10, "symbols": [...],
-"timeframe": "...", "candlesPerSymbol": 6000 }` (all but `hypothesis`/
-`definition` optional). Every generation reuses the exact same real
-funnel `POST /research-loop/run` already uses — this endpoint's only new
+"timeframe": "...", "candlesPerSymbol": 6000, "maxChildrenPerParent": 3,
+"maxRuntimeSeconds": 300 }` (all but `hypothesis`/`definition`
+optional). Every generation reuses the exact same real funnel
+`POST /research-loop/run` already uses — this endpoint's only new
 behavior is automatically compiling and re-testing each real, bounded,
 deterministic mutation via `app/strategy_registry.py`'s own unmodified
 `register_strategy_version()`. Returns the full `FactoryRunRecord`: every
@@ -1940,6 +1992,29 @@ persists the run plus every generation's own real
 `ResearchLoopIterationRecord`/`ResearchLessonRecord` (appended into the
 same `researchIterations`/`researchLessons` lists Phase 4-6 already
 uses, never stored twice).
+
+CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+Factory" — every candidate now also carries a real `adversarialResult`
+(reusing `CompiledStrategyBacktestResult.trades` — no second fetch/
+backtest) and a real `researchCouncil` (`ResearchCouncilReport`: 7
+deterministic, NO-LLM role findings each citing the exact real
+evidence field it read, plus a real priority-ordered
+`continue`/`mutate`/`retest`/`archive`/`insufficient_evidence`
+recommendation re-labeling the SAME already-decided `candidacy` —
+never a second judgment, never a gate). `maxChildrenPerParent` (`null`
+lets `app/state.py`'s own real, richer default apply — `MAX_CHILDREN_
+PER_PARENT=3`) enables real tree-shaped branching: up to that many real
+mutation-candidate siblings per generation, one per DISTINCT real
+diagnosed `FailureCode`, each independently tested and ranked by
+`app/research_fitness.py`'s robustness-first (never raw-return-first)
+comparator — `siblingRank`/`fitnessRationale` on each (`null` for a
+single-child generation, never a vacuous "rank 1 of 1"). Every sibling,
+winning or not, stays permanently in `FactoryRunRecord.candidates` —
+never deleted. `maxRuntimeSeconds` (`null` → `MAX_RUNTIME_SECONDS=300`
+by default here; the underlying pure function itself defaults to `0`/
+disabled) is a real wall-clock safety net, not a reproducibility
+mechanism. `FactoryRunRecord.runtimeSeconds` reports the real observed
+duration.
 
 ### `GET /api/sandbox/research-factory/runs`
 
