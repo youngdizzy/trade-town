@@ -17948,3 +17948,60 @@ can honestly claim to have validated a real strategy against real
 external holdout market data, and nothing in this pass claims otherwise
 — per the directive's own Section R, that is a successful, honest
 implementation, not an incomplete one.
+
+## CEO directive "TradeTown — Paper-Trading Readiness + Professional Strategy Validation Hardening" (Section 1, first increment)
+
+Three CEO-directive-sized asks arrived stacked in one session on top of
+Phase 10 above: this Paper-Trading Readiness directive, "Strategy
+Intelligence + Adaptive Trading Brain"/"Professional Strategy Blueprint +
+Hard-Risk Refinement Engine" (~80 combined requirements, audited but not
+yet built), and "Autonomous Strategy Factory" (42 sections, not yet
+built). Per every one of those directives' own explicit "do not
+overbuild" instructions, this pass implements exactly one well-bounded,
+high-leverage, non-duplicative piece: the Paper-Trading Readiness Gate
+(Section 1) plus the Evidence Quality Hierarchy tie-in (Section 2) and
+the data-provenance fix (Section 3) it depends on.
+
+### `app/paper_readiness.py`
+
+Closes a real, audited gap: `app/research_loop.py::classify_candidacy()`
+is explicitly "purely informational triage" per its own docstring and
+never checks data provenance — a strategy backed entirely by the
+original RNG-based Sandbox `SimulationResult` system (`app/simulation.py`'s
+own docstring discloses its Sharpe/Sortino as "explicitly placeholder
+formulas") could read as favorably classified without ever having been
+evaluated against this codebase's real evidence pipeline. `evaluate_paper_readiness()`
+closes this by combining `classify_candidacy()` (reused verbatim) with
+Phase 10's `EvidenceQualityReport.state` ladder — structurally, there is
+no code path for a `SimulationResult` to reach this function at all; it
+accepts only a real `ResearchExperimentRecord`. A candidate whose
+evidence state is `insufficient_data` or `simulated_only` can never
+become `"paper_ready"`, satisfying the directive's own Acceptance
+Criterion A. Holdout is included as a real, optional, disclosed axis
+(`"not_available"` — never silently a pass — when none was supplied).
+
+**Never a promotion authority**, proven by source-inspection tests: never
+imported by `champion_challenger.py`/`strategy_lab.py`, and itself never
+imports `app.champion_challenger` or touches order execution. Writes
+nothing, persists nothing.
+
+**New endpoint**: `POST /api/sandbox/paper-readiness/evaluate` — see
+docs/API.md. 14 new tests (`tests/test_paper_readiness.py`). Live-verified:
+a real compiled strategy correctly evaluates to `"not_ready"`, blocked by
+`research_candidacy: overfit` — an honest, reproducible result against
+this session's real mock-data evidence, not a cherry-picked pass.
+
+### Deliberately NOT implemented this pass, honestly
+
+No persisted `PaperTradeRecord` journal (Section 4); no paper-vs-backtest
+drift detection (Sections 5/6); no strategy health state machine (Section
+7); no layered kill-switch/position-sizing-firewall additions (the
+architecture audit run earlier in this session found these already
+EXIST — `app/gatekeeper.py::evaluate_gatekeeper()` is the real, single,
+already-centralized risk gate, and `app/emergency_stop.py` is the real,
+already-independent kill switch — so this directive's Sections 8/9 are
+not gaps needing new code); no autonomous mutation-application engine
+(the separate "Autonomous Strategy Factory" directive); no UI panel for
+this gate yet (Section 21). Each is a real, separate, and substantially
+larger system than this bounded gate — none was faked or stubbed to
+look complete.

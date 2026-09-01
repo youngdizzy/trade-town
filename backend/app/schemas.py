@@ -5400,6 +5400,51 @@ class EvidenceQualityReport(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+# CEO directive "TradeTown — Paper-Trading Readiness + Professional
+# Strategy Validation Hardening," Section 1 (Paper-Trading Readiness
+# Gate) + Section 2 (Evidence Quality Hierarchy). See
+# app/paper_readiness.py's own module docstring for the exact real
+# reuse — this is a NEW disclosed gate combining already-real
+# `classify_candidacy()` (app/research_loop.py) and already-real
+# `EvidenceQualityReport.state` (Phase 10, app/evidence_quality.py),
+# never a third, independently-computed judgment.
+PaperReadinessCheckStatus = Literal["pass", "fail", "insufficient_evidence", "not_available"]
+PaperReadinessStatus = Literal["paper_ready", "not_ready"]
+
+
+class PaperReadinessCheck(CamelModel):
+    """One real, disclosed readiness axis. `not_available` is a real,
+    honest state (e.g. holdout was never evaluated for this candidate)
+    — never silently treated as `pass`."""
+
+    name: str
+    status: PaperReadinessCheckStatus
+    detail: str
+
+
+class PaperReadinessReport(CamelModel):
+    """The one real, disclosed Paper-Trading Readiness verdict.
+    `status` is `"paper_ready"` ONLY when every mandatory check below
+    is `"pass"` — `"insufficient_evidence"`/`"fail"`/`"not_available"`
+    on a MANDATORY check always blocks readiness (never silently
+    upgraded to a pass). This is a RESEARCH/READINESS classification —
+    it writes nothing, promotes nothing, and is never imported by
+    `app/champion_challenger.py` or `app/strategy_lab.py`'s
+    Certification/Hall-of-Fame functions (proven by
+    `tests/test_paper_readiness.py::TestNeverAPromotionAuthority`)."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    status: PaperReadinessStatus
+    checks: list[PaperReadinessCheck]
+    candidacy: CandidacyBinning
+    evidence_state: EvidenceState = Field(alias="evidenceState")
+    holdout_status: HoldoutValidationStatus | None = Field(default=None, alias="holdoutStatus")
+    detail: str
+    generated_at: str = Field(alias="generatedAt")
+
+
 class LineageIntegrityIssue(CamelModel):
     """CEO directive "Phase 10: Real Data + True Holdout + Portfolio
     Intelligence," Section H — a real, disclosed lineage-break flag.

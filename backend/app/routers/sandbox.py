@@ -22,13 +22,16 @@ from app.leakage_audit import audit_definition_for_look_ahead
 from app.lineage import check_lineage_integrity
 from app.market_data import ExternalMarketDataProvider, market_data_provider
 from app.market_intelligence import compute_strategy_match
+from app.paper_readiness import evaluate_paper_readiness
 from app.portfolio_analyst import analyze_portfolio
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.persistence import persist_modules
 from app.research_experiment import run_research_experiment
 from app.research_discovery import compute_family_research_stats
 from app.research_factory import summarize_lesson_evidence
-from app.quant_research_lab import find_similar_experiments
+from app.research_loop import compute_benchmark_comparisons, compute_outlier_dependence
+from app.failure_taxonomy import find_similar_failed_strategies
+from app.quant_research_lab import classify_research_relationship, count_experiments_for_family, find_similar_experiments
 from app.strategy_families import SUPPORTED_FAMILIES, UNSUPPORTED_FAMILIES
 from app.schemas import (
     AgentId,
@@ -52,9 +55,11 @@ from app.schemas import (
     FailureModeCount,
     FamilyResearchStats,
     HoldoutEvaluationResult,
+    HoldoutValidationReport,
     LessonEvidenceSummary,
     LineageIntegrityIssue,
     LookAheadAuditResult,
+    PaperReadinessReport,
     PortfolioResearchReport,
     ResearchDiscoveryCycleRecord,
     ResearchLessonRecord,
@@ -174,6 +179,21 @@ class EvidenceQualityRequest(BaseModel):
     symbols: list[str] | None = None
     timeframe: str | None = None
     candles_per_symbol: int = Field(default=ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol")
+
+
+# CEO directive "TradeTown — Paper-Trading Readiness + Professional
+# Strategy Validation Hardening," Section 1.
+class PaperReadinessRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    definition: CompiledStrategyDefinition
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int = Field(default=ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol")
+    # Optional — pass a prior `POST /holdout/evaluate` result to include
+    # holdout as a real readiness axis. `None` (the default) is honest:
+    # this endpoint never runs holdout evaluation automatically.
+    holdout: HoldoutValidationReport | None = None
 
 
 class CompareChampionChallengerRequest(BaseModel):
@@ -702,6 +722,59 @@ async def evidence_quality_endpoint(payload: EvidenceQualityRequest) -> Evidence
         benchmark_available=len(record.buy_and_hold_baseline) > 0,
         adversarial_coverage=False,
         report_id=f"evidence-{payload.definition.id}-v{payload.definition.version}",
+    )
+
+
+@router.post("/paper-readiness/evaluate", response_model=PaperReadinessReport)
+async def paper_readiness_evaluate(payload: PaperReadinessRequest) -> PaperReadinessReport:
+    """CEO directive "Paper-Trading Readiness + Professional Strategy
+    Validation Hardening," Section 1 — one real, disclosed Paper-Trading
+    Readiness verdict combining the existing real research-candidacy
+    classification (`app/research_loop.py::classify_candidacy()`) with
+    the real Phase 10 evidence-quality state, never a fabricated third
+    judgment. See app/paper_readiness.py's own module docstring for the
+    exact real reuse and why RNG-only Sandbox `SimulationResult`
+    evidence has no path into this endpoint at all — it accepts only a
+    `CompiledStrategyDefinition`, which always flows through the real
+    `run_research_experiment()` pipeline."""
+    resolved_timeframe = payload.timeframe or payload.definition.timeframe
+    record = run_research_experiment(payload.definition, symbols=payload.symbols, timeframe=resolved_timeframe, candles_per_symbol=payload.candles_per_symbol)
+    primary_symbol = record.symbols_tested[0] if record.symbols_tested else "AAPL"
+    candles = market_data_provider.get_candles(primary_symbol, record.timeframe, payload.candles_per_symbol)
+    quality_report = validate_candle_series(candles, symbol=primary_symbol, timeframe=record.timeframe)
+    evidence_quality = build_evidence_quality_report(
+        definition_id=payload.definition.id,
+        definition_version=payload.definition.version,
+        data_provenance=(record.dataset_metadata.data_category if record.dataset_metadata is not None else "unavailable"),
+        data_quality_valid=quality_report.data_valid,
+        point_in_time_verified=record.point_in_time_verified,
+        holdout_status=payload.holdout.status if payload.holdout is not None else None,
+        sample_size=record.backtest.overall.trade_count,
+        external_provider_available=ExternalMarketDataProvider().is_available(),
+        benchmark_available=len(record.buy_and_hold_baseline) > 0,
+        adversarial_coverage=False,
+        report_id=f"evidence-{payload.definition.id}-v{payload.definition.version}",
+    )
+
+    state = await game_state.snapshot()
+    benchmark_comparisons = compute_benchmark_comparisons(record, risk_per_trade_pct=state.risk_limits.risk_per_trade_pct)
+    outlier_dependent, _largest_win_share = compute_outlier_dependence(record.backtest.overall)
+    similar_experiments = find_similar_experiments(state.quant_research_experiments, hypothesis=payload.definition.source_text, definition_id=payload.definition.id, timeframe=resolved_timeframe)
+    similar_failed = find_similar_failed_strategies(state.strategy_failed_archive, hypothesis=payload.definition.source_text, strategy_name=payload.definition.name)
+    research_relationship = classify_research_relationship(similar_experiments, similar_failed)
+    research_family_experiment_count = count_experiments_for_family(state.quant_research_experiments, definition_name=payload.definition.name)
+
+    return evaluate_paper_readiness(
+        record,
+        evidence_quality=evidence_quality,
+        outlier_dependent=outlier_dependent,
+        benchmark_comparisons=benchmark_comparisons,
+        research_relationship=research_relationship,
+        research_family_experiment_count=research_family_experiment_count,
+        tuning_version=payload.definition.version,
+        holdout=payload.holdout,
+        report_id=f"paper-readiness-{payload.definition.id}-v{payload.definition.version}",
+        generated_at=record.generated_at,
     )
 
 

@@ -1923,6 +1923,27 @@ Invents no relationship that isn't already real; an empty array is an
 honestly-checked "no lineage break found," never assumed without
 checking.
 
+### `POST /api/sandbox/paper-readiness/evaluate`
+
+CEO directive "Paper-Trading Readiness + Professional Strategy Validation
+Hardening," Section 1. Body:
+`{ "definition": CompiledStrategyDefinition, "symbols": [...] | null, "timeframe": "1h", "candlesPerSymbol": 6000, "holdout": HoldoutValidationReport | null }`.
+Runs the real research-experiment pipeline, combines the existing real
+`classify_candidacy()` research classification with the real Phase 10
+evidence-quality state (see `app/paper_readiness.py`'s own module
+docstring), and returns a `PaperReadinessReport` —
+`status: "paper_ready" | "not_ready"`, `checks: PaperReadinessCheck[]`
+(`research_candidacy`/`evidence_quality_state`/`holdout_validation`, each
+`"pass" | "fail" | "insufficient_evidence" | "not_available"`),
+`candidacy`, `evidenceState`, `holdoutStatus`. A candidate can never
+become `"paper_ready"` on RNG-only Sandbox `SimulationResult` evidence —
+this endpoint's only input is a `CompiledStrategyDefinition`, which
+always flows through the real research pipeline. Pass a prior `POST
+/holdout/evaluate` result via `holdout` to include it as a real axis;
+omit it for an honest `"not_available"` (never a silent pass). Writes
+nothing — this is a research-readiness read, never a promotion: it has
+no path to Champion/Challenger, Certification, or order execution.
+
 ### `POST /api/sandbox/register-strategy-version`
 
 CEO directive "Professional Quant Firm Phase," Feature 37 — real,

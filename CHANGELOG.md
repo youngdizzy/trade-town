@@ -7,6 +7,84 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Paper-Trading Readiness + Professional
+  Strategy Validation Hardening," Section 1 (Paper-Trading Readiness Gate)
+  + Section 2 (Evidence Quality Hierarchy) + Section 3 (Paper-Trading Data
+  Provenance) — the first, bounded increment of this directive.** This
+  directive, and two other CEO-directive-sized asks ("Strategy Intelligence
+  + Adaptive Trading Brain"/"Professional Strategy Blueprint + Hard-Risk
+  Refinement Engine," and "Autonomous Strategy Factory") arrived stacked in
+  the same session as ~150 combined requirements. Per every one of those
+  directives' own explicit "do not overbuild"/"implement the highest-
+  leverage complete subset" instructions, this pass implements exactly one
+  well-bounded, high-leverage, non-duplicative piece rather than attempting
+  all three at once — see the forensic report delivered in-session for the
+  full scoping rationale and the remaining backlog.
+  - **`app/paper_readiness.py`** — a new, real Paper-Trading Readiness gate.
+    Closes a genuine, audited architectural gap: the existing
+    `classify_candidacy()` (app/research_loop.py) is explicitly
+    "purely informational triage" that never checks data provenance at
+    all, so a strategy backed entirely by the original RNG-based Sandbox
+    `SimulationResult` system (`app/simulation.py`'s own docstring:
+    "sharpeRatio/sortinoRatio are explicitly placeholder formulas") could
+    in principle read as favorably classified without ever having been
+    evaluated against this codebase's real evidence pipeline at all. This
+    module closes that gap by combining `classify_candidacy()` (reused
+    verbatim, same real inputs every existing caller supplies) with the
+    Phase 10 `EvidenceQualityReport.state` ladder: `evaluate_paper_readiness()`
+    accepts ONLY a real `ResearchExperimentRecord` (there is no code path
+    for a `SimulationResult` to enter it at all — structural, not just
+    policy) and additionally requires evidence quality to clear the real
+    simulated-only floor, so a candidate can never become `"paper_ready"`
+    on RNG-only evidence alone. Holdout is included as a real, optional,
+    disclosed axis (`"not_available"` — never silently a pass — when no
+    holdout was supplied, since this environment has no real
+    pre-partitioned historical dataset; a `"valid"` holdout is a real
+    pass, an `"invalid"`/`"unavailable"` one blocks readiness). Zero new
+    backtest/statistical computation — a pure combination layer, matching
+    this session's established "relabeling, never a second judgment"
+    idiom (`app/overfitting_diagnosis.py`/`app/research_council.py`/
+    `app/evidence_quality.py`).
+  - **NEVER a promotion authority** — `app/paper_readiness.py` is never
+    imported by `app/champion_challenger.py` or `app/strategy_lab.py`'s
+    Certification/Hall-of-Fame functions, and itself never imports
+    `app.champion_challenger` or `app.broker`/`place_order` — proven by
+    source-inspection tests (`TestNeverAPromotionAuthority`), the same
+    discipline Portfolio Analyst/Evidence Quality/Holdout already
+    established this session. `PAPER_READY` is a research-readiness
+    classification; it writes nothing, persists nothing, and has no path
+    to Champion/Challenger, Certification, or order execution.
+  - **`POST /api/sandbox/paper-readiness/evaluate`** — new stateless
+    (CAGS) endpoint. Runs the real research-experiment pipeline, computes
+    real benchmark comparisons/outlier dependence/research-family
+    duplicate-checking against the permanent Quant Research Lab archive
+    and Failed Strategy Archive (the same real lookups
+    `run_research_loop_iteration()` already performs), and returns one
+    `PaperReadinessReport`. Accepts an optional prior `POST
+    /holdout/evaluate` result to include holdout as a real axis.
+  - Live-verified against the running dev stack: a real compiled 50-EMA-
+    pullback definition genuinely evaluates to `"not_ready"`, correctly
+    blocked by `research_candidacy: overfit` (this exact strategy has
+    repeatedly failed robustness checks against this session's mock data
+    throughout this session's other live tests — an honest, reproducible
+    result, not a cherry-picked pass).
+  - 14 new backend tests (`tests/test_paper_readiness.py`), including
+    `test_rng_only_simulated_only_evidence_can_never_be_paper_ready`
+    (Acceptance Criterion A) and `test_never_silently_upgrades_a_blocking_check_to_pass`.
+  - **Deliberately NOT implemented this pass, honestly** (see the CEO
+    directive's own Section 41/29's acceptance-criteria list and the
+    forensic report for the complete accounting): no persisted
+    `PaperTradeRecord` journal (Section 4), no paper-vs-backtest drift
+    detection (Sections 5/6), no strategy health state machine (Section
+    7), no autonomous mutation-application engine (the separate
+    "Autonomous Strategy Factory" directive's Sections 1-19), no UI panel
+    for this gate yet (Section 21) — each is a real, separate, and
+    substantially larger system than this bounded gate; none was faked or
+    stubbed to look complete.
+  - Verified: targeted suite (156 tests across the new module plus every
+    module it touches) passed; full backend suite (3616 passed, up from
+    3602 — the 14 new tests, zero regressions). `mypy`/`ruff` clean.
+
 - **CEO directive "TradeTown — Phase 10: Real Data + True Holdout + Portfolio
   Intelligence."** Extends the Phase 9 evidence-integrity foundation with the
   four genuinely missing pieces the directive's own 20-item verified baseline
