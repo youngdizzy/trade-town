@@ -95,6 +95,8 @@ can offer without inventing a fake partition.
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from app.champion_challenger import HIGH_TUNING_VERSION_THRESHOLD
 from app.failure_taxonomy import FAILURE_CODE_METADATA, find_similar_failed_strategies
 from app.quant_research_lab import (
@@ -489,11 +491,20 @@ def generate_research_lesson(
     trade_count: int,
     created_at: str,
     failure_codes: list[FailureCode] | None = None,
+    evidence_scope: Literal["train_validation", "post_freeze_holdout"] = "train_validation",
 ) -> ResearchLessonRecord:
     """Section 9 — a real, persisted, deterministic, templated lesson
     (never an LLM prompt saying "remember this") filed after EVERY
     completed iteration, success or failure. `confidence_pct` is a
     real, disclosed function of real sample size — never fabricated.
+
+    CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
+    Portfolio Intelligence," Section G — `evidence_scope` defaults to
+    `"train_validation"` (every existing caller's real, unchanged
+    behavior); only a future, separate holdout-evidence call site
+    (never research_factory.py/research_loop.py's own mutation path —
+    see app/holdout.py's own module docstring) would ever pass
+    `"post_freeze_holdout"`.
 
     CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
     Phase 8 — `failure_codes` (optional, defaults to none for backward
@@ -528,6 +539,7 @@ def generate_research_lesson(
         lesson=lesson,
         createdAt=created_at,
         failureCodes=list(failure_codes) if failure_codes else [],
+        evidenceScope=evidence_scope,
     )
 
 

@@ -11,12 +11,18 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.champion_challenger import get_current_champion
 from app.cost_sensitivity import run_cost_sensitivity
 from app.data_quality import validate_candle_series
+from app.dataset_registry import build_dataset_metadata
 from app.ema_pullback_research import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, run_ema_pullback_research
 from app.evaluation_simulator import compare_evaluation_policies
+from app.evidence_quality import build_evidence_quality_report
 from app.failure_taxonomy import compute_top_failure_modes
+from app.feature_registry import feature_versions_for_definition
+from app.holdout import freeze_strategy, partition_candles_chronologically, run_holdout_evaluation, validate_holdout
 from app.leakage_audit import audit_definition_for_look_ahead
-from app.market_data import market_data_provider
+from app.lineage import check_lineage_integrity
+from app.market_data import ExternalMarketDataProvider, market_data_provider
 from app.market_intelligence import compute_strategy_match
+from app.portfolio_analyst import analyze_portfolio
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.persistence import persist_modules
 from app.research_experiment import run_research_experiment
@@ -36,15 +42,20 @@ from app.schemas import (
     CompileStrategyRequest,
     CostSensitivityResult,
     DataQualityReport,
+    EmaPullbackTradeRecord,
     EmaPullbackResearchResult,
     EvaluationPolicyComparisonReport,
+    EvidenceQualityReport,
     FactoryRunRecord,
     FactoryStatsRead,
     FailedStrategyArchiveEntry,
     FailureModeCount,
     FamilyResearchStats,
+    HoldoutEvaluationResult,
     LessonEvidenceSummary,
+    LineageIntegrityIssue,
     LookAheadAuditResult,
+    PortfolioResearchReport,
     ResearchDiscoveryCycleRecord,
     ResearchLessonRecord,
     ResearchLoopIterationRecord,
@@ -134,6 +145,35 @@ class RegisterStrategyVersionRequest(BaseModel):
     source_text: str = Field(alias="sourceText")
     timeframe: str = "1h"
     created_by: AgentId = Field(default="quant", alias="createdBy")
+
+
+# CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
+# Portfolio Intelligence."
+class HoldoutEvaluateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    definition: CompiledStrategyDefinition
+    symbol: str = "AAPL"
+    timeframe: str | None = None
+    candles_per_symbol: int = Field(default=ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol")
+
+
+class PortfolioAnalyzeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    definitions: list[CompiledStrategyDefinition]
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int = Field(default=ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol")
+
+
+class EvidenceQualityRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    definition: CompiledStrategyDefinition
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int = Field(default=ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol")
 
 
 class CompareChampionChallengerRequest(BaseModel):
@@ -571,6 +611,112 @@ async def research_experiment(
     app/research_experiment.py's own module docstring). Read-only,
     computed fresh every call — nothing here is persisted."""
     return run_research_experiment(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol)
+
+
+@router.get("/external-market-data/status")
+async def external_market_data_status() -> dict[str, object]:
+    """CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
+    Portfolio Intelligence," Section A — the one real, honest
+    self-report (see app/market_data.py's `ExternalMarketDataProvider.
+    status()`). No API credentials exist in this environment, so this
+    honestly reports `available: false` — never silently swapped for
+    the mock provider's own status."""
+    status = ExternalMarketDataProvider().status()
+    return {"available": status.available, "providerName": status.provider_name, "reason": status.reason}
+
+
+@router.post("/holdout/evaluate", response_model=HoldoutEvaluationResult)
+async def holdout_evaluate(payload: HoldoutEvaluateRequest) -> HoldoutEvaluationResult:
+    """CEO directive "Phase 10," Section B — a real, opt-in, structurally
+    leak-proof TRAIN/VALIDATION/HOLDOUT evaluation (see
+    app/holdout.py's own module docstring). NEVER called automatically
+    by the Research Factory's mutation loop — this is a separate,
+    explicit call a CEO/agent makes to freeze-and-evaluate one already-
+    decided candidate. `status` is honestly `"valid"` only when every
+    real structural check in `validate_holdout()` passes; a mock-data
+    partition can be a genuinely `"valid"` SPLIT even though the
+    underlying candles are simulated — see that function's own
+    docstring for why those are different, both-honest claims."""
+    definition = payload.definition
+    resolved_timeframe = payload.timeframe if payload.timeframe is not None else (definition.timeframe or DEFAULT_TIMEFRAME)
+    candles = market_data_provider.get_candles(payload.symbol, resolved_timeframe, payload.candles_per_symbol)
+    dataset_metadata = build_dataset_metadata(
+        {payload.symbol: candles}, symbols=[payload.symbol], timeframe=resolved_timeframe, candles_per_symbol_requested=payload.candles_per_symbol
+    )
+    train, validation, holdout = partition_candles_chronologically(candles)
+    freeze = freeze_strategy(definition, dataset_version=dataset_metadata.dataset_version, feature_versions=feature_versions_for_definition(definition))
+    report = validate_holdout(
+        definition,
+        train=train,
+        validation=validation,
+        holdout=holdout,
+        dataset_id=dataset_metadata.dataset_id,
+        dataset_version=dataset_metadata.dataset_version,
+        freeze=freeze,
+        report_id=f"holdout-{definition.id}-v{definition.version}",
+    )
+    return run_holdout_evaluation(definition, payload.symbol, report=report, holdout_candles=holdout, result_id=f"holdout-eval-{definition.id}-v{definition.version}")
+
+
+@router.post("/portfolio-analyst/analyze", response_model=PortfolioResearchReport)
+async def portfolio_analyst_analyze(payload: PortfolioAnalyzeRequest) -> PortfolioResearchReport:
+    """CEO directive "Phase 10," Sections C/D — a real cross-strategy
+    RESEARCH report over the real per-trade sequences
+    `run_compiled_strategy_backtest()` already computes for each
+    definition (no second backtest engine — see
+    app/portfolio_analyst.py's own module docstring). RESEARCH
+    INFORMATION ONLY: never promotes anything, never touches Champion/
+    Challenger, Certification, or any risk gate."""
+    resolved_timeframe = payload.timeframe or DEFAULT_TIMEFRAME
+    candidate_trades: dict[str, list[EmaPullbackTradeRecord]] = {}
+    for definition in payload.definitions:
+        result = run_compiled_strategy_backtest(definition, symbols=payload.symbols, timeframe=resolved_timeframe, candles_per_symbol=payload.candles_per_symbol)
+        candidate_trades[f"{definition.id}-v{definition.version}"] = result.trades
+    report_id = "portfolio-" + "-".join(sorted(candidate_trades.keys()))[:120]
+    return analyze_portfolio(candidate_trades, candidate_failure_codes={}, report_id=report_id)
+
+
+@router.post("/evidence-quality", response_model=EvidenceQualityReport)
+async def evidence_quality_endpoint(payload: EvidenceQualityRequest) -> EvidenceQualityReport:
+    """CEO directive "Phase 10," Section E — a real, structured
+    aggregation of already-computed real signals into one disclosed
+    evidence STATE (never a blended quality score — see
+    app/evidence_quality.py's own module docstring). `holdoutStatus` is
+    always `None` here — this endpoint never runs holdout evaluation
+    automatically; call `POST /holdout/evaluate` separately and pass
+    its own real `status` into a future, richer read if desired."""
+    resolved_timeframe = payload.timeframe or payload.definition.timeframe
+    record = run_research_experiment(payload.definition, symbols=payload.symbols, timeframe=resolved_timeframe, candles_per_symbol=payload.candles_per_symbol)
+    primary_symbol = record.symbols_tested[0] if record.symbols_tested else "AAPL"
+    candles = market_data_provider.get_candles(primary_symbol, record.timeframe, payload.candles_per_symbol)
+    quality_report = validate_candle_series(candles, symbol=primary_symbol, timeframe=record.timeframe)
+    return build_evidence_quality_report(
+        definition_id=payload.definition.id,
+        definition_version=payload.definition.version,
+        data_provenance=(record.dataset_metadata.data_category if record.dataset_metadata is not None else "unavailable"),
+        data_quality_valid=quality_report.data_valid,
+        point_in_time_verified=record.point_in_time_verified,
+        holdout_status=None,
+        sample_size=record.backtest.overall.trade_count,
+        external_provider_available=ExternalMarketDataProvider().is_available(),
+        benchmark_available=len(record.buy_and_hold_baseline) > 0,
+        adversarial_coverage=False,
+        report_id=f"evidence-{payload.definition.id}-v{payload.definition.version}",
+    )
+
+
+@router.get("/lineage/check", response_model=list[LineageIntegrityIssue])
+async def lineage_check(run_id: str = Query(..., alias="runId")) -> list[LineageIntegrityIssue]:
+    """CEO directive "Phase 10," Section H — real, structural lineage
+    verification over one already-persisted factory run's own real
+    candidates (see app/lineage.py's own module docstring). An empty
+    result is itself a real, honest "no break found," never assumed
+    without checking."""
+    state = await game_state.snapshot()
+    run = next((r for r in state.factory_runs if r.id == run_id), None)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"No factory run with id {run_id!r}.")
+    return check_lineage_integrity(run.candidates)
 
 
 @router.post("/register-strategy-version", response_model=CompiledStrategyDefinition)

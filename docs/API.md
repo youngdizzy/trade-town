@@ -1829,6 +1829,100 @@ fixtures. Since `QuantResearchExperiment.record` embeds
 `GameSaveState.quantResearchExperiments` entry also carries this same
 real provenance.
 
+### `GET /api/sandbox/external-market-data/status`
+
+CEO directive "Phase 10: Real Data + True Holdout + Portfolio
+Intelligence," Section A — one real, honest self-report of
+`app/market_data.py`'s `ExternalMarketDataProvider` (a real, opt-in
+adapter, wholly separate from the mock-backed global
+`market_data_provider` singleton every other endpoint uses — see that
+module's own docstring for why it is deliberately not wired into
+`_select_provider()`). Returns
+`{ "available": bool, "providerName": "...", "reason": "..." }`. No real
+API credentials exist in this environment
+(`EXTERNAL_MARKET_DATA_API_KEY` unset), so this endpoint honestly
+returns `available: false` today — it never silently reports the mock
+provider's own availability instead.
+
+### `POST /api/sandbox/holdout/evaluate`
+
+Same directive, Section B. Body:
+`{ "definition": CompiledStrategyDefinition, "symbol": "AAPL", "timeframe": "1h", "candlesPerSymbol": 6000 }`.
+Fetches real candles for `symbol`/`timeframe` from the existing mock-backed
+`market_data_provider`, chronologically partitions them into TRAIN/
+VALIDATION/HOLDOUT (`app/holdout.py::partition_candles_chronologically()`
+— index-based slicing over an already-ordered series, never shuffled),
+freezes the exact `(definition.id, definition.version)` being evaluated,
+and returns a `HoldoutEvaluationResult` wrapping a `HoldoutValidationReport`
+(`status: "unavailable" | "invalid" | "valid"`, `partitions:
+DataPartitionSummary[]`, `freeze: StrategyFreezeRecord`, and the specific
+real reasons behind an `"invalid"`/`"unavailable"` verdict). This endpoint
+is never called automatically by the Research Factory's mutation loop —
+`app/holdout.py` is never imported by `research_factory.py`/
+`research_loop.py` (verified by source-inspection tests) — it is a
+separate, explicit call a CEO/agent makes to freeze-and-evaluate one
+already-decided candidate. A `"valid"` status describes a structurally
+sound TRAIN/VALIDATION/HOLDOUT split; it is never conflated with
+real-vs-simulated data provenance — a mock-data partition can be honestly
+`"valid"` as a split while still being simulated data (see `POST
+/evidence-quality` below for that separate, disclosed axis). No real
+historical pre-partitioned dataset exists in this environment, so every
+call here partitions the same synthetic-but-realistic mock candle series
+every other endpoint already uses — honestly disclosed, never presented
+as real external holdout evidence.
+
+### `POST /api/sandbox/portfolio-analyst/analyze`
+
+Same directive, Sections C/D. Body:
+`{ "definitions": CompiledStrategyDefinition[], "symbols": [...] | null, "timeframe": "1h", "candlesPerSymbol": 6000 }`.
+Runs the existing `run_compiled_strategy_backtest()` once per definition
+(no second backtest engine) and feeds the real resulting per-trade
+sequences into `app/portfolio_analyst.py::analyze_portfolio()`, returning
+a `PortfolioResearchReport` — pairwise correlation
+(`PortfolioPairCorrelation[]`, a real "paired-day" R-multiple bucketing
+mirroring `app/performance_attribution.py`'s existing live-strategy
+methodology), simultaneous-drawdown detection, `PortfolioMarginalContribution[]`,
+concentration, real adversarial portfolio stress (reusing
+`run_worst_period_attack()`), and one disclosed
+`recommendation: "insufficient_evidence" | "high_redundancy" |
+"diversifying" | "mixed" | "portfolio_fragile" | "portfolio_robust"` from
+a fixed, disclosed priority chain — never a blended confidence number.
+RESEARCH INFORMATION ONLY: this endpoint and everything it calls never
+promotes a strategy, never writes Champion/Challenger or certification
+state, and never places a trade (verified by source-inspection tests
+confirming `app/portfolio_analyst.py` is never imported by
+`champion_challenger.py`/`strategy_lab.py`/`research_loop.py`).
+
+### `POST /api/sandbox/evidence-quality`
+
+Same directive, Section E. Body:
+`{ "definition": CompiledStrategyDefinition, "symbols": [...] | null, "timeframe": "1h", "candlesPerSymbol": 6000 }`.
+Runs the existing `run_research_experiment()` and `validate_candle_series()`
+and packages their already-real outputs (data provenance, data-quality
+validity, point-in-time verification, sample size, external-provider
+availability) through `app/evidence_quality.py::classify_evidence_state()`
+— a fixed, disclosed priority ladder — into an `EvidenceQualityReport`
+whose `state` is one of `INSUFFICIENT_DATA` / `SIMULATED_ONLY` /
+`RESEARCH_VALIDATED` / `HOLDOUT_VALIDATED` / `EXTERNAL_DATA_VALIDATED`.
+These are evidence STATES, never trading approvals — this endpoint writes
+nothing and gates nothing. `holdoutStatus` on the response is always
+`null` here — this endpoint never runs holdout evaluation automatically;
+call `POST /holdout/evaluate` separately for that axis.
+
+### `GET /api/sandbox/lineage/check?runId=...`
+
+Same directive, Section H. Looks up the persisted `FactoryRunRecord`
+matching `runId` (404 if not found) and runs
+`app/lineage.py::check_lineage_integrity()` — a pure, real structural
+check over that run's own already-real candidates' `id`/
+`parentCandidateId`/`generation` fields — returning
+`LineageIntegrityIssue[]` (`candidateId`, `issue`). Flags a
+`parentCandidateId` pointing at an id absent from the same run, and a
+`generation` that doesn't equal its real parent's `generation + 1`.
+Invents no relationship that isn't already real; an empty array is an
+honestly-checked "no lineage break found," never assumed without
+checking.
+
 ### `POST /api/sandbox/register-strategy-version`
 
 CEO directive "Professional Quant Firm Phase," Feature 37 — real,

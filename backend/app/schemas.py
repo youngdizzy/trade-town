@@ -5207,6 +5207,211 @@ class DataQualityReport(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+# CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
+# Portfolio Intelligence," Section B (True Holdout Data Discipline). See
+# app/holdout.py's own module docstring for the full real architecture
+# and — critically — for exactly HOW leakage into mutation is made
+# structurally impossible (never merely a rule stated in prose).
+StrategyLifecycleStage = Literal["data_discovered", "training", "validation", "strategy_frozen", "holdout_evaluation", "holdout_locked"]
+
+# `"unavailable"` when a partition is empty or no freeze exists yet —
+# never fabricated as `"valid"`. `"invalid"` is a real, structural
+# failure (overlap, out-of-order data, or a definition mutated since
+# freeze) — always disclosed via `detail`, never silently ignored.
+HoldoutValidationStatus = Literal["unavailable", "invalid", "valid"]
+
+
+class DataPartitionSummary(CamelModel):
+    """One real, content-hashed slice of an already-fetched candle
+    series — `content_hash` uses the SAME real SHA-256-over-actual-OHLCV
+    convention app/dataset_registry.py's `build_dataset_metadata()`
+    already established, applied here per-partition so a partition's own
+    content can be verified unchanged independent of the whole dataset."""
+
+    label: Literal["train", "validation", "holdout"]
+    candle_count: int = Field(alias="candleCount")
+    start_timestamp: str | None = Field(default=None, alias="startTimestamp")
+    end_timestamp: str | None = Field(default=None, alias="endTimestamp")
+    content_hash: str = Field(alias="contentHash")
+
+
+class StrategyFreezeRecord(CamelModel):
+    """Section B's real freeze event — the one real, immutable fact a
+    `HoldoutValidationReport` checks every holdout evaluation against.
+    Because `CompiledStrategyDefinition` is already immutable per
+    `(id, version)` (a mutation always produces a NEW version via
+    `app/strategy_registry.py::register_strategy_version()` — never an
+    in-place edit), "frozen" is simply "this exact, already-immutable
+    version is the one under holdout evaluation" — freezing invents no
+    new mutability rule, it names an existing one."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    frozen_at: str = Field(alias="frozenAt")
+    dataset_version: str = Field(alias="datasetVersion")
+    feature_versions: list[str] = Field(default_factory=list, alias="featureVersions")
+
+
+class HoldoutValidationReport(CamelModel):
+    """Section B's one real, structural validity report. `status` is
+    NEVER `"valid"` unless every real check below actually passed —
+    see app/holdout.py::validate_holdout()'s own docstring for the
+    exact, disclosed rule order. `overlap_detected`/`leakage_detected`/
+    `chronological_order_valid` are independently real booleans (never
+    collapsed into `status` alone) so a caller can see exactly WHICH
+    real invariant failed, not just that one did."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    dataset_id: str = Field(alias="datasetId")
+    dataset_version: str = Field(alias="datasetVersion")
+    train: DataPartitionSummary
+    validation: DataPartitionSummary
+    holdout: DataPartitionSummary
+    overlap_detected: bool = Field(alias="overlapDetected")
+    leakage_detected: bool = Field(alias="leakageDetected")
+    chronological_order_valid: bool = Field(alias="chronologicalOrderValid")
+    freeze: StrategyFreezeRecord | None = None
+    status: HoldoutValidationStatus
+    detail: str
+    generated_at: str = Field(alias="generatedAt")
+
+
+class HoldoutEvaluationResult(CamelModel):
+    """Section B's one real holdout-only backtest result — computed via
+    the EXACT SAME `app/strategy_engine.py::backtest_symbol_over_candles()`/
+    `app/backtest_primitives.py::aggregate_bucket()` every other real
+    backtest in this codebase already uses, run ONLY over
+    `HoldoutValidationReport.holdout`'s own real candle slice — never a
+    second backtest engine. `bucket` is `None` whenever `report.status
+    != "valid"` — an invalid or unavailable holdout is never silently
+    backtested anyway, since that would produce a real-looking number
+    for evidence this module has already flagged as untrustworthy."""
+
+    id: str
+    report: HoldoutValidationReport
+    symbol: str
+    bucket: EmaPullbackStatsBucket | None = None
+    generated_at: str = Field(alias="generatedAt")
+
+
+# CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
+# Portfolio Intelligence," Section C/D (Portfolio Analyst). See
+# app/portfolio_analyst.py's own module docstring for the exact real
+# methodology and why every field here is real evidence over already-
+# computed candidate backtests — never a new backtest engine, never a
+# live/paper-portfolio concept (that is app/portfolio_intelligence.py's
+# own, separate, unmodified domain).
+PortfolioRecommendation = Literal["insufficient_evidence", "high_redundancy", "diversifying", "mixed", "portfolio_fragile", "portfolio_robust"]
+
+
+class PortfolioPairCorrelation(CamelModel):
+    """A real Pearson correlation (`app/portfolio_intelligence.py::
+    pearson_correlation()`, reused directly — never a second
+    implementation) between two research candidates' own real, per-day
+    summed R-multiple return series, over real shared trading days only.
+    `correlation` is `None` (never a fabricated `0.0`) below the real
+    paired-day evidence floor."""
+
+    candidate_id_a: str = Field(alias="candidateIdA")
+    candidate_id_b: str = Field(alias="candidateIdB")
+    paired_day_count: int = Field(alias="pairedDayCount")
+    correlation: float | None = None
+    stress_correlation: float | None = Field(default=None, alias="stressCorrelation")
+
+
+class PortfolioMarginalContribution(CamelModel):
+    """Section D.5 — a real strategy-removal test: the combined bucket's
+    own real expectancy/drawdown computed WITH vs WITHOUT this one
+    candidate's trades. A candidate whose removal barely changes the
+    combined numbers is redundant; one whose removal meaningfully
+    improves combined drawdown while barely denting expectancy is a
+    real liability, not a real diversifier."""
+
+    candidate_id: str = Field(alias="candidateId")
+    expectancy_r_with: float | None = Field(default=None, alias="expectancyRWith")
+    expectancy_r_without: float | None = Field(default=None, alias="expectancyRWithout")
+    max_drawdown_r_with: float | None = Field(default=None, alias="maxDrawdownRWith")
+    max_drawdown_r_without: float | None = Field(default=None, alias="maxDrawdownRWithout")
+
+
+class PortfolioResearchReport(CamelModel):
+    """Section C's one real cross-strategy research report. RESEARCH
+    INFORMATION ONLY — never imported by `app/champion_challenger.py`,
+    `app/strategy_lab.py`'s Certification/Hall-of-Fame functions, or any
+    risk gate (proven by a real source-inspection test, the same
+    discipline already applied to the Research Council). `combined_bucket`/
+    `worst_combined_period` reuse the EXACT SAME real
+    `app/backtest_primitives.py::aggregate_bucket()`/
+    `app/adversarial_research.py::run_worst_period_attack()` every other
+    real backtest/attack in this codebase already uses, run over the
+    real concatenated trade list of every analyzed candidate — never a
+    second portfolio-backtest engine."""
+
+    id: str
+    candidate_ids: list[str] = Field(alias="candidateIds")
+    pair_correlations: list[PortfolioPairCorrelation] = Field(default_factory=list, alias="pairCorrelations")
+    combined_bucket: EmaPullbackStatsBucket = Field(alias="combinedBucket")
+    worst_combined_period: WorstPeriodResult = Field(alias="worstCombinedPeriod")
+    marginal_contributions: list[PortfolioMarginalContribution] = Field(default_factory=list, alias="marginalContributions")
+    simultaneous_drawdown_detected: bool = Field(alias="simultaneousDrawdownDetected")
+    shared_failure_modes: list[FailureCode] = Field(default_factory=list, alias="sharedFailureModes")
+    concentration_pct: float | None = Field(default=None, alias="concentrationPct")
+    evidence_confidence: Literal["high", "medium", "low"] = Field(alias="evidenceConfidence")
+    recommendation: PortfolioRecommendation
+    recommendation_reason: str = Field(alias="recommendationReason")
+    generated_at: str = Field(alias="generatedAt")
+
+
+# CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
+# Portfolio Intelligence," Section E (Data-Confidence-Aware Research).
+# A real, disclosed EVIDENCE STATE ladder — see app/evidence_quality.py's
+# own module docstring for the exact priority rule. NEVER a trading
+# approval, never blended with any other axis into a single score.
+EvidenceState = Literal["insufficient_data", "simulated_only", "research_validated", "holdout_validated", "external_data_validated"]
+
+
+class EvidenceQualityReport(CamelModel):
+    """Section E's one real, structured aggregation of already-computed
+    real signals — `data_provenance`/`data_quality_valid`/
+    `point_in_time_verified` from `ResearchExperimentRecord.datasetMetadata`/
+    `pointInTimeVerified` (Phase 9, unmodified), `holdout_status` from
+    `HoldoutValidationReport.status` (`None` when holdout was never
+    attempted), `external_provider_available` from
+    `ExternalMarketDataProvider.is_available()`. NEVER a single blended
+    "quality score" — every axis stays independently visible, and `state`
+    is a real, disclosed classification over them, never a number."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    data_provenance: DataCategory = Field(alias="dataProvenance")
+    data_quality_valid: bool | None = Field(default=None, alias="dataQualityValid")
+    point_in_time_verified: bool | None = Field(default=None, alias="pointInTimeVerified")
+    holdout_status: HoldoutValidationStatus | None = Field(default=None, alias="holdoutStatus")
+    sample_size: int | None = Field(default=None, alias="sampleSize")
+    external_provider_available: bool = Field(alias="externalProviderAvailable")
+    benchmark_available: bool = Field(alias="benchmarkAvailable")
+    adversarial_coverage: bool = Field(alias="adversarialCoverage")
+    state: EvidenceState
+    detail: str
+    generated_at: str = Field(alias="generatedAt")
+
+
+class LineageIntegrityIssue(CamelModel):
+    """CEO directive "Phase 10: Real Data + True Holdout + Portfolio
+    Intelligence," Section H — a real, disclosed lineage-break flag.
+    See app/lineage.py's own module docstring for the exact real check.
+    Never invents a lineage relationship that isn't there — a missing or
+    inconsistent link is always surfaced here, never silently assumed
+    fine."""
+
+    candidate_id: str = Field(alias="candidateId")
+    issue: str
+
+
 class FeatureDescriptor(CamelModel):
     """Section 5's real feature-store METADATA (never a second indicator
     implementation — every real value here describes an already-real,
@@ -12605,6 +12810,16 @@ class ResearchLessonRecord(CamelModel):
     # were created) and for a lesson with no real diagnosed failure
     # (an accepted candidate) — never backfilled, never guessed.
     failure_codes: list[FailureCode] = Field(default_factory=list, alias="failureCodes")
+    # CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
+    # Portfolio Intelligence," Section G — real, disclosed evidence
+    # scope. Defaulted to `"train_validation"` (the ONLY value the
+    # existing research funnel — research_factory.py/research_loop.py —
+    # can ever produce, since neither imports anything from
+    # app/holdout.py). `"post_freeze_holdout"` can only be set by a
+    # SEPARATE, explicit holdout-evidence lesson call this codebase
+    # never wires into mutation (see app/holdout.py's own module
+    # docstring for the structural, import-shape-enforced boundary).
+    evidence_scope: Literal["train_validation", "post_freeze_holdout"] = Field(default="train_validation", alias="evidenceScope")
 
 
 class ResearchLoopIterationRecord(CamelModel):

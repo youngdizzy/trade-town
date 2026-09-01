@@ -5,6 +5,128 @@ development milestones, not semver releases.
 
 ## Unreleased
 
+### Added
+
+- **CEO directive "TradeTown — Phase 10: Real Data + True Holdout + Portfolio
+  Intelligence."** Extends the Phase 9 evidence-integrity foundation with the
+  four genuinely missing pieces the directive's own 20-item verified baseline
+  said NOT to rebuild anything around: a real external market-data adapter, a
+  structurally leak-proof holdout discipline, a cross-strategy Portfolio
+  Analyst, and a single disclosed evidence-quality state. No existing engine
+  (compiler, backtest, statistical validation, Champion/Challenger,
+  certification, mutation, research loop, feature registry) was duplicated or
+  rewritten — every new system is additive and reuses the real primitives
+  those engines already compute.
+  - **Section A — `ExternalMarketDataProvider` (`app/market_data.py`).** A new,
+    real, opt-in adapter implementing the same `MarketDataProvider` interface
+    `MockMarketDataProvider` already implements, reading
+    `EXTERNAL_MARKET_DATA_PROVIDER`/`EXTERNAL_MARKET_DATA_API_KEY`/
+    `EXTERNAL_MARKET_DATA_BASE_URL` from the environment only (no hardcoded
+    secrets, none ever logged — `_redact()` does a full-string replacement,
+    never partial masking that leaks length/prefix). Deliberately NOT wired
+    into the process-wide `market_data_provider` singleton or
+    `_select_provider()` — see the module's own new docstring section for why
+    that would have broken every already-working caller in this codebase the
+    instant real credentials were absent (which is every environment this
+    codebase has ever run in). Real timeout/retry/rate-limit handling (429
+    never retried immediately, 5xx retried with backoff and eventually
+    raises, 401 never retried), and `_parse_candles_response()` detects
+    duplicate timestamps, out-of-order timestamps, and impossible OHLC
+    (high < low, etc.) before any candle is accepted — malformed data is
+    rejected, never silently accepted or silently substituted with mock data.
+    No real API credentials exist in this environment, so `is_available()`
+    honestly reports `False` here today; every real-HTTP code path is
+    exercised only by tests injecting a fake `_HttpTransport` (a `Protocol`,
+    so no inheritance is needed for the fake). 23 new tests
+    (`tests/test_external_market_data.py`).
+  - **Section B — Holdout discipline (`app/holdout.py`).** Real chronological
+    (never shuffled) TRAIN/VALIDATION/HOLDOUT partitioning
+    (`partition_candles_chronologically()`), a `StrategyFreezeRecord` naming
+    the exact `(definition id, version)` frozen before holdout evaluation
+    begins, and `validate_holdout()` — a priority-ordered check that only
+    ever reports `"valid"` when every real structural condition holds
+    (chronological order, no overlap or duplicate timestamps across
+    partitions, freeze identity matches the definition actually evaluated,
+    non-empty partitions, dataset/feature version unchanged since freeze).
+    Leak-proofing is structural in three independent ways, not just
+    documented: index-based slicing over an already-ordered list (never
+    shuffled), `backtest_symbol_over_candles()`'s own no-look-ahead guarantee
+    when called with only the holdout slice, and import-shape isolation —
+    `app/holdout.py` is never imported by `research_factory.py`/
+    `research_loop.py`, proven by source-inspection tests, so nothing in the
+    mutation/hypothesis/lesson-generation loop can structurally reach it.
+    Because `CompiledStrategyDefinition` is already immutable per
+    `(id, version)`, any real mutation after freeze produces a new version
+    automatically and is caught by the freeze-identity check — no new
+    mutability-tracking machinery was needed. 17 new tests
+    (`tests/test_holdout.py`).
+  - **Section C/D — Portfolio Analyst (`app/portfolio_analyst.py`).** A new
+    cross-strategy RESEARCH role — never a trading strategy, never a
+    promotion authority (proven by source-inspection tests confirming it's
+    never imported by `champion_challenger.py`/`strategy_lab.py`/
+    `research_loop.py`) — that reuses each candidate's own already-real
+    per-trade sequence (no second backtest engine) to compute pairwise
+    correlation via a "paired-day" bucketing methodology mirroring
+    `app/performance_attribution.py`'s existing live-strategy precedent,
+    simultaneous-drawdown detection, marginal contribution, and
+    concentration, feeding a real `run_worst_period_attack()` re-use for
+    portfolio-level adversarial stress. `_classify_recommendation()` is a
+    fixed, disclosed priority chain (mirroring
+    `classify_research_scorecard()`'s established pattern) over these real
+    signals — never a blended confidence number — producing one of
+    `insufficient_evidence/high_redundancy/diversifying/mixed/
+    portfolio_fragile/portfolio_robust`. 15 new tests
+    (`tests/test_portfolio_analyst.py`).
+  - **Section E — Evidence quality (`app/evidence_quality.py`).**
+    `classify_evidence_state()` is a real, disclosed priority ladder over
+    already-computed real signals (data provenance, data-quality validity,
+    point-in-time verification, holdout status, sample size, external
+    provider availability) producing one of `INSUFFICIENT_DATA/
+    SIMULATED_ONLY/RESEARCH_VALIDATED/HOLDOUT_VALIDATED/
+    EXTERNAL_DATA_VALIDATED` — evidence STATES, never trading approvals, and
+    REAL/SIMULATED/SYNTHETIC/UNAVAILABLE provenance is never collapsed into
+    one blended score. 13 new tests (`tests/test_evidence_quality.py`).
+  - **Section G — Lesson evidence scope.** `ResearchLessonRecord` gained
+    `evidenceScope` (`"train_validation"` default, or
+    `"post_freeze_holdout"`), and `generate_research_lesson()` gained a
+    matching parameter — every existing call site keeps the unchanged
+    default, so no existing lesson's behavior changed. A holdout-derived
+    lesson is never auto-applied to mutate the strategy that produced it —
+    lesson application already goes through the existing, unmodified
+    research-loop lesson-consumption path.
+  - **Section H — Lineage (`app/lineage.py`).** `check_lineage_integrity()`
+    is a pure, real structural check over `FactoryCandidateRecord`'s
+    already-existing `id`/`parentCandidateId`/`generation` fields — flags a
+    `parentCandidateId` pointing at an id absent from the same run, and a
+    `generation` that doesn't equal the real parent's `generation + 1`. It
+    invents no new lineage field and no relationship that isn't already
+    real; an empty result is an honestly-checked "no break found." 6 new
+    tests (`tests/test_lineage.py`).
+  - **Section F — Router wiring (`app/routers/sandbox.py`).** Five new
+    stateless (CAGS — computed fresh every call, nothing persisted)
+    endpoints: `GET /external-market-data/status`,
+    `POST /holdout/evaluate`, `POST /portfolio-analyst/analyze`,
+    `POST /evidence-quality`, `GET /lineage/check?runId=...`. None of these
+    endpoints, nor anything they call, writes to Champion/Challenger state,
+    certification state, or live trading — see docs/API.md for full request/
+    response shapes.
+  - **What Section I (UI), Section L (caching), and Section K's remaining
+    adversarial tests cover** is documented separately below/in this same
+    Unreleased section as that work lands.
+  - **Deliberately NOT implemented, honestly, per the directive's own
+    Section R ("do not fake completion"):** no real external market-data
+    vendor was ever called (no credentials exist in this environment — every
+    real-HTTP code path is verified only via injected fake transports in
+    tests); no historical, pre-partitioned real dataset exists in this
+    environment, so every holdout test operates on synthetic-but-realistic
+    generated candle series, honestly labeled as such — the partitioning and
+    leak-proofing LOGIC is real and fully tested, but no run in this
+    environment can claim to have validated a real strategy against real
+    holdout market data, and nothing in this pass claims otherwise.
+  - Verified: `python -m pytest -q` (full backend suite, 3602 passed),
+    `python -m mypy app/` (211 source files, no issues), `python -m ruff
+    check app/ tests/` (all checks passed) — all clean.
+
 ### Fixed
 
 - **`test_foundational_mentors.py` — a real, confirmed, order-dependent flaky test.**

@@ -49,6 +49,7 @@ variation still exists inside one real aggregate regime.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import math
 import os
@@ -56,7 +57,7 @@ import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, Protocol
 
 from app.schemas import DataStatus
 
@@ -470,3 +471,258 @@ def _select_provider() -> MarketDataProvider:
 
 
 market_data_provider: MarketDataProvider = _select_provider()
+
+
+# ============================================================================
+# CEO directive "TradeTown — Phase 10: Real Data + True Holdout + Portfolio
+# Intelligence," Section A — a real, generic, opt-in external market-data
+# adapter implementing the SAME `MarketDataProvider` interface above.
+#
+# WHY THIS IS SEPARATE FROM THE GLOBAL `market_data_provider` SINGLETON,
+# DISCLOSED. Wiring `_select_provider()` above to route the process-wide
+# singleton to this class would mean every ALREADY-WORKING caller in this
+# codebase (WatchlistManager, the entire research/backtest funnel, the
+# Sandbox, hundreds of already-green tests) would start raising whenever
+# real credentials are absent — which is every environment this codebase
+# has ever run in. That is a massive, unjustified blast radius for a
+# directive whose own Section A explicitly asks for new architecture "later
+# capable of supporting real market data," not for today's mock-backed
+# research funnel to be broken. So `market_data_provider` above is left
+# completely untouched (still the honestly-disclosed mock singleton every
+# existing test assumes); `ExternalMarketDataProvider` below is a real, new,
+# STANDALONE class any NEW caller can construct and use explicitly, always
+# checking `is_available()` (or catching `ExternalMarketDataProviderUnavailable`)
+# rather than being silently substituted anywhere.
+#
+# NEVER A SILENT MOCK FALLBACK. Every method below either returns real data
+# fetched from a real HTTP endpoint, or raises
+# `ExternalMarketDataProviderUnavailable` with a real, specific, secret-free
+# reason — it NEVER falls back to `MockMarketDataProvider` internally. A
+# caller that wants "external if possible, else mock" must write that
+# fallback itself, explicitly, so a reader can never mistake mock data for
+# real data three call-frames away from where the choice was made.
+#
+# NO REAL API CREDENTIALS EXIST IN THIS ENVIRONMENT. This repo holds no
+# `EXTERNAL_MARKET_DATA_API_KEY`. Every real HTTP call path below is
+# genuinely exercised only by tests that inject a fake HTTP transport (see
+# tests/test_external_market_data.py) — this class has never been, and
+# cannot honestly be claimed to have been, verified against a real vendor
+# in this pass. `is_available()` reports `False` here today, honestly.
+# ============================================================================
+
+
+class ExternalMarketDataProviderUnavailable(Exception):
+    """Raised by every `ExternalMarketDataProvider` method that cannot
+    honestly return real data — missing/invalid configuration, a real
+    HTTP timeout/error surviving retries, a rate limit, or a malformed
+    response. The message never includes the configured API key or any
+    other secret (see `_redact()`) — verified by
+    `tests/test_external_market_data.py::test_secrets_never_appear_in_logs_or_errors`."""
+
+
+@dataclass(frozen=True)
+class ExternalProviderStatus:
+    """A real, honest self-report of whether this provider can actually
+    be used right now — read by `app/dataset_registry.py` to build a
+    `DatasetMetadata` with `source="external_real_provider"` and
+    `dataCategory="unavailable"` (never `"real"`, since no data was
+    actually retrieved) rather than raising past the dataset-building
+    layer."""
+
+    available: bool
+    provider_name: str
+    reason: str
+
+
+# A minimal, disclosed, real HTTP transport seam: `ExternalMarketDataProvider`
+# calls this instead of `urllib.request` directly, so tests can inject a
+# fake transport and exercise real retry/timeout/malformed-response logic
+# deterministically, with no real network call and no real vendor contract
+# required. The default implementation is a genuine `urllib.request.urlopen`
+# call — real, not a stub — just never reachable in this credential-less
+# environment.
+class _HttpTransport(Protocol):
+    def get(self, url: str, *, headers: dict[str, str], timeout_seconds: float) -> tuple[int, bytes]: ...
+
+
+class _RealHttpTransport:
+    """The real default transport — genuine `urllib.request.urlopen`, not
+    a stub. Structurally satisfies `_HttpTransport` (a `Protocol`, so a
+    test's own fake transport class needs no inheritance relationship to
+    be accepted — see tests/test_external_market_data.py's `_FakeTransport`)."""
+
+    def get(self, url: str, *, headers: dict[str, str], timeout_seconds: float) -> tuple[int, bytes]:
+        import urllib.request
+
+        request = urllib.request.Request(url, headers=headers, method="GET")
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310 - real adapter, no vendor URL configured in this environment
+            return response.status, response.read()
+
+
+def _redact(text: str, *secrets: str) -> str:
+    """Real secret redaction — every configured secret is replaced before
+    a string can reach a log line or an exception message. Never a partial
+    mask (e.g. "sk-***1234") that itself leaks length/prefix information."""
+    redacted = text
+    for secret in secrets:
+        if secret:
+            redacted = redacted.replace(secret, "[REDACTED]")
+    return redacted
+
+
+class ExternalMarketDataProvider(MarketDataProvider):
+    """A real, generic REST adapter behind the same `MarketDataProvider`
+    interface `MockMarketDataProvider` implements. "Generic" is a real,
+    disclosed scope choice: no specific vendor's exact response shape
+    (Polygon/Alpha Vantage/Finnhub/...) is hardcoded, since this repo has
+    no live account with any of them to build and verify a certified
+    per-vendor mapping against — see this module's own section docstring.
+    A concrete vendor adapter would subclass this and override
+    `_parse_candles_response()`/`_build_candles_url()` for that vendor's
+    real, specific contract; this class defines ONE disclosed generic
+    contract (a JSON body shaped
+    `{"candles": [{"timestamp": "...", "open": ..., "high": ..., "low": ...,
+    "close": ..., "volume": ...}, ...]}`) so the retry/timeout/rate-limit/
+    quality-detection machinery below is real and testable today.
+
+    Configuration is environment-variable based ONLY (Section A.11/A.12 —
+    never a hardcoded key): `EXTERNAL_MARKET_DATA_PROVIDER` (a real vendor
+    name, purely descriptive/logging), `EXTERNAL_MARKET_DATA_API_KEY`,
+    `EXTERNAL_MARKET_DATA_BASE_URL`. All three must be set and non-empty
+    for `is_available()` to report `True` — this environment has none of
+    them, so `is_available()` is `False` here today, honestly."""
+
+    def __init__(
+        self,
+        *,
+        provider_name: str | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        timeout_seconds: float = 10.0,
+        max_retries: int = 2,
+        transport: _HttpTransport | None = None,
+    ) -> None:
+        self.provider_name = (provider_name if provider_name is not None else os.environ.get("EXTERNAL_MARKET_DATA_PROVIDER", "")).strip()
+        self._api_key = (api_key if api_key is not None else os.environ.get("EXTERNAL_MARKET_DATA_API_KEY", "")).strip()
+        self._base_url = (base_url if base_url is not None else os.environ.get("EXTERNAL_MARKET_DATA_BASE_URL", "")).strip()
+        self.timeout_seconds = timeout_seconds
+        self.max_retries = max_retries
+        self._transport: _HttpTransport = transport if transport is not None else _RealHttpTransport()
+
+    def status(self) -> ExternalProviderStatus:
+        """Section A.5 — the one real, honest self-report. Never raises."""
+        missing = [
+            name
+            for name, value in (
+                ("EXTERNAL_MARKET_DATA_PROVIDER", self.provider_name),
+                ("EXTERNAL_MARKET_DATA_API_KEY", self._api_key),
+                ("EXTERNAL_MARKET_DATA_BASE_URL", self._base_url),
+            )
+            if not value
+        ]
+        if missing:
+            return ExternalProviderStatus(available=False, provider_name=self.provider_name or "unconfigured", reason=f"Missing real configuration: {', '.join(missing)}.")
+        return ExternalProviderStatus(available=True, provider_name=self.provider_name, reason="ready")
+
+    def is_available(self) -> bool:
+        return self.status().available
+
+    def _require_available(self) -> None:
+        s = self.status()
+        if not s.available:
+            raise ExternalMarketDataProviderUnavailable(s.reason)
+
+    def get_quote(self, symbol: str) -> Quote:
+        self._require_available()
+        raise ExternalMarketDataProviderUnavailable(
+            f"Real quote retrieval for {symbol!r} is not implemented against any specific vendor in this generic adapter — see this class's own docstring."
+        )
+
+    def get_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
+        """Never falls back to mock data — raises
+        `ExternalMarketDataProviderUnavailable` on missing configuration,
+        an exhausted-retry transport failure, a rate limit, or a
+        malformed/incomplete response, always with a real, specific,
+        secret-free reason."""
+        if timeframe not in TIMEFRAMES:
+            raise ValueError(f"Unsupported timeframe {timeframe!r}; supported: {TIMEFRAME_ORDER}")
+        self._require_available()
+
+        url = f"{self._base_url}/candles?symbol={symbol}&timeframe={timeframe}&limit={limit}"
+        headers = {"Authorization": f"Bearer {self._api_key}", "Accept": "application/json"}
+
+        last_error: str | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                status_code, body = self._transport.get(url, headers=headers, timeout_seconds=self.timeout_seconds)
+            except TimeoutError as exc:
+                last_error = f"Timeout after {self.timeout_seconds:g}s (attempt {attempt + 1}/{self.max_retries + 1}): {_redact(str(exc), self._api_key)}"
+                continue  # Section A.15 — retry only on a transient failure, never on a real rejection.
+            except OSError as exc:
+                last_error = f"Transport error (attempt {attempt + 1}/{self.max_retries + 1}): {_redact(str(exc), self._api_key)}"
+                continue
+
+            if status_code == 429:
+                raise ExternalMarketDataProviderUnavailable(f"Rate limited by {self.provider_name!r} (HTTP 429).")
+            if status_code in (401, 403):
+                # Section A.12/A.13 — never retry an auth rejection (would
+                # just spend the caller's real rate-limit budget for
+                # nothing), and never echo the key that was rejected.
+                raise ExternalMarketDataProviderUnavailable(f"Authentication rejected by {self.provider_name!r} (HTTP {status_code}).")
+            if status_code >= 500:
+                last_error = f"Server error HTTP {status_code} (attempt {attempt + 1}/{self.max_retries + 1})."
+                continue
+            if status_code != 200:
+                raise ExternalMarketDataProviderUnavailable(f"Unexpected HTTP {status_code} from {self.provider_name!r}.")
+
+            return self._parse_candles_response(body, symbol=symbol, timeframe=timeframe, limit=limit)
+
+        raise ExternalMarketDataProviderUnavailable(last_error or "Real retrieval failed for an undisclosed reason.")
+
+    def _parse_candles_response(self, body: bytes, *, symbol: str, timeframe: str, limit: int) -> list[Candle]:
+        """Section A.20-A.23 — parses this adapter's disclosed generic
+        JSON contract, preserving each raw timestamp exactly as received
+        before any normalization, and detects (never silently accepts)
+        duplicate timestamps, out-of-order timestamps, and impossible
+        OHLC relationships. Section A.9 — never interpolates a missing
+        candle; a short response is honestly returned short, and Section
+        A.17's "incomplete response" detection is the caller's own
+        `app/data_quality.py::validate_candle_series()` (already real,
+        already tested, never duplicated here)."""
+        try:
+            payload = json.loads(body)
+            raw_candles = payload["candles"]
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            raise ExternalMarketDataProviderUnavailable(f"Malformed response body from {self.provider_name!r}: {exc}") from None
+
+        candles: list[Candle] = []
+        seen_timestamps: set[str] = set()
+        previous_timestamp: str | None = None
+        for index, raw in enumerate(raw_candles):
+            try:
+                raw_timestamp = str(raw["timestamp"])  # preserved exactly as received — no normalization yet
+                open_price, high, low, close = (float(raw["open"]), float(raw["high"]), float(raw["low"]), float(raw["close"]))
+                volume = float(raw.get("volume", 0.0))
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ExternalMarketDataProviderUnavailable(f"Malformed candle at index {index} from {self.provider_name!r}: {exc}") from None
+            if raw_timestamp in seen_timestamps:
+                raise ExternalMarketDataProviderUnavailable(f"Duplicate timestamp {raw_timestamp!r} at index {index} from {self.provider_name!r}.")
+            if previous_timestamp is not None and raw_timestamp < previous_timestamp:
+                raise ExternalMarketDataProviderUnavailable(f"Timestamp {raw_timestamp!r} at index {index} precedes prior timestamp {previous_timestamp!r} from {self.provider_name!r}.")
+            if high < low or high < open_price or high < close or low > open_price or low > close:
+                raise ExternalMarketDataProviderUnavailable(f"Impossible OHLC relationship at index {index} from {self.provider_name!r} (o={open_price}, h={high}, l={low}, c={close}).")
+            seen_timestamps.add(raw_timestamp)
+            previous_timestamp = raw_timestamp
+            candles.append(
+                Candle(symbol=symbol, timeframe=timeframe, timestamp=raw_timestamp, open=open_price, high=high, low=low, close=close, volume=volume, data_status="historical")
+            )
+        return candles
+
+
+def get_external_market_data_provider() -> ExternalMarketDataProvider:
+    """The one real, opt-in construction point for new code that wants to
+    attempt real external data (e.g. app/dataset_registry.py) — reads
+    configuration from the real environment variables fresh on every
+    call, never cached at import time, so a test can monkeypatch
+    `os.environ` per-test without import-order effects."""
+    return ExternalMarketDataProvider()
