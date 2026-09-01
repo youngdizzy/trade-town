@@ -1499,6 +1499,29 @@ export type EmaPullbackTradeOutcome = "win" | "loss" | "open";
 export type EmaPullbackRegimeTrend = "trending_up" | "trending_down" | "ranging";
 export type EmaPullbackRegimeVolatility = "high" | "normal" | "low";
 
+// One real, individually-traceable simulated trade from a compiled
+// strategy's bar-by-bar replay — never an aggregate. See
+// backend/app/schemas.py's EmaPullbackTradeRecord.
+export interface EmaPullbackTradeRecord {
+  symbol: string;
+  direction: "long" | "short";
+  entryTimestamp: string;
+  entryPrice: number;
+  stopPrice: number;
+  targetPrice: number;
+  exitPrice: number | null;
+  outcome: EmaPullbackTradeOutcome;
+  rMultipleRealized: number;
+  entrySession: TradingSession;
+  regimeTrend: EmaPullbackRegimeTrend;
+  regimeVolatility: EmaPullbackRegimeVolatility;
+  breakoutCandleExtended: boolean;
+  breakoutCandleRangeRatio: number;
+  maeR: number;
+  mfeR: number;
+  barsHeld: number;
+}
+
 export interface EmaPullbackStatsBucket {
   label: string;
   tradeCount: number;
@@ -1689,6 +1712,12 @@ export interface CompiledStrategyBacktestResult {
   monteCarlo: StrategyMonteCarloResult | null;
   dataHonestyNote: string;
   generatedAt: string;
+  // CEO directive "Phase 9: Real Market Data + Evidence Integrity
+  // Foundation" — the real per-trade sequence this backtest already
+  // computed internally, exposed so a caller (e.g. the Strategy
+  // Discovery Cycle panel) can reuse it directly instead of a second
+  // fetch/backtest. Empty on the refusal path.
+  trades: EmaPullbackTradeRecord[];
 }
 
 // CEO directive "...Quant Intelligence + Market Analysis Completion
@@ -1799,6 +1828,72 @@ export interface SurvivorshipBiasRead {
   detail: string;
 }
 
+// CEO directive "Phase 9: Real Market Data + Evidence Integrity
+// Foundation" — real dataset/quality/feature provenance. See
+// backend/app/dataset_registry.py, app/data_quality.py,
+// app/feature_registry.py.
+export type DatasetSource = "mock_provider" | "external_real_provider";
+
+// CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
+// Phase 1 (True Holdout Architecture) — honestly "unavailable" today
+// (no real date-partitioned historical dataset exists to carve a
+// genuine split from). See backend/app/schemas.py's DataSplit.
+export type DataSplit = "train" | "validation" | "test" | "holdout" | "unavailable";
+
+export interface DatasetMetadata {
+  datasetId: string;
+  datasetVersion: string;
+  source: DatasetSource;
+  dataCategory: DataCategory;
+  symbols: string[];
+  timeframe: string;
+  candlesPerSymbolRequested: number;
+  candlesPerSymbolRetrieved: Record<string, number>;
+  coveragePct: number;
+  missingBarSymbols: string[];
+  adjustmentPolicy: string;
+  retrievedAt: string;
+  dataSplit: DataSplit;
+}
+
+export type DataQualityCode =
+  | "timestamp_out_of_order"
+  | "duplicate_timestamp"
+  | "missing_bars"
+  | "impossible_ohlc"
+  | "non_positive_price"
+  | "negative_volume"
+  | "timeframe_mismatch"
+  | "symbol_mismatch"
+  | "insufficient_history"
+  | "timezone_invalid";
+
+export interface CandleDataQualityIssue {
+  code: DataQualityCode;
+  evidence: string;
+}
+
+export interface DataQualityReport {
+  id: string;
+  symbol: string;
+  timeframe: string;
+  candleCount: number;
+  dataValid: boolean;
+  issues: CandleDataQualityIssue[];
+  generatedAt: string;
+}
+
+export interface FeatureDescriptor {
+  name: string;
+  version: string;
+  parameters: Record<string, string>;
+  sourceFields: string[];
+  lookbackBars: number | null;
+  warmupBars: number | null;
+  timestampSemantics: string;
+  provenance: string;
+}
+
 // Same directive — the Research Desk's one reproducible experiment
 // record, bundling every real validation axis above for one compiled
 // definition. See backend/app/research_experiment.py.
@@ -1824,6 +1919,14 @@ export interface ResearchExperimentRecord {
    * Deliberately NOT blended with `backtest`'s own R-multiple-based stats into one "beat the market"
    * number (different units) — real regime context only, never a performance comparison. */
   buyAndHoldBaseline: BuyAndHoldBaseline[];
+  /** CEO directive "Phase 9: Real Market Data + Evidence Integrity Foundation" — real dataset
+   * provenance/versioning for the actual candles this experiment tested. `null` only for a
+   * pre-Phase-9 persisted record. */
+  datasetMetadata: DatasetMetadata | null;
+  /** Direct, unmodified read of `lookAheadAudit.verdict === "clean"` — never a second check. */
+  pointInTimeVerified: boolean | null;
+  /** Sorted `FeatureDescriptor.version` strings for every indicator this definition references. */
+  featureVersions: string[];
   dataHonestyNote: string;
   generatedAt: string;
 }
@@ -7299,6 +7402,10 @@ export interface ResearchLessonRecord {
   confidencePct: number;
   lesson: string;
   createdAt: string;
+  // CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
+  // Phase 8 — real diagnosed FailureCodes for structured lesson-memory
+  // retrieval. Empty for every pre-existing persisted lesson.
+  failureCodes: FailureCode[];
 }
 
 export interface ResearchLoopIterationRecord {
@@ -7503,6 +7610,34 @@ export interface FactoryCandidateRecord {
   duplicateOfCandidateId: string | null;
   adversarialResult: AdversarialResearchResult | null;
   scorecardClassification: ResearchScorecardClassification | null;
+  // CEO directive "TradeTown — Phase 9: Full Autonomous Quant Research
+  // Factory," Phase 5/15 — `null` for every single-child generation
+  // (including every pre-Phase-9.2 record), never a vacuous "rank 1 of 1."
+  siblingRank: number | null;
+  fitnessRationale: string | null;
+  researchCouncil: ResearchCouncilReport | null;
+}
+
+// CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
+// Phases 14-15 — a deterministic evidence-aggregation report, never an
+// "AI score." See backend/app/research_council.py.
+export type ResearchCouncilRole = "researcher" | "quant" | "risk_manager" | "adversarial_researcher" | "regime_analyst" | "statistician" | "reviewer";
+export type ResearchCouncilRecommendation = "continue" | "mutate" | "retest" | "archive" | "insufficient_evidence";
+
+export interface ResearchCouncilFinding {
+  role: ResearchCouncilRole;
+  finding: string;
+  evidenceReferences: string[];
+  confidence: "high" | "medium" | "low";
+}
+
+export interface ResearchCouncilReport {
+  id: string;
+  candidateId: string;
+  findings: ResearchCouncilFinding[];
+  recommendation: ResearchCouncilRecommendation;
+  recommendationReason: string;
+  generatedAt: string;
 }
 
 export interface FactoryRunConfig {
@@ -7510,6 +7645,8 @@ export interface FactoryRunConfig {
   maxTotalBacktests: number;
   maxMutationsPerParent: number;
   maxIterationsPerFamily: number;
+  maxChildrenPerParent: number;
+  maxRuntimeSeconds: number;
 }
 
 export interface FactoryRunRecord {
@@ -7534,6 +7671,7 @@ export interface FactoryRunRecord {
   currentChampionDefinitionId: string | null;
   currentChampionDefinitionVersion: number | null;
   createdAt: string;
+  runtimeSeconds: number | null;
 }
 
 export interface LessonEvidenceSummary {

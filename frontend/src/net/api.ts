@@ -35,6 +35,7 @@ import type {
   QuantResearchExperiment,
   QuantResearchExperimentSimilarity,
   RegisterResearchableStrategyResult,
+  DataQualityReport,
   ResearchCategory,
   ResearchExperimentRecord,
   StrategyMatch,
@@ -966,7 +967,16 @@ export const api = {
   runResearchFactoryRun: (
     hypothesis: StrategyHypothesis,
     definition: CompiledStrategyDefinition,
-    options?: { maxGenerations?: number; maxTotalBacktests?: number; symbols?: string[] }
+    options?: {
+      maxGenerations?: number;
+      maxTotalBacktests?: number;
+      symbols?: string[];
+      // CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
+      // Phase 5 — omit to use this codebase's own real, richer
+      // defaults (MAX_CHILDREN_PER_PARENT/MAX_RUNTIME_SECONDS).
+      maxChildrenPerParent?: number;
+      maxRuntimeSeconds?: number;
+    }
   ) =>
     request<FactoryRunRecord>("/sandbox/research-factory/run", {
       method: "POST",
@@ -976,6 +986,8 @@ export const api = {
         maxGenerations: options?.maxGenerations,
         maxTotalBacktests: options?.maxTotalBacktests,
         symbols: options?.symbols,
+        maxChildrenPerParent: options?.maxChildrenPerParent,
+        maxRuntimeSeconds: options?.maxRuntimeSeconds,
       }),
     }),
   getResearchFactoryRuns: (strategyFamily?: string) =>
@@ -1051,6 +1063,12 @@ export const api = {
       body: JSON.stringify({ definitions }),
     }),
   getSurvivorshipBias: (symbol: string) => request<SurvivorshipBiasRead>(`/sandbox/survivorship-bias?symbol=${encodeURIComponent(symbol)}`),
+  // CEO directive "Phase 9: Real Market Data + Evidence Integrity
+  // Foundation," Section 3. See backend/app/data_quality.py.
+  getDataQuality: (symbol: string, timeframe: string, candlesPerSymbol?: number) =>
+    request<DataQualityReport>(
+      `/sandbox/data-quality?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}${candlesPerSymbol ? `&candlesPerSymbol=${candlesPerSymbol}` : ""}`,
+    ),
   // v0.7 Feature 53 — Company Certification. Read-only, computed fresh
   // every call — `certified` is always a live read of current real
   // state (see StrategyCertification's own docstring in types.ts).

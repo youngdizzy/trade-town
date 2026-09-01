@@ -5,10 +5,12 @@ import type {
   AgentId,
   CandidacyBinning,
   CandidateLifecycleStage,
+  FactoryCandidateRecord,
   FactoryRunRecord,
   FactoryStatsRead,
   FamilyResearchStats,
   ResearchDiscoveryCycleRecord,
+  ResearchExperimentRecord,
   ResearchLoopIterationRecord,
   ResearchScorecardClassification,
   StrategyScorecard,
@@ -76,6 +78,50 @@ function FunnelStage({ label, verdict }: { label: string; verdict: string | null
 
 function ScorecardRow({ label, value }: { label: string; value: string | number | boolean | null }) {
   return <DataRow label={label} value={value === null ? "NOT VERIFIED" : String(value)} />;
+}
+
+// CEO directive "Phase 9: Real Market Data + Evidence Integrity
+// Foundation," Section 24 — surfaces dataset provenance/quality/feature
+// version disclosure alongside a candidate's other real evidence.
+// Never claims "REAL HISTORICAL DATA" — this codebase's mock provider
+// is the only real implementation, so dataCategory is always
+// "simulated" today; that is stated plainly, not hidden.
+function DataProvenanceLine({ experiment }: { experiment: ResearchExperimentRecord }) {
+  const meta = experiment.datasetMetadata;
+  return (
+    <p className="mt-1 text-[8px] text-cmd-textDim">
+      <span className="uppercase tracking-wide">
+        {meta ? `${meta.dataCategory === "simulated" ? "SIMULATED DATA" : meta.dataCategory.toUpperCase()} · v${meta.datasetVersion} · coverage ${meta.coveragePct.toFixed(0)}%` : "DATASET METADATA NOT VERIFIED"}
+      </span>
+      {" · "}
+      point-in-time {experiment.pointInTimeVerified === null ? "NOT VERIFIED" : experiment.pointInTimeVerified ? "verified clean" : "VIOLATIONS FOUND"}
+      {" · "}
+      {experiment.featureVersions.length > 0 ? `${experiment.featureVersions.length} feature version(s)` : "no indicators referenced"}
+    </p>
+  );
+}
+
+// CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
+// Phases 15/16 — real sibling ranking + Research Council disclosure.
+// `siblingRank`/`fitnessRationale` are null for every single-child
+// generation (never a vacuous "rank 1 of 1"); `researchCouncil` is null
+// for a candidate that never reached a real backtest.
+function CouncilAndSiblingLine({ candidate }: { candidate: FactoryCandidateRecord }) {
+  if (candidate.siblingRank === null && candidate.researchCouncil === null) return null;
+  return (
+    <div className="mt-1 text-[8px] text-cmd-textDim">
+      {candidate.siblingRank !== null && candidate.fitnessRationale && (
+        <p>
+          <span className="uppercase tracking-wide text-cmd-cyan">Fitness rank:</span> {candidate.fitnessRationale}
+        </p>
+      )}
+      {candidate.researchCouncil && (
+        <p className="mt-0.5">
+          <span className="uppercase tracking-wide text-cmd-cyan">Research Council →</span> {candidate.researchCouncil.recommendation.replace(/_/g, " ")}: {candidate.researchCouncil.recommendationReason}
+        </p>
+      )}
+    </div>
+  );
 }
 
 function renderScorecard(scorecard: StrategyScorecard) {
@@ -384,12 +430,14 @@ export function ResearchFactoryView() {
                     <DataRow label="Regime" value={candidate.iteration.scorecard.regimeRobustnessVerdict ?? "NOT VERIFIED"} />
                   </div>
                 )}
+                {candidate.iteration && <DataProvenanceLine experiment={candidate.iteration.experiment} />}
                 {candidate.mutationCandidate && (
                   <p className="mt-1 text-[9px] text-cmd-text">
                     <span className="text-cmd-cyan">Mutation ({candidate.mutationCandidate.mutationType.replace(/_/g, " ")}):</span> {candidate.mutationCandidate.rationale}
                     {candidate.mutationCandidate.mutatedSourceText === null && <span className="text-cmd-textDim italic"> — no bounded automatic operator; {candidate.mutationCandidate.constraints}</span>}
                   </p>
                 )}
+                <CouncilAndSiblingLine candidate={candidate} />
                 <p className="mt-0.5 text-[9px] text-cmd-textDim">{candidate.decisionReason}</p>
               </div>
             ))}
@@ -727,6 +775,7 @@ function DiscoveryCyclePanel() {
                     <DataRow label="Max DD (R)" value={candidate.iteration.scorecard.maxDrawdownR?.toFixed(2) ?? "NOT VERIFIED"} />
                   </div>
                 )}
+                {candidate.iteration && <DataProvenanceLine experiment={candidate.iteration.experiment} />}
                 {candidate.adversarialResult && (
                   <div className="mt-1 grid grid-cols-2 gap-x-4 sm:grid-cols-3">
                     <DataRow label="Outlier resilience" value={candidate.adversarialResult.outlierResilience.classification.replace(/_/g, " ")} />
@@ -747,6 +796,7 @@ function DiscoveryCyclePanel() {
                     ))}
                   </div>
                 )}
+                <CouncilAndSiblingLine candidate={candidate} />
                 <p className="mt-0.5 text-[9px] text-cmd-textDim">{candidate.decisionReason}</p>
               </div>
             ))}
