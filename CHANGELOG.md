@@ -110,9 +110,37 @@ development milestones, not semver releases.
     endpoints, nor anything they call, writes to Champion/Challenger state,
     certification state, or live trading — see docs/API.md for full request/
     response shapes.
-  - **What Section I (UI), Section L (caching), and Section K's remaining
-    adversarial tests cover** is documented separately below/in this same
-    Unreleased section as that work lands.
+  - **Section I (UI) — `frontend/src/ui/components/CommandCenter/panels/sandbox/DataIntegrityView.tsx`,
+    new "DATA & HOLDOUT" Sandbox sub-tab.** Five real, on-demand cards, each a
+    thin window onto its own new endpoint — no client-side computation, no
+    fake AI/confidence score anywhere: DATA PROVENANCE (external-data status,
+    fetched on open), HOLDOUT (compile + evaluate, showing real partition
+    sizes/timestamps/status and the holdout-only backtest bucket), PORTFOLIO
+    ANALYST (compile 2+ candidates, real pairwise correlation/marginal
+    contribution/combined-portfolio bucket/recommendation), DATA QUALITY
+    (evidence-state classification), and LINEAGE INTEGRITY CHECK (by
+    Research Factory run id). Live-verified in the browser against the real
+    running dev stack: external-data status correctly renders UNAVAILABLE,
+    a compiled AAPL definition evaluates to a real VALID 3600/1200/1200
+    chronological split with a "not enough evidence" holdout-only bucket
+    (8 trades, below the 10-trade bucket floor), two compiled candidates
+    correctly return `insufficient_evidence` with 0 paired days disclosed
+    honestly (never a fabricated correlation), evidence-quality correctly
+    classifies to `research_validated`, and a lineage check against a
+    nonexistent run id correctly 404s and renders the real error text. Zero
+    browser console errors.
+  - Verified: `npx tsc --noEmit`, `npm run lint`, `npm run build` — all
+    clean.
+  - **Section L (Performance/caching) — NOT IMPLEMENTED this pass,
+    honestly.** Every new endpoint is CAGS (stateless, computed fresh every
+    call) like `POST /research-experiment`/`GET /data-quality` before them —
+    no dataset-hash/strategy-version/feature-version cache layer was added.
+    Each call re-fetches candles from the mock provider rather than reusing
+    a prior call's result; this mirrors the existing, pre-Phase-10 pattern
+    for every other Sandbox research endpoint (none of them cache either),
+    so this is not a regression, but it means Section L's specific
+    ask — "never double-fetch candles," a real cache keyed by content hash —
+    was not built. Flagged here rather than silently skipped.
   - **Deliberately NOT implemented, honestly, per the directive's own
     Section R ("do not fake completion"):** no real external market-data
     vendor was ever called (no credentials exist in this environment — every

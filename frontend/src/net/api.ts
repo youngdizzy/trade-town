@@ -192,6 +192,11 @@ import type {
   TreasuryState,
   Weekday,
   WhatIfSimulation,
+  ExternalMarketDataStatus,
+  HoldoutEvaluationResult,
+  PortfolioResearchReport,
+  EvidenceQualityReport,
+  LineageIntegrityIssue,
 } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -996,6 +1001,27 @@ export const api = {
   getResearchFactoryLineage: (strategyFamily: string) =>
     request<ResearchLoopIterationRecord[]>(`/sandbox/research-factory/lineage/${encodeURIComponent(strategyFamily)}`),
   getResearchFactoryStats: () => request<FactoryStatsRead>("/sandbox/research-factory/stats"),
+  // CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
+  // Portfolio Intelligence." See backend/app/routers/sandbox.py's own
+  // docstrings on each endpoint for the exact real behavior/honesty
+  // boundary.
+  getExternalMarketDataStatus: () => request<ExternalMarketDataStatus>("/sandbox/external-market-data/status"),
+  evaluateHoldout: (definition: CompiledStrategyDefinition, symbol?: string, timeframe?: string, candlesPerSymbol?: number) =>
+    request<HoldoutEvaluationResult>("/sandbox/holdout/evaluate", {
+      method: "POST",
+      body: JSON.stringify({ definition, symbol, timeframe, candlesPerSymbol }),
+    }),
+  analyzePortfolio: (definitions: CompiledStrategyDefinition[], symbols?: string[], timeframe?: string, candlesPerSymbol?: number) =>
+    request<PortfolioResearchReport>("/sandbox/portfolio-analyst/analyze", {
+      method: "POST",
+      body: JSON.stringify({ definitions, symbols, timeframe, candlesPerSymbol }),
+    }),
+  getEvidenceQuality: (definition: CompiledStrategyDefinition, symbols?: string[], timeframe?: string, candlesPerSymbol?: number) =>
+    request<EvidenceQualityReport>("/sandbox/evidence-quality", {
+      method: "POST",
+      body: JSON.stringify({ definition, symbols, timeframe, candlesPerSymbol }),
+    }),
+  checkLineage: (runId: string) => request<LineageIntegrityIssue[]>(`/sandbox/lineage/check?runId=${encodeURIComponent(runId)}`),
   // CEO directive "TradeTown — Phase 8: Autonomous Strategy Discovery +
   // Adversarial Research Engine." See backend/app/research_discovery.py.
   runResearchDiscoveryCycle: (

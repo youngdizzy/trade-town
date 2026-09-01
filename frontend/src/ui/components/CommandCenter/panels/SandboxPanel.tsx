@@ -19,6 +19,7 @@ import { LiveStrategyEligibilityCard } from "./sandbox/LiveStrategyEligibilityCa
 import { StrategyTradingDiagnosticsView } from "./sandbox/StrategyTradingDiagnosticsView";
 import { ChampionChallengerView } from "./sandbox/ChampionChallengerView";
 import { ResearchFactoryView } from "./sandbox/ResearchFactoryView";
+import { DataIntegrityView } from "./sandbox/DataIntegrityView";
 
 const SUB_TABS = [
   "PIPELINE",
@@ -34,6 +35,7 @@ const SUB_TABS = [
   "QUANT RESEARCH LAB",
   "CHAMPION/CHALLENGER",
   "RESEARCH FACTORY",
+  "DATA & HOLDOUT",
 ] as const;
 type SubTab = (typeof SUB_TABS)[number];
 
@@ -75,7 +77,14 @@ const STRATEGY_SCOPED: ReadonlySet<SubTab> = new Set(["PIPELINE", "CERTIFICATION
  * multi-strategy tournament across every real validation axis via
  * named-slot superlatives and staged elimination rounds, never a
  * fabricated composite score — see backend/app/quant_research_lab.py /
- * backend/app/strategy_registry.py / backend/app/strategy_tournament.py).
+ * backend/app/strategy_registry.py / backend/app/strategy_tournament.py),
+ * and DATA & HOLDOUT (CEO directive "Phase 10: Real Data + True Holdout
+ * + Portfolio Intelligence" — real external-data provenance status, an
+ * opt-in structurally leak-proof TRAIN/VALIDATION/HOLDOUT evaluation
+ * tool, a cross-strategy Portfolio Analyst that is RESEARCH INFORMATION
+ * ONLY, a disclosed evidence-quality state, and a lineage-integrity
+ * checker — see backend/app/holdout.py / backend/app/portfolio_analyst.py /
+ * backend/app/evidence_quality.py / backend/app/lineage.py).
  * See docs/Architecture.md's Feature 52 sections for the full honesty
  * boundary each sub-view observes.
  */
@@ -177,6 +186,7 @@ export function SandboxPanel() {
       {subTab === "QUANT RESEARCH LAB" && <QuantResearchLabView />}
       {subTab === "CHAMPION/CHALLENGER" && <ChampionChallengerView />}
       {subTab === "RESEARCH FACTORY" && <ResearchFactoryView />}
+      {subTab === "DATA & HOLDOUT" && <DataIntegrityView />}
 
       {STRATEGY_SCOPED.has(subTab) && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">

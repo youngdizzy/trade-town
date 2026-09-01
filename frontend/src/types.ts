@@ -1883,6 +1883,135 @@ export interface DataQualityReport {
   generatedAt: string;
 }
 
+// CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
+// Portfolio Intelligence," Section B. See backend/app/holdout.py's own
+// module docstring for the full real architecture and exactly how
+// leakage into mutation is made structurally impossible.
+export type StrategyLifecycleStage = "data_discovered" | "training" | "validation" | "strategy_frozen" | "holdout_evaluation" | "holdout_locked";
+
+// `"unavailable"` when a partition is empty or no freeze exists yet —
+// never fabricated as `"valid"`. `"invalid"` is a real structural
+// failure (overlap, out-of-order data, or a definition mutated since
+// freeze), always disclosed via `detail`.
+export type HoldoutValidationStatus = "unavailable" | "invalid" | "valid";
+
+export interface DataPartitionSummary {
+  label: "train" | "validation" | "holdout";
+  candleCount: number;
+  startTimestamp: string | null;
+  endTimestamp: string | null;
+  contentHash: string;
+}
+
+export interface StrategyFreezeRecord {
+  id: string;
+  definitionId: string;
+  definitionVersion: number;
+  frozenAt: string;
+  datasetVersion: string;
+  featureVersions: string[];
+}
+
+export interface HoldoutValidationReport {
+  id: string;
+  definitionId: string;
+  definitionVersion: number;
+  datasetId: string;
+  datasetVersion: string;
+  train: DataPartitionSummary;
+  validation: DataPartitionSummary;
+  holdout: DataPartitionSummary;
+  overlapDetected: boolean;
+  leakageDetected: boolean;
+  chronologicalOrderValid: boolean;
+  freeze: StrategyFreezeRecord | null;
+  status: HoldoutValidationStatus;
+  detail: string;
+  generatedAt: string;
+}
+
+export interface HoldoutEvaluationResult {
+  id: string;
+  report: HoldoutValidationReport;
+  symbol: string;
+  bucket: EmaPullbackStatsBucket | null;
+  generatedAt: string;
+}
+
+// Same directive, Sections C/D (Portfolio Analyst). RESEARCH
+// INFORMATION ONLY — see backend/app/portfolio_analyst.py's own module
+// docstring for why every field here is real evidence over
+// already-computed candidate backtests, never a new backtest engine.
+export type PortfolioRecommendation = "insufficient_evidence" | "high_redundancy" | "diversifying" | "mixed" | "portfolio_fragile" | "portfolio_robust";
+
+export interface PortfolioPairCorrelation {
+  candidateIdA: string;
+  candidateIdB: string;
+  pairedDayCount: number;
+  correlation: number | null;
+  stressCorrelation: number | null;
+}
+
+export interface PortfolioMarginalContribution {
+  candidateId: string;
+  expectancyRWith: number | null;
+  expectancyRWithout: number | null;
+  maxDrawdownRWith: number | null;
+  maxDrawdownRWithout: number | null;
+}
+
+export interface PortfolioResearchReport {
+  id: string;
+  candidateIds: string[];
+  pairCorrelations: PortfolioPairCorrelation[];
+  combinedBucket: EmaPullbackStatsBucket;
+  worstCombinedPeriod: WorstPeriodResult;
+  marginalContributions: PortfolioMarginalContribution[];
+  simultaneousDrawdownDetected: boolean;
+  sharedFailureModes: FailureCode[];
+  concentrationPct: number | null;
+  evidenceConfidence: "high" | "medium" | "low";
+  recommendation: PortfolioRecommendation;
+  recommendationReason: string;
+  generatedAt: string;
+}
+
+// Same directive, Section E (Data-Confidence-Aware Research). NEVER a
+// trading approval, never blended with any other axis into one score.
+export type EvidenceState = "insufficient_data" | "simulated_only" | "research_validated" | "holdout_validated" | "external_data_validated";
+
+export interface EvidenceQualityReport {
+  id: string;
+  definitionId: string;
+  definitionVersion: number;
+  dataProvenance: DataCategory;
+  dataQualityValid: boolean | null;
+  pointInTimeVerified: boolean | null;
+  holdoutStatus: HoldoutValidationStatus | null;
+  sampleSize: number | null;
+  externalProviderAvailable: boolean;
+  benchmarkAvailable: boolean;
+  adversarialCoverage: boolean;
+  state: EvidenceState;
+  detail: string;
+  generatedAt: string;
+}
+
+// Same directive, Section H (Lineage). Never invents a lineage
+// relationship that isn't there — see backend/app/lineage.py.
+export interface LineageIntegrityIssue {
+  candidateId: string;
+  issue: string;
+}
+
+// Same directive, Section A. A real, honest self-report of
+// ExternalMarketDataProvider.status() — see backend/app/market_data.py.
+export interface ExternalMarketDataStatus {
+  available: boolean;
+  providerName: string;
+  reason: string;
+}
+
 export interface FeatureDescriptor {
   name: string;
   version: string;

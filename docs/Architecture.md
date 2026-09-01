@@ -17904,6 +17904,35 @@ the system stays fully functional (this endpoint alone reports
 `available: false`, everything else keeps using the unaffected mock
 provider).
 
+### Section I — UI (`DataIntegrityView.tsx`, new "DATA & HOLDOUT" Sandbox sub-tab)
+
+Five real, on-demand cards added to `SandboxPanel.tsx`'s existing sub-tab
+row (`frontend/src/ui/components/CommandCenter/panels/sandbox/DataIntegrityView.tsx`),
+keeping the existing visual language (`Glass`/`TerminalLabel`/`DataRow`/
+`StatusPill`/`EmptyState`, the same components every other Sandbox view
+already uses) rather than a new design language. Each card is a thin,
+honest window onto its own new endpoint — no client-side computation, no
+fake AI/confidence score anywhere: DATA PROVENANCE (external-data status,
+fetched on open), HOLDOUT (compile + evaluate), PORTFOLIO ANALYST
+(compile 2+ candidates and analyze), DATA QUALITY (evidence-state
+classification), and LINEAGE INTEGRITY CHECK (by Research Factory run
+id). Live-verified end-to-end in the browser against the real running
+dev stack — see CHANGELOG.md's Unreleased entry for the exact live
+results captured.
+
+### Section L — Performance/caching: NOT IMPLEMENTED this pass, honestly
+
+Every new endpoint is CAGS (stateless, computed fresh every call) like
+`POST /research-experiment`/`GET /data-quality` before them — no
+dataset-hash/strategy-version/feature-version cache layer was added, and
+candles are re-fetched from the mock provider on every call rather than
+reused across calls. This matches the existing, pre-Phase-10 pattern for
+every other Sandbox research endpoint (none of them cache either), so it
+is not a regression — but Section L's specific ask (a real cache keyed
+by dataset hash/strategy version/feature version/params/date range,
+"never double-fetch candles") was not built. Disclosed here rather than
+silently skipped, per the directive's own Section R.
+
 ### What was deliberately NOT implemented this pass (Section R)
 
 No real external market-data vendor was ever called in this environment
