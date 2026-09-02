@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 
+from app.market_intelligence import default_market_intelligence_state
+from app.nexus import _apply_operating_mode
 from app.paper_trade_journal import build_journal_entry
 from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, PaperTrade, SettingsState, SimulationResult, Strategy, StrategyHealthState, StrategyReport, TierAllocationLimits, TradeProposal
 from app.strategy_lab import MIN_RETIREMENT_TRADE_COUNT
@@ -1404,3 +1406,100 @@ class TestSniperWallets:
         saved, error = asyncio.run(state.remove_sniper_wallet(wallet.id))
         assert error is None
         assert saved.sniper_trade_history == [trade]
+
+
+class TestSubmitCeoDecisionIdempotency:
+    """CEO directive "Controlled Paper Trading Readiness Audit + Burn-in
+    1.0," Primary Objective 7 — proves a decision cannot produce two
+    trades. `submit_ceo_decision()` runs entirely inside `async with
+    self.lock:` (a non-reentrant asyncio.Lock), and its very first act is
+    `next((p for p in self.data.trade_proposals if p.id == proposal_id), None)`
+    followed by writing the resolved state (which no longer contains that
+    proposal) back to `self.data` before the lock releases — so there is
+    no window, real or theoretical under asyncio's single-threaded
+    cooperative scheduling, where two callers can both find the same
+    proposal still pending. This is verified here as an executable
+    invariant, not just cited as an architectural claim."""
+
+    def _state_with_pending_proposal(self) -> GameState:
+        state = GameState()
+        state.data = state.data.model_copy(update={"trade_proposals": [_pending_proposal()]})
+        return state
+
+    def test_submitting_the_same_proposal_twice_in_a_row_rejects_the_second_call(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved1, error1 = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error1 is None
+        state.data = saved1
+        positions_after_first = len(saved1.paper_portfolio.positions)
+        decisions_after_first = len(saved1.decisions)
+
+        saved2, error2 = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error2 is not None
+        assert "no pending trade proposal" in error2.lower()
+        # No second position, no second decision — the rejected second
+        # call touched nothing.
+        assert len(saved2.paper_portfolio.positions) == positions_after_first
+        assert len(saved2.decisions) == decisions_after_first
+
+    def test_a_manual_decision_on_an_already_auto_resolved_proposal_id_is_rejected_not_double_executed(self) -> None:
+        # Simulates the exact race the directive names: an Operating Mode
+        # auto-resolution (the REAL app/nexus.py::_apply_operating_mode(),
+        # which runs under the SAME self.lock via _advance_once() in real
+        # production) already removed this proposal and appended its own
+        # decision/position — a manual CEO click that was queued behind
+        # the same lock for the same proposal_id must find nothing left
+        # to act on, never a second execution of the same trade.
+        state = self._state_with_pending_proposal()
+        remaining, portfolio, _meeting_log = _apply_operating_mode(
+            "executive",
+            state.data.trade_proposals,
+            [],  # debates
+            state.data.paper_portfolio,
+            state.data.risk_limits,
+            state.data.risk_warnings,
+            {"NEXA": 100.0},  # prices
+            0,  # now_sim_minutes
+            [],  # memory
+            [],  # decisions
+            [],  # ceo_decisions
+            [],  # prediction_records
+            [],  # gatekeeper_rejections
+            [],  # news
+            [],  # challenge_reports
+            [],  # coach_reports
+            [],  # meeting_log
+            [],  # decision_vault
+            1,  # sim_day
+            default_market_intelligence_state(),
+            [],  # war_room_sessions
+            "sideways",  # market_environment_regime
+            "balanced_institutional",  # active_weight_profile
+            {},  # custom_department_weights
+        )
+        # Control: confirm the auto-resolution genuinely happened before
+        # trusting the rest of this test on it.
+        assert remaining == []
+        assert len(portfolio.positions) == 1
+        positions_after_auto = len(portfolio.positions)
+        state.data = state.data.model_copy(update={"trade_proposals": remaining, "paper_portfolio": portfolio})
+
+        manual_saved, manual_error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert manual_error is not None
+        assert "no pending trade proposal" in manual_error.lower()
+        assert len(manual_saved.paper_portfolio.positions) == positions_after_auto
+
+    def test_a_rejected_wait_decision_cannot_be_resubmitted_as_a_buy_on_the_same_proposal(self) -> None:
+        # A "wait" also removes the proposal from trade_proposals (a real
+        # decision was made, even though no trade executed) — resubmitting
+        # the same id afterward must be rejected, never silently accepted
+        # as a fresh decision.
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "wait"))
+        assert error is None
+        assert saved.trade_proposals == []
+        state.data = saved
+
+        saved2, error2 = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error2 is not None
+        assert saved2.paper_portfolio.positions == []

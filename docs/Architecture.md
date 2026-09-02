@@ -19854,3 +19854,170 @@ directive bundled earlier), checking specifically whether the risk
 enforcement this pass built survives a real multi-day live run,
 including the unresolved decisions-count anomaly this pass's own live
 verification surfaced.
+
+## CEO directive "Controlled Paper Trading Readiness Audit + Burn-in 1.0"
+
+A scoped readiness/burn-in audit (explicitly not the larger bundled
+"Paper Trading Validation & Burn-in 1.0"), required by the prior Risk
+Contract Enforcement milestone's own next-milestone recommendation. Its
+own instruction: "Do not assume the previous report is correct merely
+because it says 'IMPLEMENTED.' Re-audit the actual repository and prove
+each claim against the current code."
+
+### Root cause: the "decisions-count anomaly" was not a bug
+
+The prior milestone's live verification observed `ceoDecisions` read as
+3 via one response, then 0 via a subsequent `GET /api/load` — flagged
+unresolved. Direct code tracing found the real cause immediately: `GET
+/api/load` (`app/routers/save.py`) filters `split_state(snapshot)` down
+to `CORE_MODULES` and re-assembles through `assemble_state()`, which
+fills any excluded module with real defaults — its own docstring already
+disclosed this ("the archive modules... come back empty here, not
+omitted or fabricated"). `decisions`/`ceo_decisions`/`trade_proposals`/
+`risk_decisions` all live in the `"trade_history"` module — one of
+exactly three `ARCHIVE_MODULES` (`app/save_modules.py`) — deliberately
+excluded from `GET /api/load` since the v0.7 Save Architecture Redesign
+Phase 2, precisely to keep the main load payload small (real, ever-
+growing archive lists hydrate lazily instead, via `GET
+/api/load/archive/{module}` or the WebSocket tick broadcast). The prior
+session's `POST /api/time/advance` response (which returns the full,
+unfiltered state) showed the real "3"; the immediately-following `GET
+/api/load` calls never included that data in the first place, by design
+— not data loss, not a race condition, not a bug. This also means the
+prior milestone's own "no proposal appeared during a 45-second live
+poll" observation was itself unreliable evidence, for the same reason
+(`trade_proposals` is in the same excluded module).
+
+`tests/test_save_modules.py`'s new `TestArchiveModulesExcludedFromCoreLoad`
+pins this down as four checkable assertions: the four fields genuinely
+live in the archive module map; running the real `GET /api/load`
+pipeline on a state with a real decision produces an empty list; the
+same state's `split_state()` archive view still carries the real record
+(never actually lost); and a genuine CORE field survives the identical
+pipeline unaffected (proving the filtering is real and selective, not a
+broader `assemble_state()` defect).
+
+### Risk enforcement re-verified via a genuinely tick-driven proposal
+
+The prior milestone's own unit tests constructed a `TradeProposal`
+directly. This pass instead seeded one real, completed `ResearchItem`
+and called the real `app/nexus.py::_generate_trade_proposals()` —
+producing a real, organically-sized 11.1111-share proposal. A real 5%
+portfolio drawdown (one real closed `PaperTrade` with a real -$5,000
+pnl) was then applied, and the real decision executed exactly **7.9167
+shares** (11.1111 × 0.75 — the contract's own default "moderate_drawdown"
+factor, to four decimal places). This closes the one gap the prior
+report's own live-verification section named as unobtained: proof that
+a proposal originating from the real generation pipeline, not hand-
+constructed, gets correctly re-scaled at decision time.
+
+A second scenario (20% cumulative drawdown, a 1,000-share proposal)
+produced `approved=0.0`, `killSwitchTriggered=true`, `rejected=true`,
+and zero new positions — the kill switch held against a much larger,
+more adversarial requested size than the prior milestone's own test
+scenario used.
+
+### Idempotency, proven against the real auto-resolution path
+
+`tests/test_state.py`'s new `TestSubmitCeoDecisionIdempotency` proves
+three scenarios can never double-execute: the same proposal submitted
+twice in a row; a manual decision attempted after the REAL
+`app/nexus.py::_apply_operating_mode()` (not a simulated stand-in) has
+already auto-resolved the same proposal; and a "wait" decision
+permanently consuming the proposal id, preventing a later resubmission
+as "buy." All three trace back to `submit_ceo_decision()`'s own
+`async with self.lock:` — a non-reentrant `asyncio.Lock` held for the
+entire find-then-resolve critical section — under which no window exists
+for two callers to both observe the same proposal still pending.
+
+### A real ~6-day burn-in
+
+A one-off diagnostic script (not a permanent test file — run against a
+sandboxed temp SQLite DB, never `backend/data/tradetown.db`) drove the
+real `GameState.advance_time()` in Executive Mode across four 36-hour
+chunks (144 simulated hours / 6 simulated days) in 27 real seconds:
+
+| Metric | Result |
+|---|---|
+| Simulated duration | 6 days (day 1 → day 7, hour 8) |
+| Real wall time | 27.3s |
+| Proposals created (whole run, all phases) | 5 |
+| Decisions resolved (whole run) | 5 (2 manual scaling scenarios + 3 auto-resolved) |
+| Trades executed / closed | 3 (all round-tripped — 0 left open) |
+| Wins / losses | 0 / 3 |
+| Realized P&L | -$33.84 |
+| Exceptions | 0 |
+| Duplicate executions | 0 |
+| Risk violations (approved > requested, or a trade past a kill switch) | 0 |
+| Restart/reload cycles | 1 (mid-run, all 5 tracked record counts matched exactly) |
+| Operating-mode transitions exercised | learning (correctly inert) → assisted (auto-resolved) → executive (auto-resolved) |
+
+Three trades in six simulated days, all losses, is not a claim about
+strategy quality (it is not built to be evidence of trading edge, only
+of lifecycle integrity) — it reflects a small number of proposals
+surviving the Opportunity Gatekeeper/Trade Gatekeeper against synthetic
+market data in a short window. Zero risk violations and zero duplicate
+executions across every trade this run produced is the actual claim
+this burn-in supports.
+
+### A new, disclosed gap the burn-in itself surfaced
+
+Auto-resolved trades (Assisted/Executive Mode) are correctly
+RiskContract-scaled — real enforcement, confirmed above — but never
+produce a `RiskDecision` audit record. `app/nexus.py::_apply_operating_mode()`
+has no return slot for one; only `app/state.py::submit_ceo_decision()`
+(a manual CEO click) builds one. This was implicitly true since the
+RiskDecision mechanism's original directive scoped it to the manual path
+only, but had not been explicitly named as a gap until this burn-in's
+own trade activity surfaced it. `tests/test_nexus.py`'s new
+`TestAutoResolutionEnforcesButDoesNotAuditRiskDecisions` pins this down
+structurally (`_apply_operating_mode()`'s own signature has no
+`risk_decisions` parameter) rather than leaving it an undocumented side
+effect. This is an audit-trail completeness gap, not a safety gap — the
+scaled quantity is real and correctly enforced either way — named as a
+candidate future finding, not fixed this pass.
+
+### Circuit-Breaker / Travel-Mode staleness — precisely characterized, not fixed
+
+Per this directive's own explicit instruction ("do NOT silently expand
+this directive... do not pretend they are fixed if they are not"):
+confirmed via direct code reading that `app/state.py::submit_ceo_decision()`
+never calls `apply_circuit_breaker_tightening()`/`apply_travel_mode_tightening()`
+on `risk_limits` at decision time — a real, pre-existing gap, unchanged
+by this pass or the prior Risk Contract Enforcement one. Bounded blast
+radius: both functions only ever narrow `risk_limits` (confirmed
+downward-only, same as `RiskContract` scaling), and the CEO's own hard-
+configured `RiskLimits` ceiling is never exceeded regardless — the worst
+case is a manually-decided trade executing at a size a fresh
+circuit-breaker/travel-mode read would have narrowed further, still
+within real, CEO-configured hard limits. Not a controlled-paper-safety
+blocker; not fixed this pass (out of this directive's explicit
+RiskContract-only scope). The auto-resolution path does not share this
+specific gap — it already receives the tick's real, fully-composed
+`effective_risk_limits` (Circuit-Breaker + Travel Mode + RiskContract)
+from the prior milestone's own fix.
+
+### Final decision
+
+**D — READY FOR NEXT PAPER-TRADING VALIDATION MILESTONE.** No confirmed
+bug was found requiring a fix; the previously-unresolved anomaly is
+root-caused and proven to be correctly-working, documented behavior;
+risk enforcement is proven end-to-end via a genuinely pipeline-generated
+proposal (closing the prior milestone's one live-verification gap);
+idempotency is proven against the real auto-resolution path, not just
+argued architecturally; persistence/restart is proven mid-burn-in with
+exact record-count parity; a real multi-day burn-in produced zero
+exceptions, zero duplicate executions, and zero risk violations. Two
+real, bounded, explicitly-disclosed gaps remain (the missing
+auto-resolution RiskDecision audit record; Circuit-Breaker/Travel-Mode
+decision-time staleness on the manual path) — neither blocks controlled
+paper-trading safety.
+
+**Recommended next milestone: Paper Trading Performance & Evidence
+Reporting 1.0** — now that lifecycle integrity and risk enforcement are
+both proven, the next honest gap is that this burn-in's own P&L/win-loss
+numbers have nowhere permanent to live as a trackable record over time;
+a scoped milestone building real (not fabricated) performance reporting
+on top of the trade history this pipeline already produces, reusing
+`app/performance_attribution.py`'s existing real computations rather
+than inventing new ones.

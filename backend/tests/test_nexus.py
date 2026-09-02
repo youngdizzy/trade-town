@@ -324,6 +324,61 @@ class TestApplyOperatingModeConsumesScaledRiskLimits:
         assert portfolio.positions[0].quantity == 20.0
 
 
+class TestAutoResolutionEnforcesButDoesNotAuditRiskDecisions:
+    """CEO directive "Controlled Paper Trading Readiness Audit + Burn-in
+    1.0" — a real 6-simulated-day burn-in (Executive Mode, this
+    directive's own multi-day requirement) surfaced a genuine, disclosed
+    gap: auto-resolved trades ARE correctly RiskContract-scaled (see
+    TestApplyOperatingModeConsumesScaledRiskLimits above — real
+    enforcement), but never produce a RiskDecision audit record. Only
+    app/state.py::submit_ceo_decision() (the CEO's own manual click)
+    builds one. This was always true (the RiskDecision mechanism's own
+    original directive scoped it to the manual path only) — this test
+    pins it down as a checkable, honest invariant rather than leaving it
+    an undocumented side effect, since a live burn-in is what actually
+    surfaced it as worth naming explicitly. Not a safety gap (enforcement
+    is real either way) — an audit-trail completeness gap, named here as
+    a candidate future finding, not fixed in this pass."""
+
+    def test_auto_resolved_trades_leave_zero_risk_decisions_even_when_a_position_opens(self) -> None:
+        proposal = _proposal().model_copy(update={"quantity": 5.0})
+        remaining, portfolio, _meeting_log = _apply_operating_mode(
+            "executive",
+            [proposal],
+            [],  # debates
+            default_portfolio(),
+            RiskLimits(),
+            [],  # risk_warnings
+            {"NEXA": 100.0},  # prices
+            0,  # now_sim_minutes
+            [],  # memory
+            [],  # decisions
+            [],  # ceo_decisions
+            [],  # prediction_records
+            [],  # gatekeeper_rejections
+            [],  # news
+            [],  # challenge_reports
+            [],  # coach_reports
+            [],  # meeting_log
+            [],  # decision_vault
+            1,  # sim_day
+            default_market_intelligence_state(),
+            [],  # war_room_sessions
+            "sideways",  # market_environment_regime
+            "balanced_institutional",  # active_weight_profile
+            {},  # custom_department_weights
+        )
+        assert remaining == []
+        assert len(portfolio.positions) == 1
+        # _apply_operating_mode() has no risk_decisions parameter or
+        # return slot at all — the real, structural confirmation that
+        # this path cannot produce one today, not just an unpopulated
+        # list this test happened not to check.
+        import inspect
+
+        assert "risk_decisions" not in inspect.signature(_apply_operating_mode).parameters
+
+
 class TestFlattenedTradesReachTheLearningLoop:
     """CEO directive "Next Phase: Professional Trading Firm Intelligence,"
     Phase 2 (Decision Vault coverage expansion). RESEARCH FINDING: a day-
