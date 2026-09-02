@@ -120,6 +120,70 @@ development milestones, not semver releases.
     tests, zero regressions). `mypy app/` (215 source files) and `python
     -m ruff check app/ tests/` both clean.
 
+- **CEO directive "TradeTown — Memecoin Sniper Agent" — frontend
+  (Sections 32-40, paper-only/simulated scope, same session).** A new
+  `SNIPER` tab in the Command Center (`MemecoinSniperPanel.tsx`), surfacing
+  the backend domain above rather than a new physical building/NPC — per
+  the backend entry's own disclosed reasoning, a new `AgentId` is a large,
+  cross-cutting change deliberately deferred.
+  - **`frontend/src/types.ts`** — a field-for-field camelCase mirror of
+    every new backend schema (`SniperCandidate`/`SniperPosition`/
+    `SniperTrade`/`SniperLead`/`SniperLesson`/`SniperRiskState`/
+    `SniperEngineConfig`/`SniperEngineStatusRead`/etc.), matching this
+    codebase's established types.ts↔schemas.py mirroring convention.
+  - **`frontend/src/net/api.ts`** — ten new `api.*` methods, one per
+    backend endpoint (`getSniperStatus`/`getSniperCandidates`/
+    `getSniperPositions`/`getSniperTrades`/`getSniperLeads`/
+    `getSniperLessons`/`getSniperRisk`/`getSniperLiveArming`/
+    `updateSniperEngine`/`closeSniperPosition`) — no client-side logic
+    duplicates anything the backend already computes.
+  - **`frontend/src/ui/components/CommandCenter/panels/MemecoinSniperPanel.tsx`**
+    (new) — one scrollable single-dashboard panel per the spec's own
+    explicit "no tabs within the tab" requirement (Section 32), built
+    entirely from this codebase's existing dark-neon Command Center design
+    system (`Glass`/`TerminalLabel`/`DataRow`/`StatusPill`/`Meter`/
+    `EmptyState`/`AnimatedGrid` from `./ui.tsx`) rather than a parallel
+    visual language — confirmed by direct comparison that this system
+    already matches the reference mockup's premium dark crypto-terminal
+    aesthetic. Polls all 6 GET endpoints every 5s. Renders: engine/mode/
+    turbo/copy-trading/paper-balance header with a Stop/Kill control;
+    Performance/Risk Status/Quick Controls cards; a Top Opportunities grid
+    with inline click-to-expand score breakdown (all 7 weighted
+    components) + itemized safety checks + the real decision reason
+    string (never a bare score); an Open Positions table with a real
+    manual-close action wired to `POST /positions/{id}/close`; a Smart
+    Money leads card; a Research Lessons card; a Trade Journal table; a
+    drawdown `Meter`.
+  - **Honest simplification, disclosed in the component's own docstring**:
+    the backend does not persist a dedicated event log (Section 35's "Live
+    Event Feed") — tick-transient events exist only ephemerally inside
+    `SniperTickResult` and are never saved to `GameSaveState`. Rather than
+    fabricate a live stream, the panel's "Recent Activity" card is derived
+    client-side from real, already-fetched candidates/trades sorted by
+    timestamp.
+  - **Nav wiring**: added to `FullCommandCenter.tsx`'s `TABS` array and
+    render switch, and to `lib/navigation.ts`'s `PRIMARY_AREA_TABS.MARKETS`
+    (the actual primary-nav grouping the UI renders) — an earlier pass had
+    only added `SNIPER` to the older, no-longer-primary `TAB_SECTION` map,
+    which silently left the tab unreachable from the real top-level nav;
+    caught during live Playwright verification, not left as a latent bug.
+  - Live-verified against the running dev stack (Continue → Original Run →
+    Command Center → EXPAND FULL COMMAND CENTER → MARKETS → SNIPER): the
+    panel renders with the engine actually `RUNNING` in `DRY RUN` mode,
+    kill switch `ARMED`, "Live trading locked: No Solana RPC endpoint
+    configured" honestly gated, a real qualified candidate (`FROGPEPE`,
+    score 73.3, `SAFE ENOUGH`) with a live discovery feed of real simulated
+    candidates ticking in behind it, real smart-money leads, and an honest
+    "Fewer than 20 trades on file — no lesson has cleared the real evidence
+    floor yet." Click-to-expand on a real candidate correctly reveals its
+    7-component score breakdown (weights matching the backend's own
+    25/20/15/15/10/10/5 split) and itemized safety checks with real
+    liquidity/concentration/slippage values. Zero browser console errors
+    across every navigation and interaction step.
+  - Verified: `npx tsc --noEmit`, `npm run lint`, `npm run build` all
+    clean; full Playwright regression suite run against the live dev
+    stack.
+
 - **CEO directive "TradeTown — Phase 11: Strategy Intelligence + Hard-Risk
   Refinement," Section 2 (Hard-Risk Template System) + Section 7
   (Risk-Survival Scorecard) — a second bounded increment, same session.**

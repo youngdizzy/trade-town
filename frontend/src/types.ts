@@ -7836,6 +7836,202 @@ export interface ResearchDiscoveryCycleRecord {
   createdAt: string;
 }
 
+// CEO directive "TradeTown — Memecoin Sniper Agent." PAPER-ONLY,
+// SIMULATED DATA, DISCLOSED — see backend/app/memecoin_sniper.py's own
+// module docstring. Every record below carries `dataProvenance:
+// "simulated"`; `evaluate_live_arming()` always reports `armed: false`
+// in this environment.
+export type SniperSafetyStatus = "safe_enough" | "caution" | "rejected" | "unknown";
+export type SniperClassification = "rejected" | "watch" | "qualified" | "high_conviction";
+export type SniperTimingState = "watch" | "early_setup" | "confirmation" | "entry_window" | "late" | "exhausted";
+export type SniperEngineMode = "dry_run" | "live";
+export type SniperEngineStatus = "stopped" | "running" | "paused";
+export type SniperPositionStatus = "open" | "closed";
+export type SniperExitReason = "stop_loss" | "take_profit" | "trailing_stop" | "momentum_failure" | "liquidity_collapse" | "whale_exit" | "max_hold" | "risk_kill" | "manual_exit";
+export type SniperFailureCode =
+  | "bad_liquidity"
+  | "creator_risk"
+  | "holder_concentration"
+  | "buy_pressure_failure"
+  | "momentum_exhaustion"
+  | "whale_exit"
+  | "rug_signal"
+  | "slippage_failure"
+  | "false_breakout"
+  | "overextension"
+  | "data_failure"
+  | "execution_failure"
+  | "thesis_failure"
+  | "timing_failure"
+  | "unknown_failure";
+export type SniperCreatorRisk = "confirmed" | "strong_signal" | "weak_signal" | "unknown";
+
+export interface SniperSafetyCheck {
+  name: string;
+  status: "pass" | "fail" | "unknown";
+  detail: string;
+}
+
+export interface SniperScoreComponent {
+  name: string;
+  rawValue: number;
+  normalizedScore: number;
+  weightPct: number;
+  detail: string;
+}
+
+export interface SniperCandidate {
+  id: string;
+  mint: string;
+  symbol: string;
+  name: string;
+  discoveredAt: string;
+  ageSeconds: number;
+  priceUsd: number;
+  marketCapUsd: number;
+  liquidityUsd: number;
+  liquidityTrend: "rising" | "stable" | "falling" | "collapsing";
+  buyCount1m: number;
+  buyPressurePct: number;
+  uniqueBuyers: number;
+  uniqueSellers: number;
+  top10ConcentrationPct: number;
+  mintAuthorityRevoked: boolean;
+  freezeAuthorityRevoked: boolean;
+  creatorRisk: SniperCreatorRisk;
+  whaleSignalCount: number;
+  socialMomentumPct: number;
+  expectedSlippagePct: number;
+  rugRisk: "low" | "medium" | "high";
+  dataQuality: "sufficient" | "insufficient";
+  dataProvenance: "simulated";
+  safetyStatus: SniperSafetyStatus;
+  safetyChecks: SniperSafetyCheck[];
+  opportunityScore: number | null;
+  scoreComponents: SniperScoreComponent[];
+  classification: SniperClassification;
+  timingState: SniperTimingState;
+  decisionReason: string;
+}
+
+export interface SniperPosition {
+  id: string;
+  mint: string;
+  symbol: string;
+  entryPrice: number;
+  currentPrice: number;
+  sizeSol: number;
+  entryScore: number | null;
+  stopPrice: number;
+  targetPrice: number;
+  trailingActive: boolean;
+  trailingStopPrice: number | null;
+  openedAt: string;
+  status: SniperPositionStatus;
+  rMultiple: number | null;
+  pnlSol: number;
+  pnlPct: number;
+  maxFavorableExcursionPct: number;
+  maxAdverseExcursionPct: number;
+  holdTimeSeconds: number;
+  dataProvenance: "simulated";
+}
+
+export interface SniperTrade {
+  id: string;
+  mint: string;
+  symbol: string;
+  openedAt: string;
+  closedAt: string;
+  entryPrice: number;
+  exitPrice: number;
+  sizeSol: number;
+  riskSol: number;
+  rMultiple: number;
+  pnlSol: number;
+  maxFavorableExcursionPct: number;
+  maxAdverseExcursionPct: number;
+  holdTimeSeconds: number;
+  entryScore: number | null;
+  exitReason: SniperExitReason;
+  failureCodes: SniperFailureCode[];
+  thesis: string;
+  thesisValidated: boolean | null;
+  dataProvenance: "simulated";
+}
+
+export interface SniperLead {
+  id: string;
+  walletLabel: string;
+  realizedPnlSol: number;
+  winRatePct: number;
+  tradeCount: number;
+  weight: number;
+  recentMint: string | null;
+  recentActivityAt: string | null;
+  dataProvenance: "simulated";
+}
+
+export interface SniperLesson {
+  id: string;
+  observation: string;
+  sampleSize: number;
+  effect: string;
+  confidence: "low" | "medium" | "high";
+  regime: string;
+  dataProvenance: "simulated";
+  recommendation: string;
+  createdAt: string;
+}
+
+export interface SniperRiskState {
+  equitySol: number;
+  peakEquitySol: number;
+  drawdownPct: number;
+  dailyLossSol: number;
+  dailyLossResetAt: string | null;
+  openRiskSol: number;
+  consecutiveLosses: number;
+  sizeMultiplier: number;
+  killSwitchArmed: boolean;
+  killSwitchTriggered: boolean;
+  killSwitchReason: string | null;
+  killSwitchTriggeredAt: string | null;
+}
+
+export interface SniperEngineConfig {
+  status: SniperEngineStatus;
+  mode: SniperEngineMode;
+  turbo: boolean;
+  copyTradingEnabled: boolean;
+  minScoreNormal: number;
+  minScoreTurbo: number;
+  hardMinScore: number;
+  riskPerTradePct: number;
+  maxDailyLossPct: number;
+  maxWeeklyLossPct: number;
+  maxOpenRiskPct: number;
+  maxOpenPositions: number;
+  entryCooldownSeconds: number;
+}
+
+export interface SniperLiveArmingStatus {
+  armed: boolean;
+  blockingReasons: string[];
+  checkedAt: string;
+}
+
+export interface SniperEngineStatusRead {
+  config: SniperEngineConfig;
+  risk: SniperRiskState;
+  liveArming: SniperLiveArmingStatus;
+  openPositionCount: number;
+  todayPnlSol: number;
+  todayTradeCount: number;
+  winRatePct: number | null;
+  expectancyR: number | null;
+}
+
 export function isDaytime(time: TimeState): boolean {
   return time.hour >= 6 && time.hour < 20;
 }

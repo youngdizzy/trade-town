@@ -197,6 +197,14 @@ import type {
   PortfolioResearchReport,
   EvidenceQualityReport,
   LineageIntegrityIssue,
+  SniperCandidate,
+  SniperEngineStatusRead,
+  SniperLead,
+  SniperLesson,
+  SniperLiveArmingStatus,
+  SniperPosition,
+  SniperRiskState,
+  SniperTrade,
 } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -1319,4 +1327,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ mentorId }),
     }),
+
+  // CEO directive "TradeTown — Memecoin Sniper Agent." Paper-only,
+  // simulated data throughout — see backend/app/memecoin_sniper.py's
+  // own module docstring.
+  getSniperStatus: () => request<SniperEngineStatusRead>("/sniper/status"),
+  getSniperCandidates: (limit = 30) => request<SniperCandidate[]>(`/sniper/candidates?limit=${limit}`),
+  getSniperPositions: (openOnly = false) => request<SniperPosition[]>(`/sniper/positions${openOnly ? "?openOnly=true" : ""}`),
+  getSniperTrades: (limit = 100) => request<SniperTrade[]>(`/sniper/trades?limit=${limit}`),
+  getSniperLeads: () => request<SniperLead[]>("/sniper/leads"),
+  getSniperLessons: () => request<SniperLesson[]>("/sniper/lessons"),
+  getSniperRisk: () => request<SniperRiskState>("/sniper/risk"),
+  getSniperLiveArming: () => request<SniperLiveArmingStatus>("/sniper/live-arming"),
+  updateSniperEngine: (payload: { status?: string; mode?: string; turbo?: boolean; copyTradingEnabled?: boolean }) =>
+    request<SniperEngineStatusRead>("/sniper/engine", { method: "POST", body: JSON.stringify(payload) }),
+  closeSniperPosition: (positionId: string) => request<SniperTrade>(`/sniper/positions/${encodeURIComponent(positionId)}/close`, { method: "POST" }),
 };

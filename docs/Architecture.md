@@ -18185,3 +18185,67 @@ deliberately deferred rather than rushed; this pass surfaces the
 specialist as a new Command Center panel instead. No copy-trading
 execution logic beyond the config toggle (Sections 11-13). No scalp mode
 as a distinct configuration (folded into the existing risk template).
+
+## CEO directive "TradeTown — Memecoin Sniper Agent" (frontend, same session)
+
+A new `SNIPER` tab in the Command Center's `MARKETS` area, surfacing the
+backend domain above — `frontend/src/ui/components/CommandCenter/panels/MemecoinSniperPanel.tsx`.
+
+### Types and API client
+
+`frontend/src/types.ts` mirrors every new backend schema field-for-field
+in camelCase (`SniperCandidate`/`SniperPosition`/`SniperTrade`/
+`SniperLead`/`SniperLesson`/`SniperRiskState`/`SniperEngineConfig`/
+`SniperEngineStatusRead`/etc.), matching this codebase's established
+types.ts↔schemas.py convention. `frontend/src/net/api.ts` adds ten
+methods, one per backend endpoint — no client-side recomputation of
+anything the backend already computes.
+
+### Panel
+
+One scrollable single-dashboard panel (no tabs-within-the-tab, per the
+spec's own explicit requirement), built entirely from the existing
+dark-neon Command Center design system (`Glass`/`TerminalLabel`/
+`DataRow`/`StatusPill`/`Meter`/`EmptyState`/`AnimatedGrid`) rather than a
+parallel visual language. Polls all 6 GET endpoints every 5s. Renders an
+engine/mode/turbo/copy-trading/paper-balance header with a Stop/Kill
+control; Performance/Risk Status/Quick Controls cards; a Top
+Opportunities grid with inline click-to-expand score breakdown (all 7
+weighted components) + itemized safety checks + the real decision reason
+string; an Open Positions table with a real manual-close action wired to
+`POST /positions/{id}/close`; Smart Money leads and Research Lessons
+cards; a Trade Journal table; a drawdown `Meter`.
+
+**Honest simplification, disclosed in the component's own docstring**:
+the backend does not persist a dedicated event log (Section 35's "Live
+Event Feed") — tick-transient events exist only ephemerally inside
+`SniperTickResult` and are never saved to `GameSaveState`. The panel's
+"Recent Activity" card is derived client-side from real, already-fetched
+candidates/trades sorted by timestamp, rather than a fabricated stream.
+
+### Nav wiring caught during live verification
+
+`SNIPER` was added to `FullCommandCenter.tsx`'s `TABS` array/render
+switch and to `lib/navigation.ts`'s `PRIMARY_AREA_TABS.MARKETS` — the
+actual primary-nav grouping the UI renders. An earlier pass had only
+added it to the older, no-longer-primary `TAB_SECTION` map, which
+silently left the tab unreachable from the real top-level nav (it fell
+into the `MORE` catch-all instead); caught and fixed during live
+Playwright verification, not left as a latent bug.
+
+### Live verification
+
+Playwright against the running dev stack (Continue → Original Run →
+Command Center → EXPAND FULL COMMAND CENTER → MARKETS → SNIPER): the
+panel rendered with the engine actually `RUNNING` in `DRY RUN` mode, kill
+switch `ARMED`, "Live trading locked: No Solana RPC endpoint configured"
+honestly gated, a real qualified candidate (`FROGPEPE`, score 73.3,
+`SAFE ENOUGH`) with a live discovery feed of real simulated candidates
+ticking in behind it, real smart-money leads, and an honest "Fewer than
+20 trades on file — no lesson has cleared the real evidence floor yet."
+Click-to-expand on a real candidate correctly revealed its 7-component
+score breakdown (weights matching the backend's own 25/20/15/15/10/10/5
+split) and itemized safety checks with real liquidity/concentration/
+slippage values. Zero browser console errors across every navigation and
+interaction step. `npx tsc --noEmit`, `npm run lint`, `npm run build` all
+clean; full Playwright regression suite run against the live dev stack.
