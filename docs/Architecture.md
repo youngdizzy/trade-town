@@ -18683,3 +18683,258 @@ rejections — zero console errors. `npx tsc --noEmit`, `npm run lint`,
 `npm run build` all clean; `commandCenter.spec.ts` full regression rerun
 against the live dev stack with the new card present, confirming no
 navigation/layout regression in the existing RISK tab.
+
+## CEO directive "...then Paper-Trade Journal + Drift Detection + Strategy Health State Machine" (second increment)
+
+The queued second half of the milestone above.
+
+**Phase 0 recon.** Nearly everything the directive's own literal
+`PaperTradeJournalEntry` spec asks for already exists, scattered across
+real, already-shipped records: `app/schemas.py::PaperTrade` (entry/exit
+price, MAE/MFE, stop/target, entry+exit slippage, transaction cost,
+drawdown-ceiling distance — all populated at the real moment of close by
+`app/portfolio.py::close_position()`); `CeoDecisionRecord` (strategy
+identity/version via `strategy_id`/`strategy_compiled_definition_id`/
+`strategy_compiled_definition_version`, and Part 8's own already-real
+decision-time market/session snapshot — `decision_market_regime`/
+`decision_session`/`decision_price`/`decision_volatility_pct`);
+`RiskDecision` (risk-contract sizing/scaling, this milestone's own first
+increment); and `app/exit_efficiency.py`'s already-real MAE/MFE-derived
+capture-percentage analytics. Recon also confirmed no existing
+"amendment"/correction precedent anywhere in this codebase for an
+already-appended audit record (the only "amendment" concept,
+`ConstitutionAmendment`, is a content-governance workflow, not a data-
+correction one) — a genuinely new, disclosed gap, not a reuse
+opportunity.
+
+Separately, `app/performance_attribution.py::compute_strategy_
+degradation()` already detects five real live-trade degradation signal
+categories (loss clustering, expectancy deterioration, volatility-
+regime change, execution/slippage degradation, abnormal drawdown,
+repeated bad-thesis invalidation) — computed fresh per request, never
+persisted, never emitting an event. And "strategy health" is already
+computed THREE separate ways: `compute_strategy_health()`
+(`app/strategy_lab.py`, backtest-only, a point-in-time
+`StrategyHealthAssessment` snapshot, no transition history),
+`compute_strategy_degradation()` (live trades, above), and
+`compute_trading_mode_health()` (live trades grouped by trading style).
+None of the three is a persisted, evidence-gated transition STATE
+MACHINE — the one thing this pass's own new module actually adds.
+
+### `app/paper_trade_journal.py` (new) — the Paper Trade Journal
+
+`PaperTradeJournalEntry` is deliberately a thin, joined-identity-plus-
+snapshot record, never a re-declaration of `PaperTrade`/
+`CeoDecisionRecord`/`RiskDecision`'s own already-real fields (the
+"duplicate risk/portfolio calculation" this directive's own Phase 0
+forbids). It carries `trade_id`/`decision_id`/`proposal_id`/
+`risk_decision_id` for traceability back to full detail, PLUS a
+one-time snapshot of the essential facts (symbol/side/quantity/entry/
+exit/pnl/MAE/MFE/stop/target/decision-time regime/session), copied once
+at journal-creation time. The snapshot is deliberate, not accidental
+duplication: `trade_history`/`ceo_decisions`/`risk_decisions` are each
+capped at a different size (50/200/200 — `app/portfolio.py::
+MAX_TRADE_HISTORY`, `app/state.py::MAX_RISK_DECISIONS`), so a
+"permanent" journal built from pure foreign keys would silently go dark
+for its own oldest entries the moment a smaller source list evicted
+them. This is the SAME "copy the real values once, at the real moment
+they're known" pattern `PaperTrade` itself already established
+(`close_position()` copies MAE/MFE/stop/target off the `PaperPosition`
+it closes) and `RiskDecision` already established (it snapshots
+`symbol`/`requestedQuantity`/`approvedQuantity` rather than only
+pointing at a proposal id).
+
+The one genuinely new field: `ceo_notes`, an append-only list of the
+CEO's own post-trade reflections — distinct from Coach's agent-authored
+`coach_review`/`lessons_learned` on `PaperTrade`. Immutability (Phase
+6): a journal entry's trade facts are 100% computed values with no
+manual-entry point, so there is no real scenario in which they would
+ever need correcting; `ceo_notes` is the one field a CEO can add to
+after the fact, and it is itself append-only (a new note is appended, an
+existing one is never edited or deleted).
+
+`build_journal_entry()` is called from `app/nexus.py::tick()`'s existing
+`for trade in closed_trades:` loop (right after the existing
+`decision`-lookup line), joining `ceo_decisions` (by `decision_id`) and
+`state.risk_decisions` (by `decision_id`) — no new join logic invented,
+both are already-real, already-in-scope lists at that exact point in
+the tick. Capped at `MAX_PAPER_TRADE_JOURNAL = 200`, same magnitude as
+`decisions`/`risk_decisions`.
+
+### `app/strategy_drift.py` (new) — Drift Detection Engine
+
+Never reimplements strategy-degradation math. Calls `compute_strategy_
+degradation()` and routes its already-real `signals: list[str]` (each
+signal string always starts with one of five fixed prefixes) into one
+of four real Drift categories — `performance`/`execution`/`risk`/
+`regime` — persisting a new `DriftEvent` only when a category's severity
+genuinely changes for a strategy (the identical "persist only on real
+change" convention `app/market_environment.py`'s own regime-change
+timeline already established, never a firehose of identical-severity
+events every tick).
+
+**Deliberately NOT included, disclosed**: `behavior` and `data` drift
+categories. Neither has a real, non-fabricated signal anywhere in this
+codebase today — no per-strategy "intended market universe"/timeframe/
+signal-distribution definition exists to diff a live strategy against
+(behavior), and no per-strategy data-quality/staleness tracker exists
+(data). Inventing either would be exactly the fabricated-confidence
+Phase 19 forbids.
+
+**`regime_changed` (Phase 8's "regime change is not automatically
+strategy failure").** Reuses `app/market_environment.py`'s own real,
+persisted regime-change timeline unchanged: `regime_changed` is True
+for the `regime` category iff a real regime change was recorded within
+`REGIME_LOOKBACK_SIM_MINUTES` (a disclosed, fixed 3-sim-day lookback) of
+the current tick — not a precisely per-strategy-trade-derived window
+(deriving that cheaply would require re-deriving `compute_strategy_
+degradation()`'s own internal trade-grouping join, which would be
+exactly the kind of duplicate join this pass avoids). Never fabricated:
+reads `state.market_environment.timeline` directly, nothing else.
+
+Wired into `app/nexus.py::tick()` once per tick (never once per trade),
+immediately after the closed-trades loop — deliberately placed there so
+this tick's own new `decision_vault`/`failure_classifications` entries
+(recorded inside that loop) are already visible to `compute_strategy_
+degradation()`, the identical "use this tick's freshest state"
+convention `grade_ceo_decisions`/`grade_predictions` already follow.
+Capped at `MAX_DRIFT_EVENTS = 200`.
+
+### `app/strategy_health.py` (new) — Strategy Health State Machine
+
+Explicitly NOT a fourth, competing health scorer — the one thing none
+of `compute_strategy_health()`/`compute_strategy_degradation()`/
+`compute_trading_mode_health()` provide: a real, persisted, evidence-
+gated TRANSITION history, built entirely from the real `DriftEvent`
+severities the Drift Detection Engine above already produces.
+
+States: `healthy → watch → degraded → critical → suspended →
+recovering → healthy`. The target state is derived purely from how many
+of the four real Drift categories are currently `critical` vs. `watch`
+(`>=2 critical -> suspended`, `>=1 critical -> critical`, `>=2 watch ->
+degraded`, `>=1 watch -> watch`, none -> `healthy`) — a disclosed rule,
+no hidden thresholds. A non-healthy state's own path back to
+evidence-clean NEVER lands directly on `healthy` — it always passes
+through `recovering` first (a real probation period; `RECOVERY_MIN_
+TRADE_COUNT = 5` real new trades must close, evidence-clean throughout,
+before `recovering -> healthy`, never a single winning trade). A fresh
+critical/watch signal during `recovering` drops the strategy straight
+back into the matching ladder state (reuses the identical target-state
+rule, no separate "recovery failure" logic). Per-state risk-scaling
+factor (`1.00`/`0.75`/`0.50`/`0.25`/`0.00`/`0.50`) only ever narrows —
+health reduces risk, never grants extra.
+
+**Integration constraint, disclosed** (found during this pass's own
+recon, not invented). `TradeProposal` carries no `strategy_id` at
+generation time — a CEO only attributes a strategy to a decision AFTER
+`resolve_proposal()` has already sized and executed the trade
+(`app/state.py`'s own existing, already-shipped comment: "patches the
+freshly-opened PaperPosition... strictly after the fact, never altering
+what the trade itself did"). That means strategy health CANNOT
+retroactively shrink an already-executed manual trade's size without
+violating that established invariant. This module's own real,
+enforceable integration is instead: (1) `app/state.py::
+submit_ceo_decision()` rejects a `SUSPENDED` strategy's `strategy_id`
+outright (a hard stop — the trade never happens, right after the
+existing "strategy exists" check, before the Emergency Stop check), and
+(2) any other non-`healthy` state produces a real, non-blocking
+`CeoDecisionRecord.strategy_health_warning` — the exact same disclosed
+pattern the existing `regime_strategy_warning` field already
+established (added right after that field on the schema, populated
+right after that field's own population site in `submit_ceo_decision()`).
+
+### Persistence
+
+`paper_trade_journal` and `drift_events` live in the `trade_history`
+archive save module, alongside `decisions`/`risk_decisions` (same real,
+permanent, ever-growing, never-recomputed category).
+`strategy_health_states` (a `dict[str, StrategyHealthState]` keyed by
+strategy id — the CURRENT state per strategy, its own full transition
+history carried inline) lives in the `company` module, alongside
+`strategy_health_assessments` (real, tick/evidence-mutated state, not a
+flat append-only ledger — the ledger lives inside each entry's own
+`transitions` list instead).
+
+### API — `app/routers/trades.py`
+
+`GET /api/trades/journal[?limit=]`, `GET /api/trades/journal/{id}`,
+`POST /api/trades/journal/{id}/notes`, `GET /api/trades/drift-events
+[?strategy_id=&limit=]`, `GET /api/trades/strategy-health`, `GET
+/api/trades/strategy-health/{id}` — all added to the EXISTING
+`trades.py` file (never a new router file): this is the exact same file
+`strategy-degradation`/`strategy-live-vs-backtest` already live in, for
+the identical real reason — they read the same `state.strategies`/
+`trade_history` this router already has in scope.
+
+### Testing
+
+30 new tests: `test_paper_trade_journal.py` (7 — snapshot correctness,
+strategy identity/version carry-through, decision-time market snapshot,
+graceful handling of no matched decision, data-provenance default,
+append-only notes), `test_strategy_drift.py` (9 — insufficient-evidence
+baseline, loss-clustering routes to `performance`, execution-slippage
+routes to `execution` only, no event on unchanged severity, a real
+severity-change is reported, `regime_changed` true/false correctness,
+multi-strategy independence, determinism), `test_strategy_health.py`
+(12 — every real transition rule above, the recovery-evidence floor
+including a same-tick single-win rejection, relapse-during-recovery,
+factor bounds, true no-op detection, determinism, every transition
+carries real evidence). Plus 9 new tests in `test_state.py`
+(`TestSubmitCeoDecisionStrategyHealthGate` — the SUSPENDED hard stop,
+the non-blocking warning for other non-healthy states, no warning for
+healthy/untracked strategies, "wait" is never blocked;
+`TestAddPaperTradeJournalNote` — append, unknown-entry rejection, empty-
+text rejection, a second note never replaces the first). Full backend
+suite green (3784 tests), `mypy app/` and `python -m ruff check app/
+tests/` both clean.
+
+### Frontend (same directive, same session)
+
+Two new read-only sections in the existing `PerformancePanel.tsx`
+(PERFORMANCE tab, under PORTFOLIO & RISK — no new tab): `Strategy Health
+State Machine` (every non-healthy strategy's current state, risk-
+scaling factor, recovery-probation trade count, and most recent real
+transition trigger, plus the most recent real Drift Events with a
+`REGIME CHANGED` badge when applicable) and `Paper Trade Journal —
+Provenance & Scaling Transparency` (every real closed trade's entry/
+exit/stop/target/MAE/MFE/decision-time regime, plus any CEO notes).
+Placed alongside the existing `StrategyDegradationSection`, which reads
+the exact same `state.strategies` this new section reads. `types.ts`
+gained the matching `PaperTradeJournalEntry`/`PaperTradeJournalNote`/
+`DriftEvent`/`DriftCategory`/`DriftSeverity`/`StrategyHealthState`/
+`StrategyHealthLifecycleState`/`StrategyHealthTransition` family —
+field-for-field mirrors of the new backend schemas — plus
+`CeoDecisionRecord.strategyHealthWarning`. `api.ts` gained
+`getPaperTradeJournal`/`addPaperTradeJournalNote`/`getDriftEvents`/
+`getStrategyHealthStates`.
+
+**Deliberately NOT built this pass, disclosed**: no draft/validate-style
+write UI for anything here — both new sections are read-only, matching
+the Risk Contract Card's own precedent from the prior increment (the
+one real write path, adding a CEO note, is exercised via the API
+directly, not yet a UI form). `strategy_health_warning` is not yet
+surfaced in a dedicated UI element — this MATCHES a pre-existing,
+unaddressed gap already in this codebase: a grep confirmed
+`regimeStrategyWarning` (this field's own established precedent) was
+never wired into any visible UI element either, so this isn't a new
+regression, just an existing pattern not yet closed. The `resolve_
+proposal()` auto-resolution/proposal-expiry call sites still don't
+consume Risk Contract scaling — unchanged, pre-existing gap from the
+milestone's first increment.
+
+**Live verification.** `npx tsc --noEmit`, `npm run lint`, `npm run
+build` all clean. A direct REST pass against the running dev stack
+(day-4 save, real tick history) confirmed: `GET /api/trades/drift-
+events` returned real, non-fabricated baseline `insufficient_evidence`
+events for every strategy category (a fresh strategy's very first
+evaluation), `GET /api/trades/strategy-health` returned every real
+strategy at `HEALTHY` with `riskScalingFactor: 1.0`, and `GET
+/api/trades/journal` correctly returned `[]` (no trade had closed yet
+this save session — an honest empty state, not a fabricated one). A
+full interactive Playwright pass (Continue → Tab → EXPAND FULL COMMAND
+CENTER → PORTFOLIO & RISK → PERFORMANCE) rendered both new sections
+live against that same real save: "Strategy Health State Machine — 0
+non-healthy of 6 tracked / Every strategy with a tracked health state is
+HEALTHY," and a real "Recent Drift Events" list showing genuine
+`INSUFFICIENT EVIDENCE` pills and a real `REGIME CHANGED` badge for the
+`regime` category — zero console errors.

@@ -100,6 +100,14 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "strategy_health_assessments",
         "strategy_hall_of_fame",
         "strategy_failed_archive",
+        # CEO directive "...then Paper-Trade Journal + Drift Detection +
+        # Strategy Health State Machine" — the CURRENT per-strategy
+        # health state (its own full transition history lives inline on
+        # each entry). Real, tick/evidence-mutated state, same category
+        # as strategy_health_assessments above — not the permanent
+        # append-only DriftEvent ledger, which lives in the
+        # trade_history archive module below instead.
+        "strategy_health_states",
         # CEO directive "Professional Quant Firm Phase," Features 36/37 —
         # real, persisted CompiledStrategyDefinition version history and
         # Quant Research Lab experiment archive (see app/
@@ -226,6 +234,14 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # docstring). Same real category as decisions/ceo_decisions
         # above.
         "risk_decisions",
+        # CEO directive "...then Paper-Trade Journal + Drift Detection +
+        # Strategy Health State Machine" — the permanent, append-only
+        # journal (one entry per closed paper trade) and the permanent,
+        # append-only drift event ledger (persisted only on a real
+        # severity change — see app/strategy_drift.py). Same real
+        # category as decisions/risk_decisions above.
+        "paper_trade_journal",
+        "drift_events",
     ),
     "knowledge_archive": (
         "case_studies",

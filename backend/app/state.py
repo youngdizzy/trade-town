@@ -102,6 +102,7 @@ from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
 from app.market_intelligence import compute_market_intelligence_state, compute_strategy_match
 from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
+from app.paper_trade_journal import add_ceo_note
 from app.portfolio import default_portfolio, sim_minutes
 from app.portfolio_intelligence import compute_portfolio_intelligence
 from app.research import RESEARCHER_IDS, default_research
@@ -149,6 +150,7 @@ from app.schemas import (
     HoldReason,
     MeetingState,
     NewsItem,
+    PaperTradeJournalEntry,
     PlayerEventCategory,
     PlayerVsAiPrompt,
     PlayerVsAiState,
@@ -1084,6 +1086,24 @@ class GameState:
         async with self.lock:
             self.data = self.data.model_copy(update={"risk_decisions": [*self.data.risk_decisions, decision]})
             return self.data
+
+    async def add_paper_trade_journal_note(self, entry_id: str, *, text: str) -> tuple[GameSaveState, PaperTradeJournalEntry | None, str | None]:
+        """CEO directive "...then Paper-Trade Journal + Drift Detection +
+        Strategy Health State Machine" — the one genuinely mutable-after-
+        the-fact field on a journal entry (see `PaperTradeJournalEntry`'s
+        own schema docstring for why): appends, never edits or removes,
+        an existing note."""
+        if not text.strip():
+            return self.data, None, "Note text cannot be empty."
+        async with self.lock:
+            index = next((i for i, e in enumerate(self.data.paper_trade_journal) if e.id == entry_id), None)
+            if index is None:
+                return self.data, None, f"No paper trade journal entry with id {entry_id!r}."
+            updated_entry = add_ceo_note(self.data.paper_trade_journal[index], text=text)
+            journal = [*self.data.paper_trade_journal]
+            journal[index] = updated_entry
+            self.data = self.data.model_copy(update={"paper_trade_journal": journal})
+            return self.data, updated_entry, None
 
     async def update_sniper_engine_config(
         self,
@@ -2304,6 +2324,19 @@ class GameState:
                 return self.data, f"No pending trade proposal with id {proposal_id!r}."
             if strategy_id is not None and not any(s.id == strategy_id for s in self.data.strategies):
                 return self.data, f"No real Strategy Lab strategy with id {strategy_id!r}."
+            # CEO directive "...then Paper-Trade Journal + Drift Detection
+            # + Strategy Health State Machine," Phase 10 — "health reduces
+            # risk, never grants extra." A SUSPENDED strategy's own real,
+            # persisted risk_scaling_factor is 0.0 — the honest floor is a
+            # hard stop, not a trade sized down to zero (TradeProposal
+            # carries no strategy_id at generation time, so this is the
+            # one real, enforceable point this codebase has to act on it;
+            # see app/strategy_health.py's own module docstring for the
+            # full disclosed integration-constraint reasoning).
+            if strategy_id is not None and choice in ("buy", "sell"):
+                health = self.data.strategy_health_states.get(strategy_id)
+                if health is not None and health.state == "suspended":
+                    return self.data, f"Strategy {strategy_id!r} is SUSPENDED (evidence-based drift, risk scaling 0.0) — cannot be attributed to a new trade until it recovers."
             # Design Bible Chapter 67 (TTOS) Part 3 — Emergency Stop blocks
             # every trade execution, including the CEO's own manual call;
             # "wait" (declining the trade) is still allowed since it never
@@ -2439,6 +2472,24 @@ class GameState:
                 regime_match = compute_strategy_match(self.data.market_intelligence.regime, self.data.strategies, self.data.strategy_reports)
                 if strategy_id in regime_match.avoided_strategy_ids:
                     ceo_record = ceo_record.model_copy(update={"regime_strategy_warning": regime_match.detail})
+
+                # CEO directive "...then Paper-Trade Journal + Drift
+                # Detection + Strategy Health State Machine," Phase 10 —
+                # the exact same real, non-blocking disclosure pattern as
+                # regime_match above. SUSPENDED already returned a hard
+                # 400 earlier in this method, so only WATCH/DEGRADED/
+                # CRITICAL/RECOVERING ever reach here.
+                strategy_health = self.data.strategy_health_states.get(strategy_id)
+                if strategy_health is not None and strategy_health.state != "healthy":
+                    ceo_record = ceo_record.model_copy(
+                        update={
+                            "strategy_health_warning": (
+                                f"Strategy health is {strategy_health.state.upper()} "
+                                f"(risk scaling {strategy_health.risk_scaling_factor:g}x if new sizing could reflect it — "
+                                "see app/strategy_health.py's own disclosed integration constraint)."
+                            )
+                        }
+                    )
 
             # CEO directive "TradeTown — Persisted Risk Contract + Dynamic
             # Risk Scaling," Phase 4/5 — a real, persisted RiskDecision

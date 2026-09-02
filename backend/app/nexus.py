@@ -139,12 +139,15 @@ from app.talent import generate_talent_reports, record_talent_reports
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
 from app.portfolio_intelligence import compute_portfolio_intelligence, count_correlated_positions
+from app.paper_trade_journal import build_journal_entry
 from app.position_sizing import build_position_sizing
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import compute_daily_objective_status, compute_risk_budget_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, portfolio_equity, recommended_quantity
 from app.risk_contract import apply_risk_contract_scaling, evaluate_risk_contract_scaling, get_active_risk_contract
 from app.sandbox import apply_review_decision, cap_strategy_reports, cap_strategy_reviews, generate_strategy_report, maybe_advance_after_research, maybe_advance_after_result
+from app.strategy_drift import evaluate_strategy_drift
+from app.strategy_health import evaluate_health_transition
 from app.strategy_lab import (
     cap_strategy_health_assessments,
     cap_strategy_liquidity_validations,
@@ -225,6 +228,9 @@ from app.schemas import (
     DefensiveModeState,
     DepartmentSelfEvaluation,
     DisciplineReview,
+    DriftCategory,
+    DriftEvent,
+    DriftSeverity,
     EconomicIntelligenceReport,
     EntityTransform,
     ExecutiveDepartmentRole,
@@ -253,6 +259,7 @@ from app.schemas import (
     OpportunityRejection,
     PaperPortfolio,
     PaperTrade,
+    PaperTradeJournalEntry,
     QuestionOfTheDay,
     ReasoningChallenge,
     ReflectionCadence,
@@ -260,6 +267,7 @@ from app.schemas import (
     ResearchItem,
     RiskLimits,
     StrategicReview,
+    StrategyHealthState,
     RiskWarning,
     ScannerAlert,
     TalentReport,
@@ -305,6 +313,16 @@ MAX_MEETING_MINUTES = 20
 # (far more headroom than MAX_TRADE_HISTORY's 50) while keeping this
 # list's contribution to the save bounded at roughly 300KB.
 MAX_DECISIONS = 200
+# CEO directive "...then Paper-Trade Journal + Drift Detection + Strategy
+# Health State Machine" — one PaperTradeJournalEntry per closed trade,
+# same real, permanent, ever-growing category and magnitude as
+# MAX_DECISIONS above.
+MAX_PAPER_TRADE_JOURNAL = 200
+# Real per-(strategy, category) drift events, persisted only on an
+# actual severity change (see app/strategy_drift.py) — never one row
+# per tick, so this stays a meaningful timeline the same way
+# MAX_MARKET_ENVIRONMENT_HISTORY's regime-change timeline does.
+MAX_DRIFT_EVENTS = 200
 # v0.7 Feature 17 — one Debate generated per new TradeProposal (see
 # generate_debate below); capped the same way every other per-proposal
 # record here is.
@@ -1233,6 +1251,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     decisions = list(state.decisions)
     trade_proposals = list(state.trade_proposals)
     ceo_decisions = list(state.ceo_decisions)
+    paper_trade_journal: list[PaperTradeJournalEntry] = list(state.paper_trade_journal)
+    drift_events: list[DriftEvent] = list(state.drift_events)
+    strategy_health_states: dict[str, StrategyHealthState] = dict(state.strategy_health_states)
+    # Real count of trades closed THIS tick, per attributed strategy —
+    # the only real "new evidence" input app/strategy_health.py's
+    # recovery-probation counter needs (see this tick's own drift/health
+    # evaluation call, below the closed_trades loop).
+    trades_closed_this_tick_by_strategy: dict[str, int] = {}
     # CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
     # Tracking (app/prediction_tracking.py).
     prediction_records: list[PredictionRecord] = list(state.prediction_records)
@@ -2001,6 +2027,21 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # shipped, or with no decision_id match, has no process trail to
         # honestly score and is skipped rather than faked.
         decision = next((d for d in decisions if d.id == trade.decision_id), None) if trade.decision_id else None
+
+        # CEO directive "...then Paper-Trade Journal + Drift Detection +
+        # Strategy Health State Machine" — one real, permanent journal
+        # entry per closed trade (see app/paper_trade_journal.py's
+        # module docstring for why this is a joined-identity-plus-
+        # snapshot record, never a duplicate of PaperTrade/
+        # CeoDecisionRecord/RiskDecision's own already-real fields).
+        ceo_record = next((c for c in ceo_decisions if c.decision_id == trade.decision_id), None) if trade.decision_id else None
+        risk_decision = next((r for r in state.risk_decisions if r.decision_id == trade.decision_id), None) if trade.decision_id else None
+        paper_trade_journal.append(build_journal_entry(trade, ceo_decision=ceo_record, risk_decision=risk_decision))
+        if len(paper_trade_journal) > MAX_PAPER_TRADE_JOURNAL:
+            del paper_trade_journal[: len(paper_trade_journal) - MAX_PAPER_TRADE_JOURNAL]
+        if ceo_record is not None and ceo_record.strategy_id is not None:
+            trades_closed_this_tick_by_strategy[ceo_record.strategy_id] = trades_closed_this_tick_by_strategy.get(ceo_record.strategy_id, 0) + 1
+
         if decision is not None:
             proposal_id = decision.id.removeprefix("decision-")
             debate = next((d for d in reversed(debates) if d.proposal_id == proposal_id), None)
@@ -2210,6 +2251,53 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 session = war_room_sessions[war_room_index]
                 comparison = compare_scenario_to_outcome(session.scenario_simulation, trade)
                 war_room_sessions[war_room_index] = session.model_copy(update={"outcome_comparison": comparison})
+
+    # CEO directive "...then Paper-Trade Journal + Drift Detection +
+    # Strategy Health State Machine" — once per tick (never once per
+    # trade): re-evaluates every real strategy's drift signals and, from
+    # those, its health state. Deliberately placed AFTER the
+    # closed_trades loop above so this tick's own new decision_vault/
+    # failure_classifications entries (recorded inside that loop) are
+    # already visible to compute_strategy_degradation() — the identical
+    # "use this tick's freshest state" convention grade_ceo_decisions/
+    # grade_predictions below already follow.
+    previous_drift_severity: dict[tuple[str, DriftCategory], DriftSeverity] = {(e.strategy_id, e.category): e.severity for e in drift_events}
+    new_drift_events = evaluate_strategy_drift(
+        strategies=strategies,
+        trade_history=paper_portfolio.trade_history,
+        decision_vault=decision_vault,
+        failure_classifications=failure_classifications,
+        market_environment=market_environment,
+        now_sim_minutes=now_sim_minutes,
+        sim_day=new_time.day,
+        previous_severity=previous_drift_severity,
+    )
+    if new_drift_events:
+        drift_events = [*drift_events, *new_drift_events]
+        if len(drift_events) > MAX_DRIFT_EVENTS:
+            del drift_events[: len(drift_events) - MAX_DRIFT_EVENTS]
+
+    current_drift_severity = dict(previous_drift_severity)
+    new_events_by_strategy: dict[str, list[str]] = {}
+    for event in new_drift_events:
+        current_drift_severity[(event.strategy_id, event.category)] = event.severity
+        new_events_by_strategy.setdefault(event.strategy_id, []).append(event.id)
+
+    strategies_needing_health_check = {s.id for s in strategies} & (
+        set(new_events_by_strategy) | set(strategy_health_states) | set(trades_closed_this_tick_by_strategy)
+    )
+    for strategy_id in strategies_needing_health_check:
+        severities = {category: severity for (sid, category), severity in current_drift_severity.items() if sid == strategy_id}
+        updated_health = evaluate_health_transition(
+            current=strategy_health_states.get(strategy_id),
+            strategy_id=strategy_id,
+            current_severities=severities,
+            new_trades_closed_this_tick=trades_closed_this_tick_by_strategy.get(strategy_id, 0),
+            sim_day=new_time.day,
+            triggering_drift_event_ids=new_events_by_strategy.get(strategy_id, []),
+        )
+        if updated_health is not strategy_health_states.get(strategy_id):
+            strategy_health_states[strategy_id] = updated_health
 
     # CEO directive "Features 26-30," Feature 29 — the same real
     # decision_id match, run right alongside grade_ceo_decisions above.
@@ -3157,6 +3245,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "decisions": decisions,
             "trade_proposals": trade_proposals,
             "ceo_decisions": ceo_decisions,
+            "paper_trade_journal": paper_trade_journal,
+            "drift_events": drift_events,
+            "strategy_health_states": strategy_health_states,
             "prediction_records": prediction_records,
             "debates": debates,
             "gatekeeper_rejections": gatekeeper_rejections,

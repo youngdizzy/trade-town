@@ -29,12 +29,15 @@ from app.performance_attribution import (
 from app.persistence import persist_modules
 from app.schemas import (
     DataQualityMonitor,
+    DriftEvent,
     ExitEfficiencySummary,
     OpportunityFeed,
+    PaperTradeJournalEntry,
     RegimePerformanceSummary,
     SessionPerformanceSummary,
     StrategyCapitalAllocationSummary,
     StrategyDegradationSummary,
+    StrategyHealthState,
     StrategyLiveCorrelationSummary,
     StrategyLiveVsBacktestSummary,
     StrategyPerformanceSummary,
@@ -330,3 +333,87 @@ async def get_watchlist_eligibility() -> WatchlistEligibilitySummary:
     GameSaveState field, nothing here gates or scores anything."""
     state = await game_state.snapshot()
     return compute_watchlist_eligibility(state.watchlist, state.paper_portfolio.trade_history, state.opportunity_rejections)
+
+
+# CEO directive "...then Paper-Trade Journal + Drift Detection + Strategy
+# Health State Machine" — Journal reads/writes live here, alongside every
+# other real trade-history read in this file. Drift/Health reads are
+# also here rather than a new router (same "extend before build" call as
+# strategy-degradation/strategy-live-vs-backtest above, which already
+# live in this exact file for the same real reason: they read the same
+# `state.strategies`/`trade_history` this router already has in scope).
+
+
+class AddPaperTradeJournalNoteRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    text: str
+
+
+@router.get("/journal", response_model=list[PaperTradeJournalEntry])
+async def get_paper_trade_journal(limit: int = 50) -> list[PaperTradeJournalEntry]:
+    """CEO directive "...then Paper-Trade Journal..." — the permanent,
+    per-closed-trade journal (see app/schemas.py's PaperTradeJournalEntry
+    docstring). Newest last, matching every other permanent list in this
+    codebase; `limit` (default 50, capped at the real MAX_PAPER_TRADE_
+    JOURNAL=200) trims from the oldest end of the slice, never a random
+    sample."""
+    state = await game_state.snapshot()
+    limit = max(1, min(limit, 200))
+    return state.paper_trade_journal[-limit:]
+
+
+@router.get("/journal/{entry_id}", response_model=PaperTradeJournalEntry)
+async def get_paper_trade_journal_entry(entry_id: str) -> PaperTradeJournalEntry:
+    state = await game_state.snapshot()
+    entry = next((e for e in state.paper_trade_journal if e.id == entry_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail=f"No paper trade journal entry with id {entry_id!r}.")
+    return entry
+
+
+@router.post("/journal/{entry_id}/notes", response_model=PaperTradeJournalEntry)
+async def add_paper_trade_journal_note(entry_id: str, payload: AddPaperTradeJournalNoteRequest) -> PaperTradeJournalEntry:
+    state, entry, error = await game_state.add_paper_trade_journal_note(entry_id, text=payload.text)
+    if error is not None or entry is None:
+        raise HTTPException(status_code=400, detail=error or "Failed to add journal note.")
+    persist_modules(state)
+    return entry
+
+
+@router.get("/drift-events", response_model=list[DriftEvent])
+async def get_drift_events(strategy_id: str | None = None, limit: int = 50) -> list[DriftEvent]:
+    """CEO directive "...then...Drift Detection Engine" — the real,
+    persisted, per-(strategy, category) severity-change event log (see
+    app/strategy_drift.py's module docstring — never a duplicate of
+    compute_strategy_degradation()'s own live comparison, which this
+    reuses unchanged). Newest last; optionally filtered to one real
+    strategy."""
+    state = await game_state.snapshot()
+    events = state.drift_events
+    if strategy_id is not None:
+        events = [e for e in events if e.strategy_id == strategy_id]
+    limit = max(1, min(limit, 200))
+    return events[-limit:]
+
+
+@router.get("/strategy-health", response_model=list[StrategyHealthState])
+async def get_strategy_health_states() -> list[StrategyHealthState]:
+    """CEO directive "...then...Strategy Health State Machine" — the
+    real, persisted, evidence-gated health state for every real Strategy
+    that has ever had one computed (see app/strategy_health.py's module
+    docstring for the full disclosed reconciliation against
+    compute_strategy_health()/compute_strategy_degradation()/
+    compute_trading_mode_health()). A Strategy with no entry has never
+    had a real drift signal — HEALTHY by construction, not omitted."""
+    state = await game_state.snapshot()
+    return list(state.strategy_health_states.values())
+
+
+@router.get("/strategy-health/{strategy_id}", response_model=StrategyHealthState)
+async def get_strategy_health_state(strategy_id: str) -> StrategyHealthState:
+    state = await game_state.snapshot()
+    health = state.strategy_health_states.get(strategy_id)
+    if health is None:
+        raise HTTPException(status_code=404, detail=f"No health state recorded yet for strategy {strategy_id!r} (still HEALTHY by construction — no real drift signal has ever fired).")
+    return health

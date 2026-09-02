@@ -10,10 +10,31 @@ from __future__ import annotations
 
 import asyncio
 
-from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, SettingsState, SimulationResult, Strategy, StrategyReport, TierAllocationLimits, TradeProposal
+from app.paper_trade_journal import build_journal_entry
+from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, PaperTrade, SettingsState, SimulationResult, Strategy, StrategyHealthState, StrategyReport, TierAllocationLimits, TradeProposal
 from app.strategy_lab import MIN_RETIREMENT_TRADE_COUNT
 from app.strategy_registry import _ema_pullback_source_text
 from app.state import MAX_DIALOGUE_HISTORY, GameState
+
+
+def _closed_trade_for_journal_test() -> PaperTrade:
+    return PaperTrade(
+        id="t1",
+        symbol="AAPL",
+        side="buy",
+        quantity=1.0,
+        entryPrice=100.0,
+        exitPrice=105.0,
+        pnl=5.0,
+        pnlPct=5.0,
+        durationMinutes=30,
+        confidence=80.0,
+        reason="test",
+        marketConditions="test",
+        supportingAgents=["scout"],
+        openedAt="2026-01-01T00:00:00+00:00",
+        closedAt="2026-01-01T00:30:00+00:00",
+    )
 
 
 def _pending_proposal() -> TradeProposal:
@@ -919,6 +940,108 @@ class TestSubmitCeoDecisionRegimeStrategyWarning:
         saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
         assert error is None
         assert saved.ceo_decisions[-1].regime_strategy_warning is None
+
+
+class TestSubmitCeoDecisionStrategyHealthGate:
+    """CEO directive "...then Paper-Trade Journal + Drift Detection +
+    Strategy Health State Machine," Phase 10 — health reduces risk,
+    never grants extra. A SUSPENDED strategy is a hard stop (the trade
+    never happens); any other non-HEALTHY state is a real, disclosed,
+    non-blocking warning on the resulting CeoDecisionRecord — the exact
+    same pattern regime_strategy_warning already established."""
+
+    def _state_with_pending_proposal(self) -> GameState:
+        state = GameState()
+        state.data = state.data.model_copy(update={"trade_proposals": [_pending_proposal()]})
+        return state
+
+    def _health_state(self, strategy_id: str, state_name: str) -> StrategyHealthState:
+        return StrategyHealthState(strategyId=strategy_id, state=state_name, sinceSimDay=1, updatedAt="2026-01-01T00:00:00+00:00", riskScalingFactor=0.5)  # type: ignore[arg-type]
+
+    def test_a_suspended_strategy_is_rejected_outright(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        state.data = state.data.model_copy(update={"strategy_health_states": {real_strategy_id: self._health_state(real_strategy_id, "suspended")}})
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id=real_strategy_id))
+        assert error is not None
+        assert "suspended" in error.lower()
+        # The trade never happened -- no position, proposal still pending.
+        assert saved.paper_portfolio.positions == []
+        assert [p.id for p in saved.trade_proposals] == ["proposal-1"]
+
+    def test_a_degraded_strategy_records_a_real_warning_but_still_trades(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        state.data = state.data.model_copy(update={"strategy_health_states": {real_strategy_id: self._health_state(real_strategy_id, "degraded")}})
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id=real_strategy_id))
+        assert error is None
+        assert len(saved.paper_portfolio.positions) == 1
+        warning = saved.ceo_decisions[-1].strategy_health_warning
+        assert warning is not None
+        assert "DEGRADED" in warning
+
+    def test_a_healthy_strategy_records_no_warning(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        state.data = state.data.model_copy(update={"strategy_health_states": {real_strategy_id: self._health_state(real_strategy_id, "healthy")}})
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id=real_strategy_id))
+        assert error is None
+        assert saved.ceo_decisions[-1].strategy_health_warning is None
+
+    def test_a_strategy_with_no_recorded_health_state_records_no_warning_and_is_never_blocked(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id=real_strategy_id))
+        assert error is None
+        assert len(saved.paper_portfolio.positions) == 1
+        assert saved.ceo_decisions[-1].strategy_health_warning is None
+
+    def test_a_wait_is_never_blocked_even_for_a_suspended_strategy(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        state.data = state.data.model_copy(update={"strategy_health_states": {real_strategy_id: self._health_state(real_strategy_id, "suspended")}})
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "wait", strategy_id=real_strategy_id))
+        assert error is None
+        assert saved.trade_proposals == []
+
+
+class TestAddPaperTradeJournalNote:
+    """CEO directive "...then Paper-Trade Journal..." — the one real,
+    append-only, mutable-after-the-fact field a journal entry has."""
+
+    def test_adding_a_note_to_a_real_entry_appends_it(self) -> None:
+        state = GameState()
+        entry = build_journal_entry(_closed_trade_for_journal_test(), ceo_decision=None, risk_decision=None)
+        state.data = state.data.model_copy(update={"paper_trade_journal": [entry]})
+        saved, updated, error = asyncio.run(state.add_paper_trade_journal_note(entry.id, text="Held to plan."))
+        assert error is None
+        assert updated is not None
+        assert len(updated.ceo_notes) == 1
+        assert saved.paper_trade_journal[0].ceo_notes[0].text == "Held to plan."
+
+    def test_adding_a_note_to_an_unknown_entry_is_rejected(self) -> None:
+        state = GameState()
+        saved, updated, error = asyncio.run(state.add_paper_trade_journal_note("no-such-entry", text="test"))
+        assert error is not None
+        assert updated is None
+
+    def test_empty_note_text_is_rejected(self) -> None:
+        state = GameState()
+        entry = build_journal_entry(_closed_trade_for_journal_test(), ceo_decision=None, risk_decision=None)
+        state.data = state.data.model_copy(update={"paper_trade_journal": [entry]})
+        saved, updated, error = asyncio.run(state.add_paper_trade_journal_note(entry.id, text="   "))
+        assert error is not None
+        assert updated is None
+
+    def test_a_second_note_appends_never_replaces_the_first(self) -> None:
+        state = GameState()
+        entry = build_journal_entry(_closed_trade_for_journal_test(), ceo_decision=None, risk_decision=None)
+        state.data = state.data.model_copy(update={"paper_trade_journal": [entry]})
+        state.data, _, _ = asyncio.run(state.add_paper_trade_journal_note(entry.id, text="First note."))
+        saved, updated, error = asyncio.run(state.add_paper_trade_journal_note(entry.id, text="Second note."))
+        assert error is None
+        assert updated is not None
+        assert [n.text for n in updated.ceo_notes] == ["First note.", "Second note."]
 
 
 class TestSubmitCeoDecisionStrategyRuleSnapshot:

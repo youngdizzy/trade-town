@@ -3026,6 +3026,78 @@ entirely from two already-real, already-computed sources
 diagnostic only, feeds no score, gates nothing. Computed fresh per
 request; no new `GameSaveState` field.
 
+### `GET/POST /api/trades/journal*`, `GET /api/trades/drift-events`, `GET /api/trades/strategy-health*`
+
+CEO directive "...then Paper-Trade Journal + Drift Detection + Strategy
+Health State Machine" — added to this same file (never a new router):
+same real reason `strategy-degradation`/`strategy-live-vs-backtest`
+already live here — every endpoint below reads the same
+`state.strategies`/`state.paper_portfolio.trade_history` this router
+already has in scope. See `docs/Architecture.md`'s matching section for
+the full methodology.
+
+- **`GET /journal?limit=50`** — the most recent real
+  `PaperTradeJournalEntry[]` (newest last), one per closed trade.
+  `limit` is `1..200` (clamped, default 50).
+- **`GET /journal/{entryId}`** — one entry by id. `404` if unknown.
+- **`POST /journal/{entryId}/notes`** — body `{ "text": string }`.
+  Appends one real, permanent `PaperTradeJournalNote` — the one field a
+  journal entry can gain after the fact (see the schema's own docstring
+  for why trade facts themselves never need correcting). `400` if
+  `text` is blank or the entry doesn't exist. Returns the updated
+  `PaperTradeJournalEntry`.
+- **`GET /drift-events?strategy_id=&limit=50`** — the real, persisted
+  `DriftEvent[]` log (newest last), optionally filtered to one real
+  strategy. Persisted only when a `(strategy, category)` severity
+  genuinely changes — never one row per tick.
+- **`GET /strategy-health`** — every real, persisted `StrategyHealthState`
+  this company has ever computed one for.
+- **`GET /strategy-health/{strategyId}`** — one strategy's own state.
+  `404` when no health state has ever been computed for that strategy —
+  it is still HEALTHY by construction (a strategy with zero drift
+  history has nothing to be unhealthy about), just not yet materialized
+  as a persisted record.
+
+**`PaperTradeJournalEntry`** fields: `id`, `createdAt`, `tradeId`,
+`decisionId`/`proposalId`/`riskDecisionId` (traceability references),
+`strategyId`/`strategyCompiledDefinitionId`/
+`strategyCompiledDefinitionVersion`, `resolvedBy`
+(`ceo`|`auto`|`delegated`|`null`), `symbol`, `side`, `quantity`,
+`entryPrice`/`exitPrice`, `stopPrice`/`targetPrice`, `pnl`/`pnlPct`,
+`maePct`/`mfePct`, `durationMinutes`, `openedAt`/`closedAt`,
+`decisionMarketRegime`/`decisionSession` (the real decision-time
+snapshot, copied from the matched `CeoDecisionRecord`),
+`dataProvenance` (always `"simulated"` for paper trading), `ceoNotes:
+PaperTradeJournalNote[]`.
+
+**`DriftEvent`** fields: `id`, `createdAt`, `simDay`, `strategyId`/
+`strategyName`, `category` (`performance`|`execution`|`risk`|`regime`
+— `behavior`/`data` deliberately not modeled, no real signal exists),
+`severity` (`insufficient_evidence`|`normal`|`watch`|`critical`),
+`previousSeverity`, `metric` (the real matching signal text(s) from
+`compute_strategy_degradation()`), `baselineValue`/`observedValue`
+(performance category only), `sampleSize`, `evidence: string[]`,
+`regimeChanged` (regime category only — real, read from `app/
+market_environment.py`'s own persisted regime-change timeline),
+`detail`.
+
+**`StrategyHealthState`** fields: `strategyId`, `state`
+(`healthy`|`watch`|`degraded`|`critical`|`suspended`|`recovering`),
+`sinceSimDay`, `updatedAt`, `riskScalingFactor` (`1.00`/`0.75`/`0.50`/
+`0.25`/`0.00`/`0.50` — narrows only, never grants extra risk),
+`recoveryTradeCount` (real closed trades during a `recovering`
+probation — resets to 0 on every new entry into that state),
+`transitions: StrategyHealthTransition[]` (every real transition ever
+recorded, each with `previousState`/`newState`/`trigger`/`evidence`/
+`driftEventIds`/`riskScalingFactor`).
+
+A `SUSPENDED` strategy's `strategyId` is rejected outright by `POST
+/api/executive/decide` (`submit_ceo_decision()`) — `400` with a message
+naming the SUSPENDED state; any other non-`healthy` state instead
+populates a new, non-blocking `CeoDecisionRecord.strategyHealthWarning`
+(the exact pattern `regimeStrategyWarning` already established) and the
+trade proceeds normally.
+
 ### `GET /api/trades/pipeline-health`
 
 CEO directive "Professional Quant Firm Phase 41-45," Critical Task

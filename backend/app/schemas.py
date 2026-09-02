@@ -2501,6 +2501,221 @@ class RiskDecision(CamelModel):
     rejection_reason: str | None = Field(default=None, alias="rejectionReason")
 
 
+# CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+# Scaling, then Paper-Trade Journal + Drift Detection + Strategy Health
+# State Machine" (second increment) — the Paper Trade Journal.
+#
+# PHASE 0 FORENSIC RECON, SUMMARIZED. This pass's own recon confirmed
+# that almost everything the directive's own literal "PaperTradeJournalEntry"
+# spec asks for (entry/exit price, quantity, MAE/MFE, stop/target,
+# slippage, transaction cost, drawdown-ceiling distance) ALREADY EXISTS
+# on `PaperTrade` (app/portfolio.py's close_position() populates every
+# one of those at the real moment of close); decision-time strategy
+# identity/version already exists on `CeoDecisionRecord` (`strategy_id`/
+# `strategy_compiled_definition_id`/`strategy_compiled_definition_version`);
+# decision-time market/session/regime context already exists on that
+# same `CeoDecisionRecord` (`decision_market_regime`/`decision_session`/
+# `decision_price`/`decision_volatility_pct` — Part 8's own "Decision-
+# Time Snapshot"); and risk-contract sizing/scaling already exists on
+# `RiskDecision` above. Re-declaring any of those here would be exactly
+# the "duplicate risk/portfolio calculation" this directive's own Phase
+# 0 forbids.
+#
+# WHAT THIS RECORD ACTUALLY ADDS. Two things. (1) A single, durable,
+# joined identity for one closed trade — `trade_id`/`decision_id`/
+# `proposal_id`/`risk_decision_id`, so a reader always has the exact ids
+# needed to pull the full detail from `trade_history`/`decisions`/
+# `risk_decisions` — plus a SNAPSHOT (not a live pointer) of the
+# essential facts, copied once at journal-creation time. The snapshot is
+# deliberate, not accidental duplication: `trade_history`/`ceo_decisions`/
+# `risk_decisions` are each capped at a different size (50/200/200 —
+# see app/portfolio.py's MAX_TRADE_HISTORY and app/state.py's
+# MAX_RISK_DECISIONS), so a "permanent" journal built from pure foreign
+# keys would silently go dark for its own oldest entries the moment a
+# smaller source list evicted them. This is the SAME "copy the real
+# values once, at the real moment they're known, into an independent
+# permanent record" pattern `RiskDecision` above already established
+# (it snapshots `symbol`/`requestedQuantity`/`approvedQuantity` rather
+# than only pointing at a proposal id) and `PaperTrade` itself already
+# established (close_position() copies MAE/MFE/stop/target off the
+# PaperPosition it closes rather than re-deriving them later) — never a
+# second, independently-computed value. (2) `ceo_notes` — a genuinely
+# new, append-only list of the CEO's OWN post-trade reflections,
+# distinct from Coach's agent-authored `coach_review`/`lessons_learned`
+# on `PaperTrade` — the one real gap this pass's own recon found nothing
+# else in this codebase already covers.
+#
+# IMMUTABILITY (Phase 6). A journal entry's trade facts (price/quantity/
+# pnl/etc.) are 100% computed values with no manual-entry point, so
+# there is no real scenario in which they would ever need correcting —
+# inventing a generic amendment mechanism for values that can never
+# actually be wrong would be speculative, not evidence-based. `ceo_notes`
+# is the one field a CEO can actually add to after the fact, and it is
+# itself append-only (a new PaperTradeJournalNote is appended, an
+# existing one is never edited or deleted) — "never silently rewrite
+# history" applies to notes exactly as it does to the trade record
+# itself.
+class PaperTradeJournalNote(CamelModel):
+    id: str
+    created_at: str = Field(alias="createdAt")
+    text: str
+
+
+class PaperTradeJournalEntry(CamelModel):
+    id: str
+    created_at: str = Field(alias="createdAt")
+    trade_id: str = Field(alias="tradeId")
+    decision_id: str | None = Field(default=None, alias="decisionId")
+    proposal_id: str | None = Field(default=None, alias="proposalId")
+    risk_decision_id: str | None = Field(default=None, alias="riskDecisionId")
+    strategy_id: str | None = Field(default=None, alias="strategyId")
+    strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
+    strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
+    resolved_by: Literal["ceo", "auto", "delegated"] | None = Field(default=None, alias="resolvedBy")
+    symbol: str
+    side: OrderSide
+    quantity: float
+    entry_price: float = Field(alias="entryPrice")
+    exit_price: float = Field(alias="exitPrice")
+    stop_price: float | None = Field(default=None, alias="stopPrice")
+    target_price: float | None = Field(default=None, alias="targetPrice")
+    pnl: float
+    pnl_pct: float = Field(alias="pnlPct")
+    mae_pct: float = Field(alias="maePct")
+    mfe_pct: float = Field(alias="mfePct")
+    duration_minutes: int = Field(alias="durationMinutes")
+    opened_at: str = Field(alias="openedAt")
+    closed_at: str = Field(alias="closedAt")
+    # Decision-time context, copied straight from the matched
+    # CeoDecisionRecord (Part 8's own "Decision-Time Snapshot") — never a
+    # second, independently-computed reading. None for a trade with no
+    # matched CeoDecisionRecord (a manually-placed order, or one closed
+    # before this field existed).
+    decision_market_regime: MarketIntelligenceRegime | None = Field(default=None, alias="decisionMarketRegime")
+    decision_session: TradingSession | None = Field(default=None, alias="decisionSession")
+    # Paper trading always runs against the mock MarketDataProvider — see
+    # app/data_provenance.py's own DataCategory vocabulary, reused
+    # verbatim rather than inventing a second one.
+    data_provenance: DataCategory = "simulated"
+    ceo_notes: list[PaperTradeJournalNote] = Field(default_factory=list, alias="ceoNotes")
+
+
+# CEO directive "...then Paper-Trade Journal + Drift Detection + Strategy
+# Health State Machine" — Drift Detection Engine.
+#
+# PHASE 0 FORENSIC RECON, SUMMARIZED. `app/performance_attribution.py::
+# compute_strategy_degradation()` already exists and already detects five
+# real signal categories (loss clustering, expectancy deterioration,
+# volatility-regime change, execution/slippage degradation, abnormal
+# drawdown, repeated bad-thesis invalidation) — computed fresh per
+# request, never persisted, never emitting an event. This module never
+# reimplements that comparison; it calls it and turns its ALREADY-REAL
+# output into a real, persisted event stream, only when severity for a
+# given strategy+category actually changes (the same "persist only on
+# real change" convention `app/market_environment.py`'s own regime
+# timeline already established, never a firehose of identical
+# unchanged-severity events every tick). `app/market_environment.py`'s
+# own persisted regime-change timeline is reused, unchanged, to decide
+# `regime_changed` for the "regime" category — the real, disclosed
+# distinction between "the market moved" and "the strategy broke,"
+# never inferred.
+#
+# DELIBERATELY NOT INCLUDED, DISCLOSED: "behavior" and "data" drift
+# categories. Neither has a real, non-fabricated signal anywhere in this
+# codebase today — there is no per-strategy "intended market universe"/
+# timeframe/signal-distribution definition to diff a live strategy
+# against (behavior), and no per-strategy data-quality/staleness tracker
+# (data). Inventing either would be exactly the fabricated-confidence
+# this directive's own Phase 19 forbids. Only "performance", "execution",
+# "risk", and "regime" are real categories this pass can honestly detect.
+DriftCategory = Literal["performance", "execution", "risk", "regime"]
+# Reuses compute_strategy_degradation()'s own StrategyDegradationLevel
+# vocabulary for "performance" (it IS that function's output, renamed
+# onto this module's own event shape); the other three categories reuse
+# the identical four-tier idiom for consistency, never a second scale.
+DriftSeverity = Literal["insufficient_evidence", "normal", "watch", "critical"]
+
+
+class DriftEvent(CamelModel):
+    id: str
+    created_at: str = Field(alias="createdAt")
+    sim_day: int = Field(alias="simDay")
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    category: DriftCategory
+    severity: DriftSeverity
+    previous_severity: DriftSeverity | None = Field(default=None, alias="previousSeverity")
+    metric: str
+    baseline_value: float | None = Field(default=None, alias="baselineValue")
+    observed_value: float | None = Field(default=None, alias="observedValue")
+    sample_size: int = Field(alias="sampleSize")
+    evidence: list[str]
+    # Only meaningful for category == "regime" — whether the real,
+    # persisted MarketEnvironmentRegime timeline shows an actual regime
+    # change within this drift window. False (never fabricated True) for
+    # every other category.
+    regime_changed: bool = Field(default=False, alias="regimeChanged")
+    detail: str
+
+
+# CEO directive "...then Paper-Trade Journal + Drift Detection + Strategy
+# Health State Machine" — Strategy Health State Machine.
+#
+# PHASE 0 FORENSIC RECON, SUMMARIZED. This codebase already computes
+# "strategy health" three separate ways: `compute_strategy_health()`
+# (app/strategy_lab.py, backtest-only, produces a point-in-time
+# `StrategyHealthAssessment`/`StrategyHealthStatus` snapshot appended to
+# `strategy_health_assessments` — never a state MACHINE, no transition
+# history), `compute_strategy_degradation()` (live trades, the Drift
+# Detection Engine's own real input above), and
+# `compute_trading_mode_health()` (live trades, grouped by trading style
+# rather than by strategy). This module is explicitly NOT a fourth,
+# competing scorer — it is the one thing none of the three above
+# provides: a real, persisted, evidence-gated TRANSITION history driving
+# a per-strategy risk-scaling factor, built entirely from the real
+# `DriftEvent`s the Drift Detection Engine above already produces (never
+# a second degradation computation). See app/strategy_health.py's module
+# docstring for the exact transition rules.
+#
+# Lifecycle mirrors app/sandbox.py's own StrategyStage/`_advance()`
+# precedent (monotonic-within-a-direction, every transition cites real
+# evidence, persisted forever) crossed with app/black_swan.py's
+# Defensive Mode episode shape (a real trigger + evidence + duration).
+StrategyHealthLifecycleState = Literal["healthy", "watch", "degraded", "critical", "suspended", "recovering"]
+
+
+class StrategyHealthTransition(CamelModel):
+    id: str
+    created_at: str = Field(alias="createdAt")
+    sim_day: int = Field(alias="simDay")
+    strategy_id: str = Field(alias="strategyId")
+    previous_state: StrategyHealthLifecycleState | None = Field(default=None, alias="previousState")
+    new_state: StrategyHealthLifecycleState = Field(alias="newState")
+    trigger: str
+    evidence: list[str]
+    drift_event_ids: list[str] = Field(default_factory=list, alias="driftEventIds")
+    risk_scaling_factor: float = Field(alias="riskScalingFactor")
+
+
+class StrategyHealthState(CamelModel):
+    strategy_id: str = Field(alias="strategyId")
+    state: StrategyHealthLifecycleState = "healthy"
+    since_sim_day: int = Field(default=0, alias="sinceSimDay")
+    updated_at: str = Field(alias="updatedAt")
+    # HEALTHY reduces risk NEVER — it is always exactly 1.0, the ceiling.
+    # See app/strategy_health.py's module docstring: health only ever
+    # narrows a strategy-attributed trade's approved quantity, composed
+    # via min() alongside (never in place of) the Risk Contract's own
+    # company-wide scaling — it can never grant extra risk above what
+    # the active RiskContract already approved.
+    risk_scaling_factor: float = Field(default=1.0, alias="riskScalingFactor")
+    # Real closed trades since entering RECOVERING — the evidence floor
+    # evaluate_recovery() requires before a real return to HEALTHY. Never
+    # a single winning trade. Reset to 0 on every entry into RECOVERING.
+    recovery_trade_count: int = Field(default=0, alias="recoveryTradeCount")
+    transitions: list[StrategyHealthTransition] = Field(default_factory=list, alias="transitions")
+
+
 # CEO directive "Professional Quant Firm Phase 41-45" — Critical Task #0's
 # No-Trade Reason Taxonomy. Every value below is grounded in one real,
 # already-existing rejection point this codebase's own real trade-flow
@@ -7554,6 +7769,15 @@ class CeoDecisionRecord(CamelModel):
     # the selected strategy isn't in avoided_strategy_ids, or the
     # decision predates this field.
     regime_strategy_warning: str | None = Field(default=None, alias="regimeStrategyWarning")
+    # CEO directive "...then Paper-Trade Journal + Drift Detection +
+    # Strategy Health State Machine," Phase 10 — the exact same real,
+    # non-blocking, disclosed pattern as regime_strategy_warning above,
+    # for the selected Strategy's own persisted health state. SUSPENDED
+    # is instead a hard stop (see app/state.py's submit_ceo_decision() —
+    # the trade is rejected outright, this field never fires for that
+    # case). `None` whenever no strategy was selected, the selected
+    # strategy is HEALTHY, or the decision predates this field.
+    strategy_health_warning: str | None = Field(default=None, alias="strategyHealthWarning")
     # CEO directive "Complete Trade Provenance," Part 8 — Decision-Time
     # Snapshot. Research confirmed no field anywhere in this codebase
     # captured market/session/regime context AT THE MOMENT a decision
@@ -12726,6 +12950,22 @@ class GameSaveState(CamelModel):
     # `app/save_modules.py`) — same real, ever-growing, never-
     # recomputed category, never a second decision log.
     risk_decisions: list[RiskDecision] = Field(default_factory=list, alias="riskDecisions")
+    # CEO directive "...then Paper-Trade Journal + Drift Detection +
+    # Strategy Health State Machine" — same real, permanent, ever-
+    # growing, never-recomputed category as risk_decisions/decisions
+    # above; lives in the same trade_history archive module.
+    paper_trade_journal: list[PaperTradeJournalEntry] = Field(default_factory=list, alias="paperTradeJournal")
+    # Real, permanent event log — persisted only when a real severity
+    # change occurs (see app/strategy_drift.py), never one row per tick.
+    drift_events: list[DriftEvent] = Field(default_factory=list, alias="driftEvents")
+    # Keyed by strategy_id — one current StrategyHealthState per real
+    # Strategy, its own full transition history carried inline (see
+    # app/strategy_health.py). Grouped with strategy_health_assessments
+    # above in the `company` save module, not the archive module: this
+    # is real, tick/evidence-mutated state (the CURRENT health), not a
+    # flat append-only ledger — the ledger lives inside each entry's own
+    # `transitions` list instead.
+    strategy_health_states: dict[str, StrategyHealthState] = Field(default_factory=dict, alias="strategyHealthStates")
     decisions: list[TradeDecision] = Field(default_factory=list)
     agent_energy: AgentEnergy = Field(alias="agentEnergy")
     signal_calibration: SignalCalibrationState = Field(

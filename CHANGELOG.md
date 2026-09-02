@@ -8,6 +8,113 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+  Scaling, then Paper-Trade Journal + Drift Detection + Strategy Health
+  State Machine"** (second increment — the milestone's own queued
+  second half). Phase 0 forensic recon (three parallel research passes)
+  found that almost everything the directive's own literal
+  `PaperTradeJournalEntry` spec asks for already exists scattered across
+  real, already-shipped records: `PaperTrade` (entry/exit/MAE/MFE/stop/
+  target/slippage, populated at close by `app/portfolio.py::close_
+  position()`), `CeoDecisionRecord` (strategy identity/version, and
+  Part 8's own decision-time market/session snapshot), `RiskDecision`
+  (risk-contract sizing/scaling), and `app/exit_efficiency.py`'s already-
+  real capture-percentage analytics. Also found: `compute_strategy_
+  degradation()` (`app/performance_attribution.py`) already detects five
+  real live-trade degradation signal categories, computed fresh, never
+  persisted; and "strategy health" is already computed THREE separate
+  ways in this codebase (`compute_strategy_health()` backtest-only,
+  `compute_strategy_degradation()` live, `compute_trading_mode_health()`
+  live-by-trading-style) — none of them a real, persisted, evidence-
+  gated transition state machine.
+  - **`app/paper_trade_journal.py` (new)** — `PaperTradeJournalEntry`: a
+    thin, joined-identity-plus-snapshot record (`trade_id`/`decision_id`/
+    `proposal_id`/`risk_decision_id` for traceability, plus a one-time
+    copy of the essential facts — the same "copy real values once, at
+    the real moment they're known" pattern `PaperTrade`/`RiskDecision`
+    themselves already established, deliberate given `trade_history`/
+    `ceo_decisions`/`risk_decisions` are each capped at a different size
+    and a "permanent" journal built from pure foreign keys would go dark
+    for its own oldest entries). One genuinely new field: `ceoNotes`, an
+    append-only list of the CEO's own post-trade reflections (distinct
+    from Coach's agent-authored `coachReview`/`lessonsLearned`) — the
+    one real gap this pass's recon found nothing else in this codebase
+    already covers. Wired into `app/nexus.py`'s existing closed-trades
+    loop (one entry per real closed trade, capped at 200, same magnitude
+    as `decisions`/`risk_decisions`).
+  - **`app/strategy_drift.py` (new)** — the Drift Detection Engine.
+    Never reimplements strategy-degradation math: calls `compute_
+    strategy_degradation()` and turns its already-real signal strings
+    into a real, persisted, per-`(strategy, category)` severity-change
+    event stream (`performance`/`execution`/`risk`/`regime` — `behavior`
+    and `data` categories deliberately NOT modeled, disclosed: no real,
+    non-fabricated signal for either exists anywhere in this codebase),
+    persisted only when severity actually changes (the identical
+    "persist only on real change" convention `app/market_environment.py`'s
+    own regime timeline already established). `regime_changed` reuses
+    that same real, persisted regime-change timeline to distinguish "the
+    market moved" from "the strategy broke," per the directive's own
+    explicit requirement — never inferred.
+  - **`app/strategy_health.py` (new)** — the Strategy Health State
+    Machine: `healthy → watch → degraded → critical → suspended →
+    recovering → healthy`, driven entirely by the real `DriftEvent`
+    severities above (never a fourth, competing scorer). Every
+    transition is evidence-cited and persisted. A clean read from any
+    non-healthy state always passes through `recovering` first — never
+    a direct jump back to full trust — and `recovering → healthy`
+    requires a real minimum closed-trade sample during that probation,
+    never a single winning trade. Per-state risk-scaling factor
+    (1.00/0.75/0.50/0.25/0.00/0.50) only ever narrows, never grants
+    extra risk.
+  - **Integration constraint, disclosed** (found during recon, not
+    invented): `TradeProposal` carries no `strategy_id` at generation
+    time — a CEO only attributes a strategy AFTER `resolve_proposal()`
+    has already sized and executed the trade (`app/state.py`'s own
+    existing, already-shipped "never altering what the trade itself
+    did" invariant). Health therefore cannot retroactively shrink an
+    already-executed manual trade. The real, enforceable integration
+    instead: a `SUSPENDED` strategy's `strategy_id` is rejected outright
+    by `submit_ceo_decision()` (a hard stop, not a smaller trade); any
+    other non-HEALTHY state produces a new, real, non-blocking
+    `CeoDecisionRecord.strategyHealthWarning` — the exact same disclosure
+    pattern the existing `regimeStrategyWarning` field already uses.
+  - **New API**: `GET /api/trades/journal[/​{id}]`, `POST /api/trades/
+    journal/{id}/notes`, `GET /api/trades/drift-events`, `GET /api/
+    trades/strategy-health[/​{id}]` — all in the existing `app/routers/
+    trades.py` (same file `strategy-degradation`/`strategy-live-vs-
+    backtest` already live in, same real reason: they read the same
+    `state.strategies`/`trade_history` this router already has in
+    scope).
+  - **30 new tests** across `test_paper_trade_journal.py` (7),
+    `test_strategy_drift.py` (9), `test_strategy_health.py` (12), plus 9
+    new tests in `test_state.py` (the SUSPENDED hard-stop gate, the
+    non-blocking health warning, and the append-only journal-note
+    write path). Full backend suite green (3784 tests), `mypy app/`/
+    `python -m ruff check app/ tests/` clean.
+  - **Frontend** — two new read-only sections in the existing
+    `PerformancePanel.tsx` (PERFORMANCE tab, no new tab): "Strategy
+    Health State Machine" (current state + risk-scaling factor + most
+    recent transition trigger per non-healthy strategy, plus the most
+    recent real Drift Events) and "Paper Trade Journal — Provenance &
+    Scaling Transparency" (per-closed-trade entry/exit/stop/target/MAE/
+    MFE/decision-time regime, plus any CEO notes). `types.ts` gained the
+    matching `PaperTradeJournalEntry`/`DriftEvent`/`StrategyHealthState`
+    family; `api.ts` gained the matching read/write client methods.
+    `npx tsc --noEmit`/`npm run lint`/`npm run build` all clean; live-
+    verified against the running dev stack via Playwright — both
+    sections render real data (6 strategies all HEALTHY, real
+    `insufficient_evidence` baseline drift events, a real REGIME CHANGED
+    badge) with zero console errors.
+  - **Deliberately NOT built this pass, disclosed**: no draft/validate/
+    activate-style UI for anything here (read-only, matching the Risk
+    Contract card's own precedent); `strategyHealthWarning` isn't yet
+    surfaced in a dedicated UI element (matching this codebase's own
+    pre-existing, unaddressed gap — `regimeStrategyWarning` was never
+    wired into a visible UI element either, confirmed by grep); the
+    `resolve_proposal()` auto-resolution/proposal-expiry call sites
+    still don't consume Risk Contract scaling (a pre-existing, disclosed
+    gap from the prior increment, unchanged by this one).
+
+- **CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
   Scaling"** (first increment of a two-part milestone — Paper-Trade
   Journal + Drift Detection + Strategy Health State Machine queued next,
   disclosed below). Phase 0 forensic recon (three parallel research
