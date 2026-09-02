@@ -206,6 +206,7 @@ import type {
   LineageIntegrityIssue,
   SniperCandidate,
   SniperEngineStatusRead,
+  SniperEvent,
   SniperLead,
   SniperLesson,
   SniperLiveArmingStatus,
@@ -1368,6 +1369,13 @@ export const api = {
   getSniperCandidates: (limit = 30) => request<SniperCandidate[]>(`/sniper/candidates?limit=${limit}`),
   getSniperPositions: (openOnly = false) => request<SniperPosition[]>(`/sniper/positions${openOnly ? "?openOnly=true" : ""}`),
   getSniperTrades: (limit = 100) => request<SniperTrade[]>(`/sniper/trades?limit=${limit}`),
+  getSniperEvents: (opts?: { mint?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.mint) params.set("mint", opts.mint);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const qs = params.toString();
+    return request<SniperEvent[]>(`/sniper/events${qs ? `?${qs}` : ""}`);
+  },
   getSniperLeads: () => request<SniperLead[]>("/sniper/leads"),
   getSniperLessons: () => request<SniperLesson[]>("/sniper/lessons"),
   getSniperRisk: () => request<SniperRiskState>("/sniper/risk"),

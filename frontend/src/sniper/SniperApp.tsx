@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
-import type { SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperLead, SniperLesson, SniperPosition, SniperSafetyStatus, SniperTrade } from "@/types";
+import type { SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEvent, SniperLead, SniperLesson, SniperPosition, SniperSafetyStatus, SniperTrade } from "@/types";
 import { AnimatedGrid, DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
 import { SniperTerminal } from "./SniperTerminal";
 
@@ -18,6 +18,17 @@ const SAFETY_TONE: Record<SniperSafetyStatus, "green" | "amber" | "red" | "purpl
   caution: "amber",
   unknown: "purple",
   rejected: "red",
+};
+
+const EVENT_TONE: Record<SniperEvent["type"], string> = {
+  discovered: "text-cmd-cyan",
+  safety_reject: "text-cmd-red",
+  qualified: "text-cmd-amber",
+  sniped: "text-cmd-green",
+  no_trade: "text-cmd-textDim",
+  exit: "text-cmd-text",
+  manual_exit: "text-cmd-text",
+  lesson: "text-cmd-purple",
 };
 
 function fmtSol(v: number, digits = 3): string {
@@ -52,10 +63,10 @@ function timeAgo(iso: string): string {
  * the record. No fake AI confidence anywhere — the opportunity score is
  * always its own real, itemized breakdown.
  *
- * Simplification disclosed: the backend still has no dedicated event
- * log (a real "Live Event Feed"/trade timeline), so "Recent Activity"
- * is honestly derived from already-fetched candidates/trades, same
- * disclosed simplification the previous panel already carried forward.
+ * "Recent Activity" reads the backend's own real, persisted event log
+ * (`GET /api/sniper/events` — see SniperEvent's own docstring for the
+ * real bug this pass found and fixed: these events used to be generated
+ * every tick and then silently discarded, never actually kept anywhere).
  * Wallet management has NO real backend behind it at all (confirmed by
  * this pass's own recon: no secure credential storage exists anywhere
  * in this codebase) — the Wallet section below states that honestly
@@ -68,6 +79,7 @@ export function SniperApp() {
   const [trades, setTrades] = useState<SniperTrade[]>([]);
   const [leads, setLeads] = useState<SniperLead[]>([]);
   const [lessons, setLessons] = useState<SniperLesson[]>([]);
+  const [events, setEvents] = useState<SniperEvent[]>([]);
   const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +91,7 @@ export function SniperApp() {
     api.getSniperTrades(20).then(setTrades).catch(() => undefined);
     api.getSniperLeads().then(setLeads).catch(() => undefined);
     api.getSniperLessons().then(setLessons).catch(() => undefined);
+    api.getSniperEvents({ limit: 15 }).then(setEvents).catch(() => undefined);
   };
 
   useEffect(() => {
@@ -119,12 +132,6 @@ export function SniperApp() {
   }
 
   const opportunities = candidates.filter((c) => c.classification === "qualified" || c.classification === "high_conviction").slice(0, 4);
-  const recentActivity = [
-    ...candidates.slice(0, 8).map((c) => ({ at: c.discoveredAt, text: `DISCOVERED ${c.symbol} — score ${c.opportunityScore ?? "—"}, ${c.classification.replace(/_/g, " ")}` })),
-    ...trades.slice(0, 8).map((t) => ({ at: t.closedAt, text: `EXIT ${t.symbol} — ${t.exitReason.replace(/_/g, " ")}, ${fmtSol(t.pnlSol)} (${t.rMultiple >= 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R)` })),
-  ]
-    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
-    .slice(0, 10);
 
   return (
     <div className="relative min-h-screen w-screen overflow-x-hidden bg-cmd-bg text-[10px] text-cmd-text">
@@ -193,9 +200,15 @@ export function SniperApp() {
           <Glass className="p-3">
             <TerminalLabel>Risk status</TerminalLabel>
             <DataRow label="Drawdown" value={`${status?.risk.drawdownPct.toFixed(1) ?? "0.0"}% of max`} />
-            <DataRow label="Daily loss" value={status ? fmtSol(-status.risk.dailyLossSol) : "—"} valueClassName="text-cmd-red" />
-            <DataRow label="Open risk" value={status ? `${status.risk.openRiskSol.toFixed(3)} SOL` : "—"} />
-            <DataRow label="Size multiplier" value={`${status?.risk.sizeMultiplier.toFixed(2) ?? "1.00"}x`} />
+            <DataRow label="Daily loss" value={status ? `${fmtSol(-status.risk.dailyLossSol)} of max ${status.config.maxDailyLossPct}%` : "—"} valueClassName="text-cmd-red" />
+            {status && (
+              <DataRow
+                label="Open risk"
+                value={`${status.risk.openRiskSol.toFixed(4)} SOL — max ${((status.risk.equitySol * status.config.maxOpenRiskPct) / 100).toFixed(3)} SOL (${status.risk.equitySol > 0 ? ((status.risk.openRiskSol / (status.risk.equitySol * (status.config.maxOpenRiskPct / 100))) * 100).toFixed(0) : "0"}% utilized)`}
+              />
+            )}
+            <DataRow label="Risk per trade (base)" value={`${status?.config.riskPerTradePct ?? "—"}%`} />
+            <DataRow label="Size multiplier (dynamic)" value={`${status?.risk.sizeMultiplier.toFixed(2) ?? "1.00"}x`} />
             <DataRow label="Consecutive losses" value={status?.risk.consecutiveLosses ?? 0} />
             <DataRow
               label="Kill switch"
@@ -278,14 +291,15 @@ export function SniperApp() {
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <Glass className="p-3 lg:col-span-2">
-            <TerminalLabel>Recent activity</TerminalLabel>
-            {recentActivity.length === 0 ? (
-              <EmptyState>No activity yet.</EmptyState>
+            <TerminalLabel>Recent activity — real, persisted event log</TerminalLabel>
+            {events.length === 0 ? (
+              <EmptyState>No events yet.</EmptyState>
             ) : (
               <div className="max-h-64 space-y-1 overflow-y-auto text-[8px]">
-                {recentActivity.map((item, i) => (
-                  <div key={i} className="border-b border-cmd-border/40 pb-1 text-cmd-textDim last:border-0">
-                    <span className="text-cmd-cyan">{timeAgo(item.at)}</span> {item.text}
+                {events.map((e) => (
+                  <div key={e.id} className="border-b border-cmd-border/40 pb-1 text-cmd-textDim last:border-0">
+                    <span className="text-cmd-cyan">{timeAgo(e.timestamp)}</span> <span className={`font-semibold ${EVENT_TONE[e.type]}`}>{e.type.toUpperCase().replace(/_/g, " ")}</span>
+                    {e.symbol && <span className="text-cmd-text"> {e.symbol}</span>} — {e.detail}
                   </div>
                 ))}
               </div>

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { api } from "@/net/api";
 import { CandlestickChart, type ChartOverlays } from "@/ui/components/CommandCenter/CandlestickChart";
 import { useCandles } from "@/ui/components/CommandCenter/lib/useCandles";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
-import type { SniperCandidate, SniperPosition } from "@/types";
+import type { SniperCandidate, SniperEvent, SniperPosition } from "@/types";
 
 function fmtSol(v: number, digits = 3): string {
   return `${v >= 0 ? "+" : ""}${v.toFixed(digits)} SOL`;
@@ -10,6 +11,52 @@ function fmtSol(v: number, digits = 3): string {
 
 function fmtPct(v: number, digits = 1): string {
   return `${v >= 0 ? "+" : ""}${v.toFixed(digits)}%`;
+}
+
+const EVENT_TONE: Record<SniperEvent["type"], string> = {
+  discovered: "text-cmd-cyan",
+  safety_reject: "text-cmd-red",
+  qualified: "text-cmd-amber",
+  sniped: "text-cmd-green",
+  no_trade: "text-cmd-textDim",
+  exit: "text-cmd-text",
+  manual_exit: "text-cmd-text",
+  lesson: "text-cmd-purple",
+};
+
+function timeAgo(iso: string): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  return `${Math.floor(seconds / 3600)}h ago`;
+}
+
+/** Professional Trading Terminal directive, Part VII — this trade's own
+ * real, persisted event timeline (`GET /api/sniper/events?mint=...`),
+ * polled at the same 5s cadence as the rest of this terminal. Never
+ * manufactured — every row is a real event the backend actually recorded
+ * (see SniperEvent's own docstring for the discarded-every-tick bug this
+ * replaced). */
+function useSniperEvents(mint: string): SniperEvent[] {
+  const [events, setEvents] = useState<SniperEvent[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      api
+        .getSniperEvents({ mint, limit: 15 })
+        .then((result) => {
+          if (!cancelled) setEvents(result);
+        })
+        .catch(() => undefined);
+    };
+    load();
+    const interval = setInterval(load, 5_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [mint]);
+  return events;
 }
 
 /** CEO directive "Memecoin Sniper + Professional Trading Terminal, UI
@@ -72,6 +119,7 @@ function TradeDetail({ position, matchingCandidate, onClose }: { position: Snipe
     targetPrice: position.targetPrice,
   };
   const candles = useCandles(position.symbol, "1m", 120);
+  const events = useSniperEvents(position.mint);
 
   return (
     <Glass className="p-3">
@@ -97,6 +145,7 @@ function TradeDetail({ position, matchingCandidate, onClose }: { position: Snipe
         <DataRow label="Target" value={`$${position.targetPrice.toPrecision(4)}`} valueClassName="text-cmd-green" />
         <DataRow label="R multiple" value={position.rMultiple !== null ? `${position.rMultiple >= 0 ? "+" : ""}${position.rMultiple.toFixed(2)}R` : "—"} />
         <DataRow label="Size" value={`${position.sizeSol.toFixed(3)} SOL`} />
+        <DataRow label="Risk (SOL)" value={`${position.riskSol.toFixed(4)} SOL`} valueClassName="text-cmd-amber" />
         <DataRow label="MFE / MAE" value={`+${position.maxFavorableExcursionPct.toFixed(1)}% / ${position.maxAdverseExcursionPct.toFixed(1)}%`} />
         <DataRow label="Hold time" value={`${Math.round(position.holdTimeSeconds)}s`} />
         <DataRow label="Opened" value={new Date(position.openedAt).toLocaleTimeString()} />
@@ -116,6 +165,21 @@ function TradeDetail({ position, matchingCandidate, onClose }: { position: Snipe
           <div className="text-[9px] text-cmd-textDim">
             Entry score {position.entryScore ?? "—"}. The full evidence breakdown for this specific entry has rolled off the recent-candidates window — only the numeric score survives on the position itself
             (not fabricated to fill the gap).
+          </div>
+        )}
+      </div>
+
+      <div className="mt-2 border-t border-cmd-border/50 pt-2">
+        <TerminalLabel>Trade Event Timeline — this token's own real events</TerminalLabel>
+        {events.length === 0 ? (
+          <div className="text-[9px] text-cmd-textDim">No events recorded for this token yet.</div>
+        ) : (
+          <div className="max-h-40 space-y-1 overflow-y-auto text-[9px]">
+            {events.map((e) => (
+              <div key={e.id} className="border-b border-cmd-border/30 pb-1 text-cmd-textDim last:border-0">
+                <span className="text-cmd-cyan">{timeAgo(e.timestamp)}</span> <span className={`font-semibold ${EVENT_TONE[e.type]}`}>{e.type.toUpperCase().replace(/_/g, " ")}</span> — {e.detail}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -149,15 +213,23 @@ export function SniperTerminal({ positions, candidates }: { positions: SniperPos
 
   const totalExposureSol = openPositions.reduce((s, p) => s + p.sizeSol, 0);
   const totalUnrealizedSol = openPositions.reduce((s, p) => s + p.pnlSol, 0);
+  const totalOpenRiskSol = openPositions.reduce((s, p) => s + p.riskSol, 0);
 
   return (
     <div className="space-y-3">
-      <Glass className="grid grid-cols-2 gap-2 p-3 text-[9px] sm:grid-cols-4">
+      <Glass className="grid grid-cols-2 gap-2 p-3 text-[9px] sm:grid-cols-5">
         <DataRow label="Active trades" value={openPositions.length} />
         <DataRow label="Total exposure" value={`${totalExposureSol.toFixed(3)} SOL`} />
+        <DataRow label="Total open risk" value={`${totalOpenRiskSol.toFixed(4)} SOL`} valueClassName="text-cmd-amber" />
         <DataRow label="Unrealized P&L" value={fmtSol(totalUnrealizedSol)} valueClassName={totalUnrealizedSol >= 0 ? "text-cmd-green" : "text-cmd-red"} />
         <DataRow label="Trailing" value={openPositions.filter((p) => p.trailingActive).length} />
       </Glass>
+      {openPositions.length > 1 && (
+        <p className="px-1 text-[8px] text-cmd-textDim">
+          Correlated exposure across these {openPositions.length} positions: NOT AVAILABLE — Sniper positions aren&apos;t part of the main portfolio&apos;s correlation engine
+          (app/portfolio_intelligence.py::count_correlated_positions), and this pass did not build a second one.
+        </p>
+      )}
 
       {openPositions.length === 0 ? (
         <Glass className="p-3">

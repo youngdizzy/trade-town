@@ -8148,6 +8148,10 @@ export interface SniperPosition {
   maxFavorableExcursionPct: number;
   maxAdverseExcursionPct: number;
   holdTimeSeconds: number;
+  /** Real SOL at stake against the ORIGINAL hard stop (never the
+   * tighter trailing stop) — the same formula SniperTrade.riskSol
+   * uses, computed once at entry. See backend's position_risk_sol(). */
+  riskSol: number;
   dataProvenance: "simulated";
 }
 
@@ -8227,6 +8231,20 @@ export interface SniperEngineConfig {
   maxOpenRiskPct: number;
   maxOpenPositions: number;
   entryCooldownSeconds: number;
+}
+
+export type SniperEventType = "discovered" | "safety_reject" | "qualified" | "sniped" | "no_trade" | "exit" | "manual_exit" | "lesson";
+
+/** Professional Trading Terminal directive, Part VII — a real, persisted
+ * event (see backend SniperEvent's own docstring for why this replaced a
+ * per-tick list[str] that used to be silently discarded every tick). */
+export interface SniperEvent {
+  id: string;
+  timestamp: string;
+  type: SniperEventType;
+  mint: string | null;
+  symbol: string | null;
+  detail: string;
 }
 
 export interface SniperLiveArmingStatus {
