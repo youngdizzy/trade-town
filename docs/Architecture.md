@@ -19688,3 +19688,169 @@ assembly but would need its own design decision before any real-time
 Lifecycle panel surfacing this endpoint inside the existing Command
 Center/Journal UI — before either of the two much larger bundled
 directives are attempted.
+
+## CEO directive "TradeTown — Risk Contract Enforcement + Dynamic Risk Scaling 1.0"
+
+The Canonical Trade Lifecycle 1.0 report above recommended a frontend
+lifecycle panel as the next milestone. This directive explicitly
+overrode that recommendation: it named the same report's own claim —
+"RiskContract dynamic scaling is currently ADVISORY-ONLY... NOT enforced
+into actual position sizing" — as the higher-priority issue, and
+required a fresh Phase 0 audit before writing any code.
+
+### Phase 0 — the claim was overstated
+
+Direct code tracing (not reused from the prior report — re-derived from
+scratch, since the prior report's own claim turned out to need
+correcting) found the real picture more precise than "advisory-only":
+
+- **Real, enforced, at proposal-creation time.** `app/nexus.py`'s
+  `tick()` already composed `apply_risk_contract_scaling()` into
+  `effective_risk_limits`, alongside Company Priority/Circuit-Breaker/
+  Travel-Mode tightening. `_generate_trade_proposals()` sizes the initial
+  ceiling from `effective_risk_limits`, and `build_position_sizing()`
+  narrows it further — the result becomes `proposal.quantity` before the
+  CEO ever sees the proposal (`nexus.py`: `proposal = proposal.model_copy(update={"quantity": position_sizing.final_quantity, ...})`).
+  This part was already real, live, and correctly enforced.
+- **Real, but never re-applied at DECISION time.** Both real decision
+  call sites — `app/state.py`'s `submit_ceo_decision()` (the CEO's own
+  manual click) and `app/nexus.py`'s `_apply_operating_mode()` (Assisted/
+  Executive Mode auto-resolution) — called `resolve_proposal()`, which
+  recomputes its own sizing ceiling via `recommended_quantity(risk_limits, ...)`
+  and takes `min(ceiling, proposal.quantity)`. Both call sites passed the
+  CEO's RAW, unscaled `risk_limits`, not the tick's own `effective_risk_limits`.
+  Since `min()` usually still lands on the (already-scaled)
+  `proposal.quantity`, this was invisible in the common case — but a
+  proposal's own scaling was frozen at CREATION time. If the real risk
+  state (drawdown, losing streak, the contract's own kill switch)
+  worsened AFTER a proposal was created but BEFORE it was decided, that
+  worsened state was never reflected, and the stale proposal could still
+  execute at its original, now-too-permissive size — or execute at all,
+  when a currently-active kill switch should have zeroed it out.
+- **Already found and disclosed by the original implementer.** `app/state.py`'s
+  own code comment at the RiskDecision construction site (added by the
+  Risk Contract feature's original pass) already named this exact
+  asymmetry: "app/nexus.py's auto-resolution call site passes the raw,
+  pre-scaling risk_limits into resolve_proposal, not effective_risk_limits
+  — deliberately left untouched by this bounded pass." This directive
+  closes the gap that comment named.
+
+### The fix — one shared composition, applied at both decision call sites
+
+`app/risk_contract.py` gained `apply_active_risk_contract()`: the ONE
+canonical composition of `get_active_risk_contract` →
+`evaluate_risk_contract_scaling` → `apply_risk_contract_scaling`,
+already unchanged, already real. `app/nexus.py`'s own inline version of
+this composition (in `tick()`) was refactored to call this shared
+function instead — a pure, behavior-preserving refactor (confirmed:
+every pre-existing test in `tests/test_nexus.py` passes unmodified).
+
+- **`app/state.py::submit_ceo_decision()`** now calls
+  `apply_active_risk_contract()` BEFORE `resolve_proposal()`, using the
+  real, current portfolio drawdown (`max_drawdown_pct`) and consecutive-
+  loss count (`compute_consecutive_losses`) — the same real functions
+  already used elsewhere in this codebase, never a second computation of
+  either. The resulting scaled `risk_limits` is what `resolve_proposal()`
+  actually sizes against. The RiskDecision audit-trail block (previously
+  a SECOND, independent recomputation of contract/drawdown/scaling AFTER
+  the fact) was consolidated to reuse this one earlier computation —
+  removing a duplicate risk calculation, not adding one.
+- **`app/nexus.py::_apply_operating_mode()`** now receives this tick's
+  own `effective_risk_limits` (already RiskContract-scaled) from its one
+  real caller, instead of the CEO's raw configured limits. Every other
+  real use of that parameter inside the function (`is_significant_proposal`,
+  `cash_reserve_breached`) only ever gets MORE conservative from a
+  tighter `risk_limits`, never less, so this widened no existing gate.
+- **FAIL CLOSED, not fail-open, on missing risk state at either real
+  decision path** — `submit_ceo_decision()` rejects the trade outright
+  if no active RiskContract can be determined (provably unreachable in
+  real production, since `_derive_active_risk_contract()` guarantees one
+  exists first); `_apply_operating_mode()` gained a `risk_contract_available`
+  parameter (default `True`) that, when `False`, defers every buy/sell
+  proposal to manual review rather than auto-resolving on unscaled risk
+  state — mirroring the existing `emergency_stop_active`/
+  `force_manual_review` safety-constraint pattern exactly.
+
+### Verified with exact numbers, not presence of a record
+
+The directive's own bar: "Do not say 'risk is enforced' merely because a
+RiskDecision contains a risk number. Prove that the number controls the
+quantity that actually reaches the order layer." New tests in
+`tests/test_risk_contract.py`, `tests/test_state.py`, and
+`tests/test_nexus.py` construct a $100k-equity portfolio at a real 5%
+drawdown (crossing the contract's own default "moderate_drawdown" band,
+factor 0.75) with a deliberately stale, oversized pending proposal
+(quantity 1,000 at $100): the unscaled ceiling would allow 19–20 shares;
+the fix produces exactly **14.25 shares** — confirmed identically on
+both the CEO-manual-decision path and the auto-resolution path. A second
+scenario at 20% drawdown (crossing the real 12% kill-switch band)
+produces **zero shares and no position**, reusing the pre-existing
+"sized to zero → wait" fallback in `resolve_proposal()` — no new
+rejection mechanism was built for this. A control test confirms the fix
+never widens a trade past what the CEO originally saw on the proposal.
+
+### Anti-bypass, migration safety, live verification
+
+- **Anti-bypass** is architectural, not a new check: no API endpoint
+  calls `app/portfolio.py::open_position()` directly — the only two real
+  production paths into it are the two call sites this pass fixed.
+- **Zero schema changes.** `git diff --stat app/schemas.py` is empty for
+  this pass — every field this fix reads/writes already existed. No
+  migration risk, no repeat of the earlier `sniper_trade_history`
+  near-miss (a required-field addition that broke an existing save) —
+  this pass added no fields at all.
+- **No behavioral change** to Memecoin Sniper (a separate, untouched
+  subsystem), the Gatekeeper's 15 checks, or `app/position_sizing.py`'s
+  own volatility/regime/session/correlation caps.
+- **Live-verified:** the real dev server ran this exact code for
+  roughly 3 hours of simulated time via a real `POST /api/time/advance`
+  fast-forward, with zero errors and a clean startup against the real
+  existing save (no migration warnings, as expected with no schema
+  change). A real Operating-Mode switch to Executive (`POST /api/save`)
+  produced observable auto-resolution activity. A full, clean "one
+  proposal → decision → fill → position" live trace was **not**
+  captured this session — the save's research agents were mostly
+  resting during the live window, and one anomalous, unresolved read
+  (a CEO-decisions count that briefly showed 3 then reverted to 0, with
+  the portfolio itself unaffected) was observed and is disclosed rather
+  than hidden; the environment's pre-existing multi-"Run"/save-slot
+  system is the more likely explanation than this pass's own change
+  (which touches only in-memory sizing composition, never persistence
+  code), but this was not root-caused. The numeric proof above comes
+  from integration tests exercising the exact real functions the live
+  server calls, not from a captured live trace.
+
+### Explicitly not attempted this pass
+
+The frontend Trade Lifecycle panel (deferred again, per this directive's
+own explicit instruction); Trade Intelligence Loop 1.0; Paper Trading
+Validation & Burn-in 1.0; any live-trading/broker integration; any
+change to Memecoin Sniper. Also noticed but explicitly out of scope:
+Circuit-Breaker/Travel-Mode tightening have the same structural
+decision-time-staleness shape this pass fixed for RiskContract scaling —
+named here as a candidate future finding, not fixed, since this
+directive's own scope was RiskContract dynamic scaling specifically.
+
+### Final decision
+
+**C — IMPLEMENTED, VERIFIED FOR CONTROLLED PAPER USE.** The scaled
+number now provably controls the executed quantity (exact-number
+integration tests on both real decision paths), hard limits remain
+authoritative (the scaled ceiling is still bounded by the CEO's own
+configured `RiskLimits`, never exceeds it), the kill switch fails to
+zero via the existing zero-quantity fallback, missing risk state fails
+closed on the manual path and defers to manual review on the
+auto-resolution path, and zero schema changes eliminate migration risk.
+Not fully proven: a live, real-time, end-to-end capture of one actual
+stale proposal surviving a live drawdown swing before being correctly
+clamped (the integration tests prove the mechanism; a live capture would
+have additionally proven the real tick-to-tick wiring end-to-end, and
+was not obtained this session).
+
+**Recommended next milestone: Controlled Paper Trading Readiness Audit +
+Burn-in 1.0** — scoped as a readiness AUDIT of the existing paper
+pipeline (not the full "Paper Trading Validation & Burn-in 1.0" mega-
+directive bundled earlier), checking specifically whether the risk
+enforcement this pass built survives a real multi-day live run,
+including the unresolved decisions-count anomaly this pass's own live
+verification surfaced.

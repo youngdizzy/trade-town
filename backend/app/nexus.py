@@ -144,7 +144,7 @@ from app.position_sizing import build_position_sizing
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import compute_daily_objective_status, compute_risk_budget_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, portfolio_equity, recommended_quantity
-from app.risk_contract import apply_risk_contract_scaling, evaluate_risk_contract_scaling, get_active_risk_contract
+from app.risk_contract import apply_active_risk_contract
 from app.sandbox import apply_review_decision, cap_strategy_reports, cap_strategy_reviews, generate_strategy_report, maybe_advance_after_research, maybe_advance_after_result
 from app.strategy_drift import evaluate_strategy_drift
 from app.strategy_health import evaluate_health_transition
@@ -961,6 +961,7 @@ def _apply_operating_mode(
     behavioral_cooldown_minutes: int | None = None,
     behavioral_size_increase_threshold_pct: float | None = None,
     trading_restrictions: list[TradingRestriction] | None = None,
+    risk_contract_available: bool = True,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -1009,7 +1010,39 @@ def _apply_operating_mode(
     resolve_proposal() call below so an auto-resolution is gated by
     exactly the same revenge-trading check a manual CEO click gets — no
     Operating Mode can bypass it (see app/gatekeeper.py's
-    _behavioral_check, the Gatekeeper's own non-bypassable pure-AND)."""
+    _behavioral_check, the Gatekeeper's own non-bypassable pure-AND).
+
+    `risk_limits` (CEO directive "Risk Contract Enforcement + Dynamic
+    Risk Scaling 1.0") — the caller now passes this tick's real
+    `effective_risk_limits` (Company Priority + Circuit Breaker + Travel
+    Mode + the active RiskContract's own dynamic scaling already
+    composed in, via app/risk_contract.py's apply_active_risk_contract())
+    rather than the CEO's raw configured limits. This closes a real,
+    previously-disclosed gap: a pending proposal's own quantity was
+    scaled at CREATION time, but auto-resolving it here used to recompute
+    resolve_proposal()'s sizing ceiling from unscaled limits, so a
+    worsening drawdown/losing-streak state (including the contract's own
+    kill switch) between creation and this auto-resolution never
+    actually reduced or blocked the trade. Passing the already-scaled
+    limits through costs nothing else here — every other real use of
+    this parameter in this function (is_significant_proposal,
+    cash_reserve_breached, resolve_proposal's own Gatekeeper budget
+    check) only ever gets MORE conservative from a tighter risk_limits,
+    never less.
+
+    `risk_contract_available` (CEO directive "Risk Contract Enforcement
+    + Dynamic Risk Scaling 1.0," Non-Negotiable Principle 11/12 — FAIL
+    CLOSED) — True for every real tick (app/state.py's `_advance_once()`
+    guarantees a real RiskContract exists before nexus.tick() ever
+    runs, so this is only ever False in a direct unit-test call that
+    deliberately skips that guarantee). When False, every buy/sell
+    proposal defers to manual CEO review instead of auto-resolving —
+    the same real safety-constraint pattern as `emergency_stop_active`/
+    `force_manual_review` above, never a silent auto-approval on
+    unscaled, un-fail-closed risk state. A manual CEO decision on the
+    deferred proposal is still safe: `app/state.py::submit_ceo_decision()`
+    derives a real contract itself before deciding (see that method's
+    own FAIL CLOSED handling)."""
     if operating_mode == "learning" or not trade_proposals:
         return trade_proposals, portfolio, meeting_log
 
@@ -1024,6 +1057,10 @@ def _apply_operating_mode(
         # Operating Mode while a tier is active, the same real branch
         # this function already uses for Chapter 66's pause_trading.
         if force_manual_review:
+            still_pending.append(proposal)
+            continue
+
+        if proposal.overall_recommendation in ("buy", "sell") and not risk_contract_available:
             still_pending.append(proposal)
             continue
 
@@ -1658,28 +1695,36 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # Reads the SAME real app/analytics.py::max_drawdown_pct() figure
     # Sentinel/Guardian/the Gatekeeper's failure-boundary check already
     # use, and the SAME real compute_losing_streak() count just above —
-    # never a second drawdown or streak computation. `active_risk_
+    # never a second drawdown or streak computation.
+    #
+    # CEO directive "Risk Contract Enforcement + Dynamic Risk Scaling
+    # 1.0" — this composition is now app/risk_contract.py's own
+    # apply_active_risk_contract(), the ONE shared function every real
+    # risk-limits-consuming call site uses (this tick's own proposal
+    # generation below, a CEO's manual decision in
+    # app/state.py::submit_ceo_decision(), and this same tick's own
+    # Operating Mode auto-resolution just below — see this function's
+    # own docstring for the staleness gap this closes). `active_risk_
     # contract` is guaranteed non-None by app/state.py's own
     # `_advance_once()` (which derives one before ever calling this
-    # function) for every real tick; the defensive `is not None` guard
-    # below only matters for a direct unit-test call to `tick()` that
-    # skips that guarantee — never crashes, simply skips this one real
+    # function) for every real tick; the `is None` case this returns for
+    # only matters for a direct unit-test call to `tick()` that skips
+    # that guarantee — never crashes, simply skips this one real
     # narrowing step, matching every other optional-evidence cap's own
-    # fail-open convention in this codebase (app/position_sizing.py).
-    active_risk_contract = get_active_risk_contract(state.risk_contracts)
-    risk_contract_scaling = None
-    if active_risk_contract is not None:
-        live_drawdown_pct = max_drawdown_pct(paper_portfolio.trade_history, paper_portfolio.starting_balance, current_equity=portfolio_equity(paper_portfolio))
-        risk_contract_scaling = evaluate_risk_contract_scaling(
-            contract=active_risk_contract,
-            drawdown_pct=live_drawdown_pct,
-            consecutive_losses=losing_streak.consecutive_losses,
-            base_risk_per_trade_pct=effective_risk_limits.risk_per_trade_pct,
-            base_max_position_pct=effective_risk_limits.max_position_pct,
-        )
-        effective_risk_limits = apply_risk_contract_scaling(effective_risk_limits, scaling=risk_contract_scaling)
-        if risk_contract_scaling.kill_switch_triggered:
-            block_new_proposals = True
+    # fail-open convention in this codebase (app/position_sizing.py) for
+    # this read-only proposal-generation path (contrast with the CEO-
+    # decision/auto-resolution paths below, which FAIL CLOSED instead —
+    # see their own call sites for why display/generation and an actual
+    # order-placing decision have different honest safety requirements).
+    live_drawdown_pct = max_drawdown_pct(paper_portfolio.trade_history, paper_portfolio.starting_balance, current_equity=portfolio_equity(paper_portfolio))
+    effective_risk_limits, active_risk_contract, risk_contract_scaling = apply_active_risk_contract(
+        effective_risk_limits,
+        risk_contracts=state.risk_contracts,
+        drawdown_pct=live_drawdown_pct,
+        consecutive_losses=losing_streak.consecutive_losses,
+    )
+    if risk_contract_scaling is not None and risk_contract_scaling.kill_switch_triggered:
+        block_new_proposals = True
 
     # Behavioral Circuit Breaker (app/behavioral_risk.py) — the ambient,
     # tick-level dashboard read (no specific candidate proposal to
@@ -1941,7 +1986,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         trade_proposals,
         debates,
         paper_portfolio,
-        risk_limits,
+        effective_risk_limits,
         risk_warnings,
         prices,
         now_sim_minutes,
@@ -1967,6 +2012,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         behavioral_cooldown_minutes=trading_mode_state.behavioral_cooldown_minutes,
         behavioral_size_increase_threshold_pct=trading_mode_state.behavioral_size_increase_threshold_pct,
         trading_restrictions=trading_restrictions,
+        risk_contract_available=active_risk_contract is not None,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)

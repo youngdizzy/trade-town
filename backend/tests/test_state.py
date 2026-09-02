@@ -750,11 +750,13 @@ class TestSubmitCeoDecisionEmergencyStopGuard:
 class TestSubmitCeoDecisionRiskDecisionAuditTrail:
     """CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
     Scaling," Phase 4/5 — the real, persisted RiskDecision audit record
-    scoped to this manual CEO decision path (see app/state.py's own
-    comment at the construction site for why: a real, pre-existing
-    asymmetry means app/nexus.py's auto-resolution call site does not
-    yet consume Risk Contract scaling, so this pass scoped the audit
-    trail to the highest-value, cleanest integration point instead)."""
+    for this manual CEO decision path. Originally scoped here only (a
+    real, disclosed asymmetry meant app/nexus.py's auto-resolution call
+    site did not yet consume Risk Contract scaling) — CEO directive
+    "Risk Contract Enforcement + Dynamic Risk Scaling 1.0" closed that
+    asymmetry (see TestSubmitCeoDecisionRiskContractEnforcement below
+    for the tests proving the scaling now actually governs the executed
+    quantity, on both the manual and auto-resolution paths)."""
 
     def _state_with_pending_proposal(self) -> GameState:
         state = GameState()
@@ -811,6 +813,107 @@ class TestSubmitCeoDecisionRiskDecisionAuditTrail:
         saved2, error = asyncio.run(state.submit_ceo_decision("proposal-1", "wait"))
         assert error is None
         assert saved2.risk_decisions == [first_record]
+
+
+class TestSubmitCeoDecisionRiskContractEnforcement:
+    """CEO directive "Risk Contract Enforcement + Dynamic Risk Scaling
+    1.0" — proves the number in the RiskDecision actually controls the
+    quantity that reaches the order layer, not merely an audit record
+    alongside an unaffected trade. Closes the exact asymmetry the prior
+    Risk Contract implementation's own comment had already found and
+    disclosed: a pending proposal's quantity could be stale relative to
+    a real risk state that worsened after the proposal was created,
+    since resolve_proposal() always recomputed its own sizing ceiling
+    from raw, unscaled risk_limits at decision time (see
+    app/risk_contract.py's apply_active_risk_contract() for the full
+    rationale)."""
+
+    def _state_with_drawdown(self, *, loss: float, proposal_quantity: float) -> GameState:
+        state = GameState()
+        portfolio = state.data.paper_portfolio
+        trade_history: list[PaperTrade] = []
+        if loss:
+            trade_history = [
+                PaperTrade(
+                    id="prior-loss",
+                    symbol="AAPL",
+                    side="buy",
+                    quantity=1.0,
+                    entryPrice=100.0,
+                    exitPrice=100.0,
+                    pnl=-loss,
+                    pnlPct=round(-loss / portfolio.starting_balance * 100, 4),
+                    durationMinutes=30,
+                    confidence=80.0,
+                    reason="prior loss for drawdown setup",
+                    marketConditions="test",
+                    supportingAgents=["scout"],
+                    openedAt="2026-01-01T00:00:00+00:00",
+                    closedAt="2026-01-01T00:30:00+00:00",
+                )
+            ]
+        portfolio = portfolio.model_copy(
+            update={"cash_balance": portfolio.starting_balance - loss, "trade_history": trade_history}
+        )
+        proposal = _pending_proposal().model_copy(update={"quantity": proposal_quantity})
+        state.data = state.data.model_copy(update={"paper_portfolio": portfolio, "trade_proposals": [proposal]})
+        return state
+
+    def test_a_stale_large_proposal_is_clamped_to_the_real_scaled_ceiling_not_its_own_quantity(self) -> None:
+        # A 5% drawdown crosses the real default "moderate_drawdown" band
+        # (threshold 4%, factor 0.75 — see RiskContractScalingPolicy's
+        # own default bands). Equity at decision time is 95_000 (100_000
+        # starting - 5_000 loss). Unscaled ceiling: min(95_000*2%,
+        # 95_000*10%)/100 price = 19.0 shares. Scaled ceiling (0.75x):
+        # min(95_000*1.5%, 95_000*7.5%)/100 = 14.25 shares. The stale
+        # proposal's own quantity (1_000) is nowhere near either number,
+        # so whichever ceiling governs is exactly what's provable here —
+        # this is NOT a case where the proposal's own quantity happens
+        # to already be the binding constraint.
+        state = self._state_with_drawdown(loss=5_000.0, proposal_quantity=1_000.0)
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert len(saved.paper_portfolio.positions) == 1
+        position = saved.paper_portfolio.positions[0]
+        assert position.quantity == 14.25
+        risk_decision = saved.risk_decisions[0]
+        assert risk_decision.scaling.combined_factor == 0.75
+        assert risk_decision.approved_quantity == 14.25
+        assert risk_decision.rejected is False
+
+    def test_a_kill_switch_drawdown_blocks_the_trade_entirely_despite_a_large_stale_proposal(self) -> None:
+        # A 20% drawdown crosses every band, including the real 12% kill
+        # switch (factor 0.0) — scaled risk_per_trade_pct/max_position_pct
+        # both collapse to 0.0, recommended_quantity() returns 0.0, and
+        # resolve_proposal()'s own pre-existing "sized to zero -> wait"
+        # fallback fires — exactly as if the proposal had never carried a
+        # positive quantity at all. No new rejection mechanism was built;
+        # this is the existing zero-quantity path, now actually reachable
+        # from a real drawdown state.
+        state = self._state_with_drawdown(loss=20_000.0, proposal_quantity=1_000.0)
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert saved.paper_portfolio.positions == []
+        decision = saved.decisions[-1]
+        assert decision.order_id is None
+        risk_decision = saved.risk_decisions[0]
+        assert risk_decision.scaling.kill_switch_triggered is True
+        assert risk_decision.approved_quantity == 0.0
+        assert risk_decision.rejected is True
+        assert "kill switch" in (risk_decision.rejection_reason or "").lower()
+
+    def test_no_drawdown_leaves_the_proposals_own_already_narrower_quantity_governing(self) -> None:
+        # Control: when the real ceiling is WIDER than what the proposal
+        # itself already asked for, the proposal's own (already-narrowed
+        # at creation time) quantity still governs — this fix must never
+        # WIDEN a trade past what the CEO actually saw on the proposal.
+        state = self._state_with_drawdown(loss=0.0, proposal_quantity=1.0)
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert len(saved.paper_portfolio.positions) == 1
+        assert saved.paper_portfolio.positions[0].quantity == 1.0
+        risk_decision = saved.risk_decisions[0]
+        assert risk_decision.scaling.combined_factor == 1.0
 
 
 class TestSubmitCeoDecisionStrategyProvenance:

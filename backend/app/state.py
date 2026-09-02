@@ -157,6 +157,7 @@ from app.schemas import (
     ResearchCategory,
     RiskContract,
     RiskContractScalingPolicy,
+    RiskContractScalingRead,
     RiskContractValidationResult,
     RiskDecision,
     RiskLimits,
@@ -194,9 +195,9 @@ from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 from app.strategy_compiler import strategy_definition_slug
 from app.risk_contract import (
     activate_risk_contract as _activate_risk_contract,
+    apply_active_risk_contract,
     archive_risk_contract as _archive_risk_contract,
     create_draft_risk_contract as _create_draft_risk_contract,
-    evaluate_risk_contract_scaling,
     get_active_risk_contract,
     mark_validated as _mark_validated_risk_contract,
     validate_risk_contract,
@@ -2468,11 +2469,63 @@ class GameState:
             )
             min_confidence_override = (GATEKEEPER_MIN_CONFIDENCE + confidence_bonus) if confidence_bonus > 0 else None
 
+            # CEO directive "Risk Contract Enforcement + Dynamic Risk
+            # Scaling 1.0" — resolve the REAL, CURRENT (never stale)
+            # RiskContract-scaled risk_limits BEFORE resolve_proposal()
+            # ever sizes this trade, closing the exact asymmetry this
+            # feature's own prior implementation had already found and
+            # disclosed here: a proposal's quantity was scaled at
+            # creation time (app/position_sizing.py, fed this tick's
+            # effective_risk_limits in app/nexus.py), but re-deciding it
+            # at THIS call site always recomputed resolve_proposal()'s
+            # own sizing ceiling from the CEO's raw, unscaled risk_limits
+            # — so a drawdown/losing-streak state (including the
+            # contract's own kill switch) that worsened between proposal
+            # creation and this decision never actually reduced or
+            # blocked the trade. See app/risk_contract.py's
+            # apply_active_risk_contract() for the full rationale — the
+            # SAME function app/nexus.py's tick() now uses for proposal
+            # generation, so this decision can never see contract
+            # scaling more permissive than what governed the proposal's
+            # own creation.
+            #
+            # `_derive_active_risk_contract()` guarantees a real,
+            # persisted v1 contract exists (auto-derived from the CEO's
+            # own already-configured risk_limits the first time one is
+            # needed — never fabricated numbers) before the scaling
+            # lookup below ever runs, mirroring `_advance_once()`'s own
+            # identical guarantee for every tick. The `active_risk_
+            # contract is None` branch is therefore unreachable in real
+            # production use; it is kept as a genuine FAIL-CLOSED guard
+            # (never fail-open) because this is a real order-placing
+            # decision, not a mere display/proposal-generation read —
+            # Non-Negotiable Principle 11/12.
+            risk_limits_for_decision = self.data.risk_limits
+            active_risk_contract: RiskContract | None = None
+            risk_contract_scaling: RiskContractScalingRead | None = None
+            if choice in ("buy", "sell"):
+                self.data, _ = self._derive_active_risk_contract(self.data)
+                pre_decision_portfolio = self.data.paper_portfolio
+                live_drawdown_pct = max_drawdown_pct(
+                    pre_decision_portfolio.trade_history,
+                    pre_decision_portfolio.starting_balance,
+                    current_equity=portfolio_equity(pre_decision_portfolio),
+                )
+                consecutive_losses = compute_consecutive_losses(pre_decision_portfolio.trade_history)
+                risk_limits_for_decision, active_risk_contract, risk_contract_scaling = apply_active_risk_contract(
+                    self.data.risk_limits,
+                    risk_contracts=self.data.risk_contracts,
+                    drawdown_pct=live_drawdown_pct,
+                    consecutive_losses=consecutive_losses,
+                )
+                if active_risk_contract is None:
+                    return self.data, "No active Risk Contract could be determined for this decision — failing closed rather than sizing this trade on unscaled risk limits."
+
             portfolio, decision, ceo_record = resolve_proposal(
                 proposal,
                 choice,
                 portfolio=self.data.paper_portfolio,
-                risk_limits=self.data.risk_limits,
+                risk_limits=risk_limits_for_decision,
                 current_price=current_price,
                 now_sim_minutes=now_sim_minutes,
                 market_intelligence=self.data.market_intelligence,
@@ -2568,36 +2621,24 @@ class GameState:
             # CEO directive "TradeTown — Persisted Risk Contract + Dynamic
             # Risk Scaling," Phase 4/5 — a real, persisted RiskDecision
             # audit record naming exactly which RiskContract version
-            # governed this CEO decision's sizing/gatekeeper read. Scoped
-            # to this manual decision path only (this pass's own forensic
-            # recon found a real, pre-existing asymmetry — app/nexus.py's
-            # auto-resolution call site passes the raw, pre-scaling
-            # risk_limits into resolve_proposal, not effective_risk_limits
-            # — deliberately left untouched by this bounded pass rather
-            # than risk a larger, harder-to-verify signature change) —
-            # the highest-value, most directly CEO-attributable "why was
-            # my trade sized this way" record. Only recorded for a real
+            # governed this CEO decision's sizing/gatekeeper read — the
+            # highest-value, most directly CEO-attributable "why was my
+            # trade sized this way" record. Only recorded for a real
             # buy/sell — a "wait" never reaches sizing/the Gatekeeper, so
-            # there is no real risk decision to audit. Uses the SAME real
-            # drawdown/losing-streak figures that governed this decision
-            # (self.data.paper_portfolio, the exact snapshot already
-            # passed into resolve_proposal() above) — never a second,
-            # independently-computed drawdown/streak count.
+            # there is no real risk decision to audit.
+            #
+            # CEO directive "Risk Contract Enforcement + Dynamic Risk
+            # Scaling 1.0" — reuses `active_risk_contract`/`risk_contract_
+            # scaling`, already computed once above BEFORE resolve_
+            # proposal() ran (the same real values that actually governed
+            # this decision's sizing) — this used to be a SECOND,
+            # independent recomputation of the same contract/drawdown/
+            # streak state after the fact; consolidating to one real
+            # computation, used for both enforcement and this audit
+            # record, is exactly the "one canonical path, never a
+            # duplicated risk calculation" this directive requires.
             risk_decisions = list(self.data.risk_decisions)
-            if choice in ("buy", "sell"):
-                self.data, active_risk_contract = self._derive_active_risk_contract(self.data)
-                pre_decision_portfolio = self.data.paper_portfolio
-                live_drawdown_pct = max_drawdown_pct(
-                    pre_decision_portfolio.trade_history,
-                    pre_decision_portfolio.starting_balance,
-                    current_equity=portfolio_equity(pre_decision_portfolio),
-                )
-                consecutive_losses = compute_consecutive_losses(pre_decision_portfolio.trade_history)
-                scaling = evaluate_risk_contract_scaling(
-                    contract=active_risk_contract,
-                    drawdown_pct=live_drawdown_pct,
-                    consecutive_losses=consecutive_losses,
-                )
+            if choice in ("buy", "sell") and active_risk_contract is not None and risk_contract_scaling is not None:
                 filled_position = next((p for p in portfolio.positions if p.id == f"pos-{proposal.id}"), None)
                 approved_quantity = filled_position.quantity if filled_position is not None else 0.0
                 rejected = decision.order_id is None
@@ -2606,6 +2647,8 @@ class GameState:
                     verdict = decision.gatekeeper_verdict
                     if verdict is not None and not verdict.approved:
                         rejection_reason = "; ".join(f"{c.label}: {c.detail}" for c in verdict.checks if not c.passed)
+                    elif risk_contract_scaling.kill_switch_triggered:
+                        rejection_reason = f"Risk Contract v{active_risk_contract.version} kill switch triggered — {risk_contract_scaling.detail}"
                     else:
                         rejection_reason = "Position sized to zero — insufficient portfolio capacity/budget for this trade."
                 risk_decisions.append(
@@ -2615,7 +2658,7 @@ class GameState:
                         proposalId=proposal.id,
                         decisionId=decision.id,
                         symbol=proposal.symbol,
-                        scaling=scaling,
+                        scaling=risk_contract_scaling,
                         requestedQuantity=proposal.quantity,
                         approvedQuantity=approved_quantity,
                         rejected=rejected,

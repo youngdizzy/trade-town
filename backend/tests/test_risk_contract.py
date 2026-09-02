@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from app.risk_contract import (
     activate_risk_contract,
+    apply_active_risk_contract,
     apply_risk_contract_scaling,
     archive_risk_contract,
     classify_scaling_band,
@@ -37,6 +38,11 @@ def _draft(history: list[RiskContract] | None = None, *, contract_id: str = "rc-
         created_at=NOW,
         scaling_policy=scaling_policy,
     )
+
+
+def _active_contract(*, limits: RiskLimits | None = None, scaling_policy: RiskContractScalingPolicy | None = None) -> tuple[RiskContract, list[RiskContract]]:
+    validated = mark_validated(_draft(limits=limits, scaling_policy=scaling_policy), now_iso=NOW)
+    return activate_risk_contract([validated], validated.id, now_iso=NOW)
 
 
 # ---------------------------------------------------------------------------
@@ -363,3 +369,76 @@ def test_apply_scaling_never_widens_risk_limits() -> None:
     result = apply_risk_contract_scaling(limits, scaling=scaling)
     assert result.risk_per_trade_pct <= limits.risk_per_trade_pct
     assert result.max_position_pct <= limits.max_position_pct
+
+
+# ---------------------------------------------------------------------------
+# apply_active_risk_contract — CEO directive "Risk Contract Enforcement +
+# Dynamic Risk Scaling 1.0": the ONE canonical composition every real
+# risk-limits-consuming call site (proposal generation, a CEO's manual
+# decision, an Operating Mode's auto-resolution) now shares, so a
+# decision can never see contract scaling more permissive than what the
+# same real contract/drawdown/streak state produces anywhere else.
+# ---------------------------------------------------------------------------
+
+
+def test_apply_active_risk_contract_returns_unchanged_when_no_contract_exists() -> None:
+    limits = RiskLimits(riskPerTradePct=1.0, maxPositionPct=10.0)
+    result_limits, contract, scaling = apply_active_risk_contract(
+        limits, risk_contracts=[], drawdown_pct=99.0, consecutive_losses=99
+    )
+    assert result_limits is limits
+    assert contract is None
+    assert scaling is None
+
+
+def test_apply_active_risk_contract_ignores_a_merely_validated_not_yet_active_contract() -> None:
+    # get_active_risk_contract only ever recognizes status=="active" — a
+    # draft/validated contract must never govern a real decision.
+    limits = RiskLimits(riskPerTradePct=1.0, maxPositionPct=10.0)
+    validated = mark_validated(_draft(limits=limits), now_iso=NOW)
+    result_limits, contract, scaling = apply_active_risk_contract(
+        limits, risk_contracts=[validated], drawdown_pct=0.0, consecutive_losses=0
+    )
+    assert result_limits is limits
+    assert contract is None
+    assert scaling is None
+
+
+def test_apply_active_risk_contract_narrows_limits_under_a_drawdown_band() -> None:
+    limits = RiskLimits(riskPerTradePct=1.0, maxPositionPct=10.0)
+    active, history = _active_contract(limits=limits)
+    result_limits, contract, scaling = apply_active_risk_contract(
+        limits, risk_contracts=history, drawdown_pct=5.0, consecutive_losses=0
+    )
+    assert contract is not None and contract.id == active.id
+    assert scaling is not None
+    assert scaling.drawdown_band_label == "moderate_drawdown"
+    assert result_limits.risk_per_trade_pct == 0.75
+    assert result_limits.max_position_pct == 7.5
+
+
+def test_apply_active_risk_contract_kill_switch_collapses_limits_to_zero() -> None:
+    limits = RiskLimits(riskPerTradePct=1.0, maxPositionPct=10.0)
+    _active, history = _active_contract(limits=limits)
+    result_limits, contract, scaling = apply_active_risk_contract(
+        limits, risk_contracts=history, drawdown_pct=15.0, consecutive_losses=0
+    )
+    assert scaling is not None and scaling.kill_switch_triggered
+    assert result_limits.risk_per_trade_pct == 0.0
+    assert result_limits.max_position_pct == 0.0
+
+
+def test_apply_active_risk_contract_reads_base_from_the_passed_in_limits_not_the_contracts_own() -> None:
+    # A caller already holding a further-tightened RiskLimits (e.g. this
+    # tick's own Circuit-Breaker/Travel-Mode-narrowed limits) must see
+    # THAT reflected as the scaling base, never the contract's raw
+    # ceiling silently overriding an earlier real tightening step.
+    contract_limits = RiskLimits(riskPerTradePct=1.0, maxPositionPct=10.0)
+    already_tightened = RiskLimits(riskPerTradePct=0.4, maxPositionPct=4.0)
+    _active, history = _active_contract(limits=contract_limits)
+    result_limits, _contract, scaling = apply_active_risk_contract(
+        already_tightened, risk_contracts=history, drawdown_pct=5.0, consecutive_losses=0
+    )
+    assert scaling is not None
+    assert scaling.base_risk_per_trade_pct == 0.4
+    assert result_limits.risk_per_trade_pct == 0.3  # 0.4 * 0.75

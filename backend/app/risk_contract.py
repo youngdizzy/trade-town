@@ -353,6 +353,72 @@ def apply_risk_contract_scaling(limits: RiskLimits, *, scaling: RiskContractScal
     )
 
 
+def apply_active_risk_contract(
+    risk_limits: RiskLimits,
+    *,
+    risk_contracts: list[RiskContract],
+    drawdown_pct: float,
+    consecutive_losses: int,
+) -> tuple[RiskLimits, RiskContract | None, RiskContractScalingRead | None]:
+    """CEO directive "Risk Contract Enforcement + Dynamic Risk Scaling
+    1.0" — the ONE canonical composition of "find the active
+    RiskContract, evaluate its real dynamic scaling against today's real
+    drawdown/losing-streak state, and apply it to `risk_limits`." This is
+    the exact `get_active_risk_contract -> evaluate_risk_contract_scaling
+    -> apply_risk_contract_scaling` sequence `app/nexus.py`'s `tick()`
+    already performed inline, once per tick, for proposal generation —
+    now the one shared call every risk-limits-consuming call site makes
+    (proposal generation, a CEO's manual decision via
+    `app/state.py::submit_ceo_decision()`, an Operating Mode's
+    auto-resolution via `app/nexus.py::_apply_operating_mode()`), so a
+    decision can never see contract scaling more permissive than what
+    the same real contract/drawdown/streak state would produce anywhere
+    else in this codebase.
+
+    THE GAP THIS CLOSES. The original Risk Contract implementation's own
+    comment (see `app/state.py::submit_ceo_decision()`, Phase 4/5) had
+    already found and disclosed this exact asymmetry: a `TradeProposal`'s
+    `quantity` was narrowed by the contract's dynamic scaling at
+    CREATION time (baked into the proposal via `app/position_sizing.py`),
+    but `resolve_proposal()` was always called with the RAW, unscaled
+    `risk_limits` at DECISION time (both the CEO-manual-click path and
+    the auto-resolution path) — meaning a pending proposal's approved
+    size (and the contract's own drawdown/losing-streak kill switch)
+    could go stale relative to a risk state that worsened between
+    creation and decision. `resolve_proposal()` already takes
+    `min(recommended_quantity(risk_limits, ...), proposal.quantity)` —
+    passing THIS function's scaled output as that `risk_limits` closes
+    the gap with zero change to `resolve_proposal()`'s own logic: a
+    freshly-triggered kill switch now collapses the ceiling to 0 exactly
+    the same way a proposal generated after the kill switch already
+    would have, via the same existing "sized to zero -> wait" fallback.
+
+    Returns `(risk_limits, None, None)` UNCHANGED when no RiskContract
+    has ever been derived yet. In real production use this is
+    unreachable on any real decision path: `app/state.py`'s
+    `_advance_once()` derives a real v1 contract before every tick, and
+    `submit_ceo_decision()` derives one before every manual decision (see
+    `_derive_active_risk_contract()` — auto-creates a real 1:1 snapshot
+    of the CEO's own already-configured `RiskLimits`, never fabricated).
+    It remains possible only via a direct unit-test call that bypasses
+    that guarantee, or a genuinely corrupted save — callers on a real
+    decision path (never a mere display/proposal-generation read) MUST
+    treat a `None` contract here as FAIL CLOSED (reject the trade)
+    rather than silently proceeding on unscaled limits; see each such
+    caller's own explicit handling."""
+    contract = get_active_risk_contract(risk_contracts)
+    if contract is None:
+        return risk_limits, None, None
+    scaling = evaluate_risk_contract_scaling(
+        contract=contract,
+        drawdown_pct=drawdown_pct,
+        consecutive_losses=consecutive_losses,
+        base_risk_per_trade_pct=risk_limits.risk_per_trade_pct,
+        base_max_position_pct=risk_limits.max_position_pct,
+    )
+    return apply_risk_contract_scaling(risk_limits, scaling=scaling), contract, scaling
+
+
 __all__ = [
     "RiskContractStatus",
     "next_version_number",
@@ -366,4 +432,5 @@ __all__ = [
     "classify_scaling_band",
     "evaluate_risk_contract_scaling",
     "apply_risk_contract_scaling",
+    "apply_active_risk_contract",
 ]
