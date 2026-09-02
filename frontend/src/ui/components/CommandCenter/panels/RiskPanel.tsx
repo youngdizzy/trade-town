@@ -8,6 +8,7 @@ import { RISK_LEVEL_LABEL, formatPct, riskLevel, riskTextClass } from "../lib/de
 import { DataRow, EmptyState, Glass, RiskDot, StatusPill, TerminalLabel } from "../ui";
 import { PortfolioMonteCarloCard } from "./PortfolioMonteCarloCard";
 import { RecoveryFactorCard } from "./RecoveryFactorCard";
+import { RiskContractCard } from "./RiskContractCard";
 import { PortfolioRiskSnapshotCard } from "./PortfolioRiskSnapshotCard";
 import { TradePipelineHealthCard } from "./TradePipelineHealthCard";
 import { TradingRestrictionsCard } from "./TradingRestrictionsCard";
@@ -593,6 +594,8 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
           <div className="mt-0.5 text-[9px] text-cmd-textDim">Real Trade Gatekeeper approval rate — closed trades vs. real rejections.</div>
         </Glass>
       </div>
+
+      <RiskContractCard />
 
       <Glass className="p-3">
         <TerminalLabel>Configured Risk Limits</TerminalLabel>

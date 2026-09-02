@@ -2827,6 +2827,90 @@ export interface RiskLimits {
   companyHealthNeedsAttentionThreshold: number;
 }
 
+// CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+// Scaling." Mirrors backend/app/schemas.py's RiskContract family exactly
+// — `limits` reuses the RiskLimits interface above rather than
+// re-declaring its fields (see that backend module's own docstring for
+// why: RiskContract WRAPS a real RiskLimits snapshot, never duplicates
+// it).
+export type RiskContractStatus = "draft" | "validated" | "active" | "superseded" | "archived";
+
+export interface RiskContractScalingBand {
+  threshold: number;
+  factor: number;
+  label: string;
+}
+
+export interface RiskContractScalingPolicy {
+  drawdownScalingEnabled: boolean;
+  drawdownBands: RiskContractScalingBand[];
+  losingStreakScalingEnabled: boolean;
+  losingStreakBands: RiskContractScalingBand[];
+}
+
+export interface RiskContract {
+  id: string;
+  version: number;
+  status: RiskContractStatus;
+  createdAt: string;
+  activatedAt: string | null;
+  supersededAt: string | null;
+  archivedAt: string | null;
+  createdBy: string;
+  reason: string;
+  limits: RiskLimits;
+  scalingPolicy: RiskContractScalingPolicy;
+  previousVersionId: string | null;
+  detail: string;
+}
+
+export interface RiskContractValidationIssue {
+  field: string;
+  category: "structural" | "policy";
+  message: string;
+}
+
+export interface RiskContractValidationResult {
+  valid: boolean;
+  issues: RiskContractValidationIssue[];
+}
+
+// "Scaling Transparency" — one real, disclosed, itemized explanation of
+// one real dynamic-risk-scaling evaluation.
+export interface RiskContractScalingRead {
+  riskContractId: string;
+  riskContractVersion: number;
+  drawdownPct: number;
+  drawdownBandLabel: string | null;
+  drawdownFactor: number;
+  consecutiveLosses: number;
+  losingStreakBandLabel: string | null;
+  losingStreakFactor: number;
+  combinedFactor: number;
+  baseRiskPerTradePct: number;
+  approvedRiskPerTradePct: number;
+  baseMaxPositionPct: number;
+  approvedMaxPositionPct: number;
+  killSwitchTriggered: boolean;
+  detail: string;
+}
+
+// Phase 4/5 — a real, persisted, per-trade-decision audit record naming
+// exactly which RiskContract version governed a real CEO sizing/
+// gatekeeper decision (backend/app/state.py::submit_ceo_decision()).
+export interface RiskDecision {
+  id: string;
+  createdAt: string;
+  proposalId: string | null;
+  decisionId: string | null;
+  symbol: string;
+  scaling: RiskContractScalingRead;
+  requestedQuantity: number;
+  approvedQuantity: number;
+  rejected: boolean;
+  rejectionReason: string | null;
+}
+
 // Design Bible Chapter 67 (TTOS) Part 3 — the real Global Emergency Stop.
 export interface EmergencyStopState {
   active: boolean;

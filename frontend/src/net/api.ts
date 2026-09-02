@@ -126,6 +126,10 @@ import type {
   PortfolioMonteCarloResult,
   RecoveryFactorRead,
   RestrictionScope,
+  RiskContract,
+  RiskContractScalingPolicy,
+  RiskContractValidationResult,
+  RiskDecision,
   RiskLimits,
   SimilarTradesSummary,
   TradingRestriction,
@@ -1229,6 +1233,19 @@ export const api = {
   // CEO directive "Professional Quant Trading Core," Phase B P2 item —
   // see backend/app/analytics.py's compute_recovery_factor().
   getRecoveryFactor: () => request<RecoveryFactorRead>("/risk-limits/recovery-factor"),
+  // CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+  // Scaling." Read paths are computed fresh from persisted state (see
+  // backend/app/routers/risk.py's risk_contracts_router); getActive
+  // lazily derives+persists a real v1 contract the first time one is
+  // needed (Phase 12 fail-closed guarantee).
+  getActiveRiskContract: () => request<RiskContract>("/risk-contracts/active"),
+  getRiskContractHistory: () => request<{ contracts: RiskContract[] }>("/risk-contracts/history"),
+  getRiskDecisions: (limit = 20) => request<{ decisions: RiskDecision[] }>(`/risk-contracts/decisions?limit=${encodeURIComponent(limit)}`),
+  createDraftRiskContract: (payload: { limits: RiskLimits; scalingPolicy?: RiskContractScalingPolicy | null; reason: string; createdBy?: string }) =>
+    request<RiskContract>("/risk-contracts/draft", { method: "POST", body: JSON.stringify(payload) }),
+  validateDraftRiskContract: (contractId: string) => request<RiskContractValidationResult>(`/risk-contracts/${encodeURIComponent(contractId)}/validate`, { method: "POST" }),
+  activateRiskContract: (contractId: string) => request<RiskContract>(`/risk-contracts/${encodeURIComponent(contractId)}/activate`, { method: "POST" }),
+  archiveRiskContract: (contractId: string) => request<{ contracts: RiskContract[] }>(`/risk-contracts/${encodeURIComponent(contractId)}/archive`, { method: "POST" }),
   // Design Bible Chapter 64 — the CEO's Goal creation/cancellation write
   // path. Real progress is never sent by the client; it's recomputed
   // server-side every tick (see backend/app/goals.py's tick_goals()).
