@@ -13580,6 +13580,50 @@ class ResearchCouncilReport(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+# CEO directive "TradeTown — Autonomous Mutation Application + Pareto
+# Survivor Engine." A candidate with real backtest evidence is either
+# DOMINATED (some other real candidate in the same comparison pool is at
+# least as good on every real, comparable dimension AND strictly better
+# on at least one) or NON_DOMINATED (on the real frontier). There is no
+# third "survivor"/"rejected" value here on purpose — those are the
+# EXISTING, untouched `lifecycle_stage`/`survived` fields from the real
+# candidacy funnel (hard gates); Pareto status is a separate, additive
+# axis that only ever decides which non-dominated candidate's mutation
+# lineage continues, never whether something is accepted as a survivor.
+ParetoStatus = Literal["dominated", "non_dominated"]
+
+
+class ParetoDimensionValue(CamelModel):
+    """One real, disclosed axis value used in a dominance comparison —
+    see app/research_pareto.py for the exact real field each dimension
+    reads (always an already-computed `FactoryCandidateRecord.iteration.
+    scorecard`/`adversarial_result` field, never a new computation).
+    `available=False` (with a real "no evidence" `display_value`) is an
+    honest, disclosed absence — Section 19's own "insufficient evidence
+    is not failure" rule — and contributes a TIE on that axis in the
+    dominance rule, never an automatic loss."""
+
+    dimension: str
+    display_value: str = Field(alias="displayValue")
+    available: bool
+
+
+class ParetoFrontierEntry(CamelModel):
+    """One real candidate's real position on its comparison pool's
+    Pareto frontier. `dominated_by` names every real candidate id that
+    dominates this one (empty when `pareto_status == "non_dominated"`).
+    `reason` is a real, disclosed, human-readable explanation citing the
+    actual axis/axes that decided it — never an opaque score, matching
+    this codebase's own `describe_fitness_rank()` idiom
+    (app/research_fitness.py)."""
+
+    candidate_id: str = Field(alias="candidateId")
+    pareto_status: ParetoStatus = Field(alias="paretoStatus")
+    dominated_by: list[str] = Field(default_factory=list, alias="dominatedBy")
+    dimensions: list[ParetoDimensionValue] = Field(default_factory=list)
+    reason: str
+
+
 class FactoryCandidateRecord(CamelModel):
     """One real node in a Research Factory run's lineage tree. `iteration`
     is `None` only when `lifecycle_stage == "compile_rejected"` — a
@@ -13634,6 +13678,17 @@ class FactoryCandidateRecord(CamelModel):
     sibling_rank: int | None = Field(default=None, alias="siblingRank")
     fitness_rationale: str | None = Field(default=None, alias="fitnessRationale")
     research_council: ResearchCouncilReport | None = Field(default=None, alias="researchCouncil")
+    # CEO directive "TradeTown — Autonomous Mutation Application + Pareto
+    # Survivor Engine" — additive-only real fields. `None`/empty for
+    # every candidate with no real backtest to compare (compile_rejected,
+    # duplicate_pruned) and for every pre-existing persisted record (this
+    # field did not exist when they were created — never backfilled,
+    # never guessed). See app/research_pareto.py for the real, disclosed,
+    # multi-dimensional dominance rule that computes these — never a
+    # single opaque fitness number.
+    pareto_status: ParetoStatus | None = Field(default=None, alias="paretoStatus")
+    pareto_dominated_by: list[str] = Field(default_factory=list, alias="paretoDominatedBy")
+    pareto_reason: str | None = Field(default=None, alias="paretoReason")
 
 
 class FactoryRunConfig(CamelModel):
@@ -13691,6 +13746,13 @@ class FactoryRunRecord(CamelModel):
     # `None` for every pre-existing persisted run (this field did not
     # exist when it was created — never backfilled, never guessed).
     runtime_seconds: float | None = Field(default=None, alias="runtimeSeconds")
+    # CEO directive "TradeTown — Autonomous Mutation Application + Pareto
+    # Survivor Engine" — the real, disclosed Pareto frontier over every
+    # real (compiled, backtested) candidate in this run's own lineage
+    # tree, computed once at the end from already-real evidence (see
+    # app/research_pareto.py). Empty for every pre-existing persisted run
+    # (computed fresh going forward, never backfilled).
+    pareto_frontier: list[ParetoFrontierEntry] = Field(default_factory=list, alias="paretoFrontier")
 
 
 class LessonEvidenceSummary(CamelModel):

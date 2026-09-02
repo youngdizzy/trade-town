@@ -7,6 +7,94 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Autonomous Mutation Application + Pareto
+  Survivor Engine."** Phase 0 forensic recon (three parallel research
+  passes across the mutation lifecycle, the evidence funnel/hard gates,
+  and persistence/API/frontend) found the directive's own headline ask
+  — "the research factory must observe/diagnose/mutate/compile/test/
+  compare/survivor-select/learn without a human resubmission step" —
+  ALREADY BUILT end to end by `app/research_factory.py::run_research_
+  factory_cycle()` (shipped in the earlier "Phase 7: Autonomous Strategy
+  Evolution Engine" pass and its Phase 8/9 follow-ups). Nothing was
+  rebuilt — no second mutation engine, no second compiler, no second
+  backtest pipeline. A stale note elsewhere in `docs/Architecture.md`
+  claiming this engine didn't exist yet has been corrected in place
+  (never silently rewritten — the original text stays, with a dated
+  correction appended).
+  - **What a zero-hit `grep -i pareto` across the whole codebase
+    confirmed as the real, genuine gap** (the directive's own title):
+    `app/research_fitness.py::rank_candidates()` (Phase 9) is a real,
+    disclosed LEXICOGRAPHIC sort — useful for picking one winner, but
+    not a Pareto frontier, since it always resolves a genuine trade-off
+    (candidate A better on drawdown, B better on cost resilience) in
+    favor of whichever axis sorts first, without ever disclosing that a
+    trade-off existed. Also confirmed genuinely missing: any anti-
+    oscillation/duplicate-parameter-state guard (only a raw mutation-
+    count budget existed).
+  - **`app/research_pareto.py` (new)** — `compute_pareto_frontier()`:
+    real, multi-dimensional Pareto dominance over 11 disclosed axes
+    (expectancy, max drawdown, profit factor, trade count/evidence
+    floor, walk-forward credibility, cost resilience, adversarial
+    robustness, outlier dependence, regime robustness, benchmark
+    relationship, statistical evidence quality) — every axis a direct
+    read of an already-computed `FactoryCandidateRecord.iteration.
+    scorecard`/`adversarial_result` field, zero new backtests, zero new
+    statistical tests. A dominates B iff A is at least as good as B on
+    every dimension BOTH have real evidence for (missing evidence
+    excludes that axis from comparison — a tie, never a fabricated
+    penalty) AND strictly better on at least one; only ever compared
+    within the same real `dataProvenance`. No `paretoScore`/
+    `fitnessScore` field exists anywhere — status is `dominated`/
+    `non_dominated`, with a real, disclosed `reason` citing the exact
+    dimension(s) that decided it.
+  - **Wired into `run_research_factory_cycle()`, additively, on top of
+    (never replacing) the existing lexicographic comparator**: (1)
+    per-generation, when real siblings exist, the frontier restricts
+    which non-dominated sibling's mutation lineage continues (a lone
+    child passes through unfiltered — zero behavior change for the 129
+    pre-existing Phase 7-9 tests); (2) at the end of every completed
+    run, one real frontier over the ENTIRE lineage tree is computed and
+    persisted as `FactoryRunRecord.pareto_frontier`, with each
+    candidate's own `pareto_status`/`pareto_dominated_by`/`pareto_reason`
+    set from it. **Hard-gate isolation, proven by a dedicated test**: a
+    real SURVIVOR (existing candidacy funnel, untouched) always stops
+    the lineage before Pareto filtering ever runs — a dominated
+    candidate can still be a real survivor.
+  - **Section 10 anti-oscillation/duplicate-state guard** — a real,
+    lineage-scoped set of every mutated definition's own exact
+    `source_text` already tested (seeded with the seed's own text, so a
+    mutation recreating the ORIGINAL strategy is caught too). An exact
+    repeat is pruned before a real backtest, reusing the SAME
+    `duplicate_pruned` lifecycle stage `app/research_discovery.py`'s own
+    `prune_duplicates()` already established — never a second dedup
+    vocabulary, never deleted (permanently recorded with a real
+    `duplicateOfCandidateId`). A real bug (a `KeyError` waiting to
+    happen the first time a mutation reproduced the un-mutated seed) was
+    caught and fixed during this pass's own test-writing, before it ever
+    reached a commit.
+  - **New API surface**: `FactoryRunRecord.paretoFrontier` and each
+    `FactoryCandidateRecord.paretoStatus`/`paretoDominatedBy`/
+    `paretoReason` — additive fields on the existing `POST /research-
+    factory/run` response; no new endpoints.
+  - **Deliberately NOT built this pass, disclosed**: no auto-
+    continuation from Discovery straight into Factory; no auto-restart
+    of a stopped lineage with a materially different hypothesis; no new
+    mutation operators for `regime_failure`/`negative_net_return`/
+    `benchmark_underperformance` (same real compiler-grammar limit Phase
+    7 already found); no full pairwise statistical-significance test
+    between siblings (trade count stands in as the real, disclosed
+    evidence-quantity dimension). The separately-requested "Persisted
+    Risk Contract + Dynamic Risk Scaling, then Paper-Trade Journal +
+    Drift Detection + Strategy Health State Machine" milestone was not
+    started this pass — queued next.
+  - 19 new tests (`test_research_pareto.py` — 13 pure dominance-rule
+    tests; `test_research_factory_pareto.py` — 6 integration tests,
+    including anti-oscillation pruning proven via the same monkeypatch
+    precedent `test_research_factory_branching.py`'s own runtime-cap
+    test already established). All 129 pre-existing research-factory/
+    fitness/discovery tests re-run clean, zero regressions. Full backend
+    suite green, `mypy app/`/`python -m ruff check app/ tests/` clean.
+
 - **CEO directive "TradeTown — Memecoin Sniper Agent" — backend
   (Sections 1-32, paper-only/simulated scope, per explicit CEO
   confirmation this pass).** A new specialist domain — Solana memecoin

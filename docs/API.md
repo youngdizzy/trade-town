@@ -2161,6 +2161,38 @@ disabled) is a real wall-clock safety net, not a reproducibility
 mechanism. `FactoryRunRecord.runtimeSeconds` reports the real observed
 duration.
 
+CEO directive "TradeTown — Autonomous Mutation Application + Pareto
+Survivor Engine" — `FactoryRunRecord` gained `paretoFrontier:
+ParetoFrontierEntry[]`, a real, disclosed multi-dimensional Pareto
+dominance frontier over every real (compiled, backtested) candidate in
+this run's entire lineage tree, computed once from already-real evidence
+(`app/research_pareto.py` — 11 disclosed dimensions: expectancy, max
+drawdown, profit factor, trade count, walk-forward credibility, cost
+resilience, adversarial robustness, outlier dependence, regime
+robustness, benchmark relationship, statistical evidence quality). Each
+`ParetoFrontierEntry`: `candidateId`, `paretoStatus` (`"dominated"` |
+`"non_dominated"` — never a third state, never a fabricated single
+score), `dominatedBy` (every real candidate id that dominates this one,
+empty when non-dominated), `dimensions` (`ParetoDimensionValue[]` — one
+entry per real axis, each with `dimension`/`displayValue`/`available`, so
+a `false` `available` is an honest "insufficient evidence on this axis,"
+never silently dropped), and `reason` (plain English citing the actual
+dimension(s) that decided it). Every `FactoryCandidateRecord` also
+mirrors its own frontier result inline as `paretoStatus`/
+`paretoDominatedBy`/`paretoReason` — `null`/empty for any candidate with
+no real backtest (`compile_rejected`/`duplicate_pruned`), never
+defaulted. This never replaces `siblingRank`/`fitnessRationale` (the
+existing lexicographic comparator) — dominance only pre-filters which
+non-dominated sibling's mutation lineage continues; the lexicographic
+comparator still breaks ties among Pareto-equals. New Section 10 anti-
+oscillation guard: a mutation that would exactly reproduce a `source_text`
+already tested anywhere earlier in the same lineage is pruned before a
+real backtest, surfaced as a candidate with `lifecycleStage:
+"duplicate_pruned"` (the same real value `app/research_discovery.py`'s
+near-duplicate pruning already established), `iteration: null`, and a
+real `duplicateOfCandidateId` naming the exact earlier match — never
+deleted, permanently recorded like every other real candidate.
+
 ### `GET /api/sandbox/research-factory/runs`
 
 Same directive — the full, real, permanent factory-run history, never

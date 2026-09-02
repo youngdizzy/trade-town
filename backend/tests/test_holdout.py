@@ -189,3 +189,16 @@ class TestNeverWiredIntoMutation:
         source = inspect.getsource(research_loop_module)
         assert "app.holdout" not in source
         assert "import holdout" not in source
+
+    def test_research_pareto_never_imports_holdout(self) -> None:
+        """CEO directive "TradeTown — Autonomous Mutation Application +
+        Pareto Survivor Engine" — the new Pareto dominance engine reads
+        `StrategyScorecard.statistical_evidence_state` as one axis (a
+        pre-existing string value from app/evidence_quality.py's own
+        `EvidenceState` vocabulary), never anything from app/holdout.py
+        itself. Same real, disclosed guarantee, same proof method."""
+        import app.research_pareto as research_pareto_module
+
+        source = inspect.getsource(research_pareto_module)
+        assert "app.holdout" not in source
+        assert "import holdout" not in source

@@ -146,6 +146,52 @@ SIMPLE proxy (same-family lesson candidacy-bucket agreement/disagreement
 counts) — never a fabricated statistical confidence measure; see that
 schema's own docstring. No new specialized agent personas/dialogue —
 same disclosed cut as Phase 4-6.
+
+CEO DIRECTIVE "TRADETOWN — AUTONOMOUS MUTATION APPLICATION + PARETO
+SURVIVOR ENGINE," ADDENDUM. Phase 0 forensic recon for that directive
+(three parallel research passes over this module, `app/research_
+fitness.py`, `app/adversarial_research.py`, `app/champion_challenger.py`,
+`app/holdout.py`, `app/evidence_quality.py`, and every persistence/API/
+frontend file touching this domain) found the directive's headline ask —
+"the research factory must be able to observe/diagnose/mutate/compile/
+test/compare/survivor-select/learn without a human resubmission step" —
+ALREADY BUILT, end to end, by this exact module (`run_research_factory_
+cycle()` below). `docs/Architecture.md`'s own now-corrected note that
+called this "the separate 'Autonomous Strategy Factory' directive... not
+yet built" was written before this module existed and was stale; it has
+been corrected as part of this pass rather than left to mislead a future
+reader. Two real, previously-disclosed gaps THIS pass closes instead
+(see this module's own updated code + `app/research_pareto.py`'s
+docstring for the full detail):
+
+  1. PARETO SURVIVOR SELECTION. Real, multi-dimensional Pareto dominance
+     (`app/research_pareto.py::compute_pareto_frontier()`) now decides
+     which non-dominated sibling's mutation lineage continues (Section
+     6/16) — layered ON TOP OF, never replacing, the existing real
+     lexicographic comparator (`app/research_fitness.py::rank_
+     candidates()`), which still breaks ties among Pareto-equals. Every
+     completed run also gets one real, disclosed frontier over its ENTIRE
+     lineage tree, persisted as `FactoryRunRecord.pareto_frontier`.
+  2. ANTI-OSCILLATION / DUPLICATE-STATE GUARD (Section 10). A real,
+     lineage-scoped set of every mutated definition's own exact
+     `source_text` already tested — an exact repeat (a parameter-state
+     duplicate, or a direct A->B->A reversal) is pruned via the SAME
+     `duplicate_pruned` lifecycle stage `app/research_discovery.py`'s
+     own `prune_duplicates()` already established, never spending a real
+     backtest on a state this lineage has already proven out.
+
+Genuine gaps this addendum does NOT attempt, disclosed rather than
+silently skipped: no auto-continuation from a Discovery cycle straight
+into a Factory run (still a real, disclosed manual hand-off — see
+`app/research_discovery.py`'s own docstring); no auto-restart of a
+stopped lineage with a materially different, non-parameter-tweak
+hypothesis; no new mutation operators for `regime_failure`/
+`negative_net_return`/`benchmark_underperformance` (still requires a
+compiler-grammar change — see this module's own "THE ONE MUTATION
+CATEGORY..." section above, unchanged); no full pairwise statistical-
+significance test between every sibling (see `app/research_pareto.py`'s
+own docstring for why trade count stands in as the real, disclosed
+evidence-quantity dimension instead).
 """
 from __future__ import annotations
 
@@ -158,6 +204,7 @@ from app.adversarial_research import run_adversarial_research
 from app.champion_challenger import ChampionRecord, get_current_champion
 from app.research_council import convene_research_council
 from app.research_fitness import describe_fitness_rank, rank_candidates
+from app.research_pareto import compute_pareto_frontier
 from app.research_loop import (
     FAILURE_CODE_MUTATION_PRIORITY,
     MAX_ITERATIONS_PER_FAMILY,
@@ -812,6 +859,15 @@ def run_research_factory_cycle(
     parent_candidate_id: str | None = None
     stop_reason = f"Reached the real {max_generations}-generation cap for this factory run."
     current_candidate: FactoryCandidateRecord | None = None
+    # Section 10 — real, lineage-scoped anti-oscillation state: every
+    # mutated definition's own exact `source_text` this lineage has
+    # already tested (seeded with the seed definition itself, so a
+    # mutation that would recreate the ORIGINAL, un-mutated strategy is
+    # caught too), mapped to the id of the first candidate that tested
+    # it. Never reset per-generation — an A->B->A reversal spans two
+    # generations, not one.
+    tested_source_texts: set[str] = {seed_definition.source_text}
+    source_text_first_tested_by: dict[str, str] = {seed_definition.source_text: f"{run_id}-gen{generation}-candidate"}
     # True whenever `current_definition`/`current_hypothesis` still need
     # their own real test — true for the seed; false for a generation
     # whose `current_candidate` already came from the branching step
@@ -940,11 +996,54 @@ def run_research_factory_cycle(
                 lineage_id=lineage_id,
                 created_at=created_at,
             )
+
+            # Section 10 — real anti-oscillation/duplicate-parameter-state
+            # guard: an exact repeat of a source text already tested
+            # anywhere earlier in THIS lineage (a duplicate parameter
+            # state, or a direct A->B->A reversal) is pruned before
+            # spending a real backtest — reusing the exact
+            # `duplicate_pruned` lifecycle stage app/research_
+            # discovery.py's own `prune_duplicates()` already
+            # established for the same real concept, never a second
+            # dedup vocabulary.
+            if new_definition.source_text in tested_source_texts:
+                duplicate_of_id = source_text_first_tested_by[new_definition.source_text]
+                child_candidate = FactoryCandidateRecord(
+                    id=f"{child_gen_label}-candidate",
+                    runId=run_id,
+                    generation=generation + 1,
+                    parentCandidateId=current_candidate.id,
+                    lineageId=lineage_id,
+                    strategyFamily=new_definition.name,
+                    definitionId=new_definition.id,
+                    definitionVersion=new_definition.version,
+                    hypothesis=child_hypothesis,
+                    lifecycleStage="duplicate_pruned",
+                    compileStatus=new_definition.status,
+                    compileDetail="Not tested — this exact mutated parameter state was already tested earlier in this same lineage (Section 10 anti-oscillation/duplicate-state guard).",
+                    iteration=None,
+                    mutationCandidate=mc,
+                    survived=False,
+                    decisionReason=f"Oscillation/duplicate prevented: identical real compiled source text to candidate '{duplicate_of_id}', already tested in this lineage — never re-tested.",
+                    createdAt=created_at,
+                    duplicateOfCandidateId=duplicate_of_id,
+                )
+                child_entries.append((child_candidate, new_definition, child_hypothesis))
+                continue
+
+            tested_source_texts.add(new_definition.source_text)
+            source_text_first_tested_by[new_definition.source_text] = f"{child_gen_label}-candidate"
             child_candidate = _test_definition(new_definition, child_hypothesis, generation_num=generation + 1, parent_id=current_candidate.id, gen_label=child_gen_label)
             child_entries.append((child_candidate, new_definition, child_hypothesis))
 
         if not child_entries:
             stop_reason = f"Reached the real {max_total_backtests}-backtest cap for this single factory run before any generation {generation + 1} sibling could be tested."
+            break
+
+        non_duplicate_entries = [(c, d, h) for c, d, h in child_entries if c.lifecycle_stage != "duplicate_pruned"]
+        if not non_duplicate_entries:
+            stop_reason = f"Generation {generation + 1}: every real mutation candidate this generation would recreate an already-tested parameter state in this lineage (Section 10 anti-oscillation guard) — no further bounded mutation is available."
+            candidates.extend(c for c, _, _ in child_entries)
             break
 
         tested_children = [c for c, _, _ in child_entries]
@@ -972,13 +1071,37 @@ def run_research_factory_cycle(
             stop_reason = f"A generation {generation + 1} sibling{rank_note} produced a real SURVIVOR — this lineage stops here."
             break
 
-        compiled_children = [(c, d, h) for c, d, h in child_entries if c.compile_status == "compiled"]
+        # Real candidates only — a `duplicate_pruned` sibling never got a
+        # real backtest (`iteration is None`) even when its mutated text
+        # happened to compile fine, so it can never continue the
+        # lineage (the top of the next loop pass assumes `current_
+        # candidate.iteration is not None` once `needs_test = False`).
+        compiled_children = [(c, d, h) for c, d, h in non_duplicate_entries if c.compile_status == "compiled"]
         if not compiled_children:
-            stop_reason = f"All {total_siblings} real generation {generation + 1} sibling(s) failed to compile — this lineage stops here."
+            stop_reason = f"All {len(non_duplicate_entries)} real, non-duplicate generation {generation + 1} sibling(s) failed to compile — this lineage stops here."
             break
 
-        compiled_ids = {c.id for c, _, _ in compiled_children}
-        best_candidate, best_definition, best_hypothesis = next((c, d, h) for c, d, h in compiled_children if c.id == next(rc.id for rc in ranked_children if rc.id in compiled_ids))
+        # Section 6/16 — real Pareto dominance decides who is even IN
+        # CONTENTION to continue the lineage; the existing, unmodified
+        # lexicographic comparator above still breaks ties among
+        # Pareto-equals. Only meaningful among ACTUAL siblings with real
+        # evidence to compare (see app/research_pareto.py's own
+        # docstring) — a lone real compiled child (max_children_per_
+        # parent=1, the exact original Phase 7 shape) has no real
+        # frontier to compute and passes through unfiltered.
+        pareto_pool = [c for c, _, _ in compiled_children if c.iteration is not None]
+        if len(pareto_pool) > 1:
+            generation_frontier = compute_pareto_frontier(pareto_pool)
+            non_dominated_ids = {cid for cid, entry in generation_frontier.items() if entry.pareto_status == "non_dominated"}
+        else:
+            non_dominated_ids = {c.id for c, _, _ in compiled_children}
+        # Defensive fallback only — `compute_pareto_frontier()` can never
+        # return an empty non-dominated set for a non-empty real pool
+        # (dominance is irreflexive), but this keeps the lineage alive
+        # rather than crashing if that invariant is ever violated.
+        eligible_ids = non_dominated_ids if non_dominated_ids else {c.id for c, _, _ in compiled_children}
+
+        best_candidate, best_definition, best_hypothesis = next((c, d, h) for c, d, h in compiled_children if c.id == next(rc.id for rc in ranked_children if rc.id in eligible_ids))
 
         current_candidate = best_candidate
         current_definition = best_definition
@@ -1001,6 +1124,24 @@ def run_research_factory_cycle(
             for entry in c.iteration.failure_codes:
                 rejection_counter[entry.code] += 1
     top_rejection_reasons = [f"{code} ({count})" for code, count in rejection_counter.most_common(5)]
+
+    # Section 16 — one real, disclosed Pareto frontier over EVERY real
+    # (backtested) candidate in this run's own lineage tree, computed
+    # once at the end from already-real evidence (never a second,
+    # per-generation-only view — see app/research_pareto.py's own
+    # docstring). A candidate with no real backtest (compile_rejected,
+    # duplicate_pruned) simply gets no entry — `pareto_status` stays
+    # `None` on it, an honest "no evidence to place on a frontier."
+    lineage_frontier = compute_pareto_frontier(candidates)
+    if lineage_frontier:
+        candidates = [
+            (
+                c.model_copy(update={"pareto_status": lineage_frontier[c.id].pareto_status, "pareto_dominated_by": lineage_frontier[c.id].dominated_by, "pareto_reason": lineage_frontier[c.id].reason})
+                if c.id in lineage_frontier
+                else c
+            )
+            for c in candidates
+        ]
 
     current_champion = get_current_champion(champion_history, strategy_family=seed_definition.name)
     config = FactoryRunConfig(
@@ -1034,6 +1175,7 @@ def run_research_factory_cycle(
         currentChampionDefinitionVersion=(current_champion.definition_version if current_champion is not None else None),
         createdAt=created_at,
         runtimeSeconds=round(time.monotonic() - start_time, 3),
+        paretoFrontier=list(lineage_frontier.values()),
     )
     return run_record, registry, all_iterations, all_lessons
 
