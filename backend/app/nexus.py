@@ -1473,6 +1473,21 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     sniper_lessons = sniper_tick_result.lessons
     sniper_risk_state = sniper_tick_result.risk_state
 
+    # Memecoin Sniper Professional Trading Terminal directive — the
+    # Sniper's own price walk (memecoin_sniper.py's _simulate_price_step)
+    # is a real, independent simulation, but its random meme-ticker
+    # symbols (e.g. "MOONPEPE") are otherwise unknown to market_data.py's
+    # SyntheticPriceEngine, which would hash-seed them into its own
+    # unrelated generic $20-$500 range — putting the Sniper terminal's
+    # candlestick chart on a completely wrong price scale from the
+    # position it's meant to visualize. Feeding each open position's real
+    # current price through the existing set_live_price_override() hook
+    # reuses get_candles()'s own already-shipped live-price rescale (see
+    # MockMarketDataProvider.get_candles) so the chart lands on the
+    # Sniper's real price instead of an unrelated one.
+    for _sniper_position in sniper_positions:
+        market_data_provider.set_live_price_override(_sniper_position.symbol, _sniper_position.current_price)
+
     # --- v0.6: PaperBroker fills orders placed on earlier ticks -----------
     # Runs before this tick's own decision/order-placement step below, so
     # a market order approved this tick is guaranteed one full tick of

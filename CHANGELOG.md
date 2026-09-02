@@ -7,6 +7,157 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Memecoin Sniper + Professional Trading
+  Terminal, UI Correction / Visualization Rebuild."** Corrects two real
+  problems the directive itself named: the Memecoin Sniper had been
+  wired in as an ordinary Command Center tab (`SNIPER` under the
+  `MARKETS` primary area — confirmed by direct inspection of
+  `navigation.ts` before touching anything), and its "trading terminal"
+  was a plain text table with no chart, no entry/SL/TP visualization,
+  and no way to focus one of several simultaneously-open trades.
+  - **Phase 0 recon, summarized**: this app has NO client-side router at
+    all (`package.json` confirmed — no react-router-dom or equivalent);
+    every "surface" (Command Center, Newspaper, CampusMap, etc.) is a
+    conditionally-rendered sibling in one flat React tree, gated by
+    `gameStore` booleans, never a URL. `CandlestickChart.tsx` (the same
+    hand-rolled canvas renderer already used on the Overview tab) already
+    exports exactly the overlay primitives an entry/SL/TP visualization
+    needs (`ChartOverlays.entry`/`currentPrice`, both drawn as
+    prominent dashed levels) — no new charting engine needed, just two
+    more fields drawn the same way. `GET /api/market/candles` already
+    accepts any symbol string (deterministic synthetic generation,
+    confirmed by reading `market_data.py`'s `get_candles()`/
+    `_seed_price()` — no watchlist restriction), so the Sniper's own
+    real per-token symbols can feed the exact same chart with zero
+    backend changes. `SniperPosition` already carries real
+    `entryPrice`/`currentPrice`/`stopPrice`/`targetPrice`/
+    `trailingStopPrice` — everything a terminal needs was already
+    real, just never drawn.
+  - **`/sniper` — a genuinely separate application surface.** `src/
+    main.tsx` now branches on `window.location.pathname` before ever
+    rendering the main app, mounting a completely independent React
+    root (`src/sniper/SniperApp.tsx`) for `/sniper` — no Phaser canvas,
+    no `gameStore`, no `EventBus`, dynamically imported so it's a
+    genuinely separate ~20KB build chunk (confirmed in the production
+    build output), not bundled into the main app. Production nginx
+    (`try_files $uri $uri/ /index.html`) and the Vite dev server both
+    already fall back any unknown path to `index.html`, so this needed
+    no server config changes either. `SNIPER` removed from
+    `navigation.ts`'s `MARKETS` tab list and `FullCommandCenter.tsx`'s
+    tab set entirely — it is no longer reachable as a Command Center
+    tab at all. The old `MemecoinSniperPanel.tsx` is deleted (superseded
+    by the new surface, not left as dead code). One real, honest launch
+    affordance was added instead: a "Launch Memecoin Sniper Terminal ↗"
+    card on the Overview tab, opening `/sniper` in a new browser tab so
+    a CEO's own Command Center session is never interrupted.
+  - **`SniperTerminal.tsx` (new)** — the real trading-terminal upgrade.
+    A multi-trade overview (every open `SniperPosition`, state derived
+    honestly from real fields only — `trailingActive`/`pnlSol`, never a
+    fabricated backend enum for stages this codebase has no real signal
+    for, like a queued "OPENING" state a paper fill never actually
+    passes through) with click-to-focus selection, driving a real
+    candlestick chart (reusing `CandlestickChart.tsx`, extended with two
+    new prominent overlay fields — `stopPrice`/`targetPrice`, drawn with
+    the identical dashed-level treatment `entry`/`currentPrice` already
+    use, correctly switching to the real `trailingStopPrice` label the
+    moment a position's own trailing stop activates) plus a full detail
+    card (entry/current/P&L/stop/target/R-multiple/size/MFE-MAE/hold
+    time). An aggregate strip shows total exposure/unrealized P&L/
+    trailing count across every open position (Phase 8's "portfolio/
+    exposure view," folded into the overview rather than a separate
+    mode this pass didn't have time to build as a toggle).
+  - **Strategy identification, disclosed honestly.** The directive
+    explicitly forbids inventing per-trade strategy names. Recon
+    confirmed `SniperPosition`/`SniperTrade` carry no strategy/signal-
+    type identity at all — there is genuinely only ONE real engine here
+    (a single discovery+execution pipeline, not a portfolio of named
+    alternative strategies like the main equities Strategy Lab has), so
+    the terminal labels the source accurately once ("Engine: Memecoin
+    Sniper — Liquidity/Momentum Discovery") rather than fabricating
+    variety that doesn't exist, and shows the real, already-computed
+    entry-score breakdown from the matching `SniperCandidate` (by mint)
+    as the actual "why" — falling back to just the bare numeric
+    `entryScore` when that candidate has since rolled off the recent-
+    candidates window, never a fabricated re-derivation.
+  - **Wallet management, disclosed honestly.** Recon confirmed there is
+    no wallet add/remove/select UI, and no secure credential storage
+    abstraction anywhere in this codebase — the only related code is
+    `evaluate_live_arming()`'s own honest `armed=False` gate. Building a
+    UI for a feature with nothing real underneath it would itself be
+    the exact fabrication this directive forbids; the Wallet section
+    instead states the real gap directly.
+  - **Deliberately NOT built this pass, disclosed**: no real-time
+    WebSocket push for Sniper data (confirmed pre-existing: Sniper was
+    never part of `ws_manager.py`'s broadcast, and stays on the
+    existing 5s REST poll this pass didn't change); no per-trade event
+    timeline (no persisted event log exists on the backend to draw one
+    from honestly — the existing "Recent Activity" derived-from-
+    candidates/trades simplification carries forward unchanged); no
+    dedicated Portfolio/Exposure chart mode as a separate toggle (folded
+    into the aggregate strip instead).
+  - **Real bug found (and fixed) by the chart-overlay verification
+    itself, backend.** Screenshotting the new terminal's chart against a
+    realistic open position exposed a genuine, pre-existing price-scale
+    defect, not a UI polish issue: a Sniper position's real price
+    (`app/memecoin_sniper.py`'s own independent `_simulate_price_step`
+    walk, typically $0.01-$0.5) has zero relationship to
+    `app/market_data.py`'s generic `SyntheticPriceEngine`, which
+    hash-seeds an unrelated ~$20-$500 range for whatever meme-ticker
+    string the position happens to be named — so `GET /api/market/
+    candles?symbol=<sniper symbol>` rendered a candle series on a
+    completely wrong scale, squashing the new entry/stop/target overlay
+    lines into an unreadable sliver. Fixed with a minimal, reused hook,
+    not a new candle pipeline: `MarketDataProvider.set_live_price_
+    override(symbol, price)` (a no-op default, same shape as the
+    existing `set_market_regime()` hook) lets a caller that owns a
+    symbol's real price register it; `app/nexus.py`'s tick loop now
+    calls it once per tick for every open Sniper position, and
+    `get_candles()`'s ALREADY-SHIPPED live-price rescale (the same
+    mechanism `test_latest_candle_tracks_the_live_mock_price_after_a_
+    quote` already proved) does the rest — the whole series is
+    proportionally rescaled onto the real price, not just patched at one
+    bar. A second, related defect surfaced in the same pass: every
+    OHLC/quote value in `market_data.py` was rounded with a flat
+    `round(x, 2)`, correct for stock-like prices but silently collapsing
+    a $0.045 memecoin price to $0.05 (and flooring candle lows at a flat
+    $0.1, which would sit ABOVE a sub-$1 open/close — an OHLC-consistency
+    break). Replaced with `_round_price()`, which scales decimal
+    precision to the price's own magnitude (`>= 1` keeps the exact
+    original 2-decimal behavior — zero change for every existing stock/
+    futures/FX symbol; `< 1` keeps ~4-5 significant figures). Covered by
+    5 new backend tests (`TestLivePriceOverride` in
+    `tests/test_market_data.py`) plus the existing 73-test
+    `test_market_data.py`/`test_chaos_market_data.py`/
+    `test_external_market_data.py` trio, all passing unchanged.
+  - **Testing.** `npx tsc --noEmit`/`npm run lint`/`npm run build` all
+    clean (the production build confirms `SniperApp` is a genuine,
+    separate ~20KB chunk); backend `mypy`/`ruff` clean on every touched
+    file. Live-verified against the running dev stack via Playwright:
+    the main Command Center's `MARKETS` area no longer has a `SNIPER`
+    tab button anywhere in the DOM; the Overview tab's launch link
+    points at `/sniper` and opens in a new tab; `/sniper` itself renders
+    the full specialist terminal independently against the real running
+    backend (engine started live via the real API, real candidate
+    discovery confirmed streaming in). No pre-existing Playwright spec
+    references `SNIPER` by name (confirmed by grep before removal), so
+    no existing test needed updating for the tab's removal. The Sniper's
+    real discovery→entry pipeline is genuinely probabilistic (a
+    candidate must clear both a real score threshold and real safety
+    checks) and did not open a natural position within two bounded live
+    waits (90s, then 150s) against the running dev backend — confirmed,
+    not assumed: `GET /api/sniper/candidates` showed real candidates
+    scoring above threshold but none simultaneously `safetyStatus:
+    "safe_enough"`, a real sim outcome, not a stall. The chart-overlay
+    rendering was therefore verified with a disclosed Playwright
+    route-mock (one realistic, schema-valid `SniperPosition`, plus — after
+    the price-scale bug above was found and fixed — a matching mocked
+    candle series spanning that position's own entry/stop/target levels,
+    so the screenshot proves the terminal's own overlay/label rendering
+    code at the correct scale); this exercises the frontend rendering
+    path only; the backend fix that makes a REAL open Sniper position's
+    chart correct is verified separately and deterministically by the 5
+    backend tests above, not by this Playwright run.
+
 - **CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
   Scaling, then Paper-Trade Journal + Drift Detection + Strategy Health
   State Machine"** (second increment — the milestone's own queued

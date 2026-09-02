@@ -82,6 +82,61 @@ def test_latest_candle_tracks_the_live_mock_price_after_a_quote():
     assert candles[-1].close == quote.price
 
 
+class TestLivePriceOverride:
+    """Memecoin Sniper Professional Trading Terminal directive — a real
+    bug found via live UI verification: a Sniper position's own real
+    price (memecoin_sniper.py's independent _simulate_price_step walk,
+    typically sub-$1) has no relationship to this module's generic
+    hash-seeded $20-$500 range for an arbitrary symbol string, so a
+    Sniper terminal chart for symbol "MOONPEPE" would render at a
+    completely wrong scale. set_live_price_override() lets a caller that
+    owns a symbol's real price supply it directly; get_candles()'s
+    existing proportional live-price rescale (already proven by
+    test_latest_candle_tracks_the_live_mock_price_after_a_quote above)
+    then anchors the WHOLE series to it, not just the newest bar."""
+
+    def test_override_alone_anchors_candles_without_any_quote_call(self):
+        provider = MockMarketDataProvider()
+        provider.set_live_price_override("MOONPEPE", 0.0473)
+        candles = provider.get_candles("MOONPEPE", "1m", 30)
+        assert candles[-1].close == 0.0473
+
+    def test_override_rescales_the_whole_series_not_just_the_last_bar(self):
+        provider = MockMarketDataProvider()
+        # Whatever this symbol's generic hash-seeded range would have
+        # been (tens to hundreds of dollars), the override must pull
+        # every bar down to the real sub-$1 memecoin scale.
+        provider.set_live_price_override("SNIPERTOKEN", 0.045)
+        candles = provider.get_candles("SNIPERTOKEN", "1m", 30)
+        assert all(c.close < 1.0 and c.high < 1.0 and c.low > 0.0 for c in candles)
+
+    def test_override_updates_on_each_call_tracking_a_moving_price(self):
+        provider = MockMarketDataProvider()
+        provider.set_live_price_override("MOONPEPE", 0.05)
+        first = provider.get_candles("MOONPEPE", "1m", 5)
+        assert first[-1].close == 0.05
+        provider.set_live_price_override("MOONPEPE", 0.062)
+        second = provider.get_candles("MOONPEPE", "1m", 5)
+        assert second[-1].close == 0.062
+
+    def test_non_positive_price_is_ignored_not_applied(self):
+        provider = MockMarketDataProvider()
+        provider.set_live_price_override("MOONPEPE", 0.05)
+        provider.set_live_price_override("MOONPEPE", 0.0)
+        provider.set_live_price_override("MOONPEPE", -1.0)
+        candles = provider.get_candles("MOONPEPE", "1m", 5)
+        assert candles[-1].close == 0.05
+
+    def test_default_provider_interface_hook_is_a_safe_noop(self):
+        # MarketDataProvider.set_live_price_override's own no-op default
+        # (see ExternalMarketDataProvider, which doesn't override it) must
+        # never raise for any real caller that unconditionally calls it.
+        from app.market_data import ExternalMarketDataProvider
+
+        provider = ExternalMarketDataProvider(base_url="https://example.invalid", api_key="x")
+        provider.set_live_price_override("MOONPEPE", 0.05)  # must not raise
+
+
 # CEO Company Health + Live Market Realism directive — the sections below
 # prove the *statistical behavior* the module's own docstring claims
 # (volatility clustering, momentum persistence, mean reversion, internal

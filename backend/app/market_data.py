@@ -151,6 +151,21 @@ class MarketDataProvider(ABC):
         this codebase to tell it, doesn't have to implement it."""
         return None
 
+    def set_live_price_override(self, symbol: str, price: float) -> None:
+        """Optional live-price feedback hook — same shape as
+        `set_market_regime()` above, a no-op default. Lets a caller that
+        owns a symbol's REAL price elsewhere in this codebase (today: the
+        Memecoin Sniper engine, whose positions carry their own real,
+        independently-simulated price walk — see
+        app/memecoin_sniper.py's `_simulate_price_step()`) tell this
+        provider what that real price actually is, so `get_candles()`'s
+        existing live-price rescale (see MockMarketDataProvider.get_candles)
+        anchors its chart to that real value instead of an unrelated
+        generic hash-seeded range. A future real adapter has no need for
+        this (it would fetch the real price itself), hence the no-op
+        default."""
+        return None
+
 
 NORMAL_VOLUME_RANGE = (100_000.0, 800_000.0)
 VOLUME_SPIKE_CHANCE = 0.08
@@ -257,6 +272,28 @@ def _pick_regime(rng: random.Random, weights: dict[InternalRegime, float]) -> In
     return _INTERNAL_REGIMES[-1]
 
 
+def _round_price(price: float) -> float:
+    """Rounds a price for display/storage, at a decimal precision scaled
+    to the price's own magnitude. Every price this module has ever
+    generated before the Memecoin Sniper Professional Trading Terminal
+    directive was stock/futures/FX-like ($1-$5000+), where a flat
+    `round(price, 2)` is exactly right — that behavior is preserved
+    unchanged here for any `price >= 1`. Sub-$1 memecoin prices (Sniper
+    positions routinely sit at $0.01-$0.5, see
+    app/memecoin_sniper.py's own price generation) broke that assumption:
+    `round(0.045, 2)` collapses to `0.05`, which would silently erase the
+    real distinction between a position's entry/stop/target/current price
+    on the terminal's own chart. Scaling decimal count to magnitude keeps
+    ~4-5 significant figures at any price level instead."""
+    if price <= 0:
+        return 0.0
+    if price >= 1:
+        return round(price, 2)
+    magnitude = math.floor(math.log10(price))
+    decimals = min(10, 3 - magnitude)
+    return round(price, decimals)
+
+
 @dataclass
 class _WalkState:
     """The real, evolving state one regime-switching price process needs
@@ -339,6 +376,19 @@ class MockMarketDataProvider(MarketDataProvider):
         already-computed `MarketEnvironmentState.current`."""
         self._current_external_regime = regime
 
+    def set_live_price_override(self, symbol: str, price: float) -> None:
+        """See MarketDataProvider.set_live_price_override's own docstring.
+        Setting `self._prices[symbol]` directly (the same dict
+        `get_quote()` itself writes to) is sufficient: `get_candles()`
+        below already proportionally rescales its whole generated series
+        to land on `self._prices[symbol]` whenever that key is present —
+        this just supplies that key from a real external price instead of
+        from this provider's own `get_quote()` walk, with no other change
+        needed to the rescale logic itself. `price <= 0` is ignored (a
+        divide-by-zero/negative-scale guard; never a realistic price)."""
+        if price > 0:
+            self._prices[symbol] = price
+
     @staticmethod
     def _seed_price(symbol: str) -> float:
         override = _SEED_PRICE_OVERRIDE.get(symbol)
@@ -357,7 +407,7 @@ class MockMarketDataProvider(MarketDataProvider):
         volume = _volume_for_shock(self._quote_rng, shock, state.regime)
         self._prices[symbol] = state.price
 
-        return Quote(symbol=symbol, price=round(state.price, 2), change_pct=round(shock, 2), volume=round(volume, 0))
+        return Quote(symbol=symbol, price=_round_price(state.price), change_pct=round(shock, 2), volume=round(volume, 0))
 
     def get_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
         if timeframe not in TIMEFRAMES:
@@ -397,7 +447,12 @@ class MockMarketDataProvider(MarketDataProvider):
             wick_up = abs(rng.gauss(0, wick_scale * 0.6))
             wick_down = abs(rng.gauss(0, wick_scale * 0.6))
             high = max(open_price, close_price) + wick_up
-            low = max(0.1, min(open_price, close_price) - wick_down)
+            # Floor scaled to the price's own magnitude, not a flat $0.1
+            # — a flat floor is invisible for stock-like prices but would
+            # force a sub-$1 memecoin candle's low ABOVE its own
+            # open/close (breaking basic OHLC consistency: low must never
+            # exceed min(open, close)).
+            low = max(open_price * 0.001, min(open_price, close_price) - wick_down)
             volume = _volume_for_shock(rng, shock, state.regime)
 
             timestamp = (now - timedelta(minutes=minutes_per_candle * (limit - 1 - i))).isoformat()
@@ -406,10 +461,10 @@ class MockMarketDataProvider(MarketDataProvider):
                     symbol=symbol,
                     timeframe=timeframe,
                     timestamp=timestamp,
-                    open=round(open_price, 2),
-                    high=round(high, 2),
-                    low=round(low, 2),
-                    close=round(close_price, 2),
+                    open=_round_price(open_price),
+                    high=_round_price(high),
+                    low=_round_price(low),
+                    close=_round_price(close_price),
                     volume=round(volume, 0),
                     data_status="simulated",
                 )
@@ -434,10 +489,10 @@ class MockMarketDataProvider(MarketDataProvider):
                         symbol=c.symbol,
                         timeframe=c.timeframe,
                         timestamp=c.timestamp,
-                        open=round(c.open * scale, 2),
-                        high=round(c.high * scale, 2),
-                        low=round(c.low * scale, 2),
-                        close=round(c.close * scale, 2),
+                        open=_round_price(c.open * scale),
+                        high=_round_price(c.high * scale),
+                        low=_round_price(c.low * scale),
+                        close=_round_price(c.close * scale),
                         volume=c.volume,
                         data_status="simulated",
                     )
@@ -448,7 +503,7 @@ class MockMarketDataProvider(MarketDataProvider):
             # one field so the chart's rightmost point is bit-for-bit
             # identical to what get_quote() reports elsewhere in the UI.
             last = candles[-1]
-            live_close = round(self._prices[symbol], 2)
+            live_close = _round_price(self._prices[symbol])
             candles[-1] = Candle(
                 symbol=last.symbol,
                 timeframe=last.timeframe,
