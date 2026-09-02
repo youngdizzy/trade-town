@@ -9,6 +9,7 @@ import type {
   FactoryRunRecord,
   FactoryStatsRead,
   FamilyResearchStats,
+  ParetoStatus,
   ResearchDiscoveryCycleRecord,
   ResearchExperimentRecord,
   ResearchLoopIterationRecord,
@@ -50,6 +51,11 @@ const SCORECARD_TONE: Record<ResearchScorecardClassification, "green" | "amber" 
 };
 
 const FACTORY_PIPELINE_LABELS = ["OBSERVE", "GENERATE", "MUTATE", "COMPILE", "BACKTEST", "VALIDATE", "STRESS", "COMPARE", "ACCEPT / BIN"];
+
+const PARETO_TONE: Record<ParetoStatus, "green" | "amber" | "red" | "purple"> = {
+  non_dominated: "green",
+  dominated: "amber",
+};
 
 const VERDICT_TONE: Record<string, "green" | "amber" | "red" | "purple"> = {
   clean: "green",
@@ -120,6 +126,21 @@ function CouncilAndSiblingLine({ candidate }: { candidate: FactoryCandidateRecor
           <span className="uppercase tracking-wide text-cmd-cyan">Research Council →</span> {candidate.researchCouncil.recommendation.replace(/_/g, " ")}: {candidate.researchCouncil.recommendationReason}
         </p>
       )}
+    </div>
+  );
+}
+
+// CEO directive "TradeTown — Autonomous Mutation Application + Pareto
+// Survivor Engine" — real, disclosed multi-dimensional Pareto dominance
+// (backend/app/research_pareto.py), never a single opaque score.
+// `null` for any candidate with no real backtest to compare
+// (compile_rejected/duplicate_pruned).
+function ParetoStatusLine({ candidate }: { candidate: FactoryCandidateRecord }) {
+  if (candidate.paretoStatus === null) return null;
+  return (
+    <div className="mt-1 flex items-start gap-2 text-[8px] text-cmd-textDim">
+      <StatusPill tone={PARETO_TONE[candidate.paretoStatus]}>{candidate.paretoStatus.replace(/_/g, " ")}</StatusPill>
+      <p>{candidate.paretoReason}</p>
     </div>
   );
 }
@@ -438,6 +459,7 @@ export function ResearchFactoryView() {
                   </p>
                 )}
                 <CouncilAndSiblingLine candidate={candidate} />
+                <ParetoStatusLine candidate={candidate} />
                 <p className="mt-0.5 text-[9px] text-cmd-textDim">{candidate.decisionReason}</p>
               </div>
             ))}
@@ -797,6 +819,7 @@ function DiscoveryCyclePanel() {
                   </div>
                 )}
                 <CouncilAndSiblingLine candidate={candidate} />
+                <ParetoStatusLine candidate={candidate} />
                 <p className="mt-0.5 text-[9px] text-cmd-textDim">{candidate.decisionReason}</p>
               </div>
             ))}

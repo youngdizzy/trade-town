@@ -94,6 +94,26 @@ development milestones, not semver releases.
     test already established). All 129 pre-existing research-factory/
     fitness/discovery tests re-run clean, zero regressions. Full backend
     suite green, `mypy app/`/`python -m ruff check app/ tests/` clean.
+  - **Frontend, same directive** — extends the EXISTING `ResearchFactoryView.tsx`
+    candidate cards (no new panel/tab): a `ParetoStatusLine` component
+    renders each real candidate's `dominated`/`non_dominated` status as a
+    color-coded pill plus its real, disclosed `paretoReason` text, next
+    to the existing `CouncilAndSiblingLine`. `types.ts` gained
+    `ParetoStatus`/`ParetoDimensionValue`/`ParetoFrontierEntry` and the
+    matching additive fields on `FactoryCandidateRecord`/`FactoryRunRecord`
+    — no `api.ts` changes needed (additive fields on already-fetched
+    responses). Live-verified two ways against the running dev stack: a
+    direct multi-generation API call showed the real evolutionary
+    dominance chain (`gen0` dominated by `gen1`/`gen2`/`gen3`, each
+    successive generation dominating every real ancestor) exactly as
+    designed, and a full interactive Playwright run through the actual
+    UI form ("Run Autonomous Factory Cycle") rendered 5 real generations
+    live, with amber "DOMINATED" pills correctly naming which real
+    candidate(s) dominate each one and on which real axes, and a green
+    "NON DOMINATED" pill on the final surviving-lineage candidate — zero
+    console errors. `npx tsc --noEmit`/`npm run lint`/`npm run build` all
+    clean; full Playwright regression suite run against the live dev
+    stack.
 
 - **CEO directive "TradeTown — Memecoin Sniper Agent" — backend
   (Sections 1-32, paper-only/simulated scope, per explicit CEO

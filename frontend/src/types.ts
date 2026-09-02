@@ -7715,6 +7715,25 @@ export interface MutationCandidate {
   createdAt: string;
 }
 
+// CEO directive "TradeTown — Autonomous Mutation Application + Pareto
+// Survivor Engine." See backend/app/research_pareto.py — real,
+// multi-dimensional Pareto dominance, never a single opaque score.
+export type ParetoStatus = "dominated" | "non_dominated";
+
+export interface ParetoDimensionValue {
+  dimension: string;
+  displayValue: string;
+  available: boolean;
+}
+
+export interface ParetoFrontierEntry {
+  candidateId: string;
+  paretoStatus: ParetoStatus;
+  dominatedBy: string[];
+  dimensions: ParetoDimensionValue[];
+  reason: string;
+}
+
 export interface FactoryCandidateRecord {
   id: string;
   runId: string;
@@ -7745,6 +7764,12 @@ export interface FactoryCandidateRecord {
   siblingRank: number | null;
   fitnessRationale: string | null;
   researchCouncil: ResearchCouncilReport | null;
+  // CEO directive "TradeTown — Autonomous Mutation Application + Pareto
+  // Survivor Engine" — `null`/empty for any candidate with no real
+  // backtest (compile_rejected/duplicate_pruned), never defaulted.
+  paretoStatus: ParetoStatus | null;
+  paretoDominatedBy: string[];
+  paretoReason: string | null;
 }
 
 // CEO directive "Phase 9: Full Autonomous Quant Research Factory,"
@@ -7801,6 +7826,10 @@ export interface FactoryRunRecord {
   currentChampionDefinitionVersion: number | null;
   createdAt: string;
   runtimeSeconds: number | null;
+  // CEO directive "TradeTown — Autonomous Mutation Application + Pareto
+  // Survivor Engine" — the real Pareto frontier over every real
+  // (backtested) candidate in this run's entire lineage tree.
+  paretoFrontier: ParetoFrontierEntry[];
 }
 
 export interface LessonEvidenceSummary {

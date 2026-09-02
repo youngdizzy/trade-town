@@ -18421,3 +18421,48 @@ isolation, dedup regression). All 129 pre-existing `test_research_
 factory*.py`/`test_research_fitness.py`/`test_research_discovery.py`
 tests re-run clean with zero regressions. Full backend suite green,
 `mypy app/` and `python -m ruff check app/ tests/` both clean.
+
+### Frontend (same directive, same session)
+
+Extends the existing `ResearchFactoryView.tsx` — no new panel, no new
+tab, per this directive's own "extend the existing Research Factory UI"
+instruction. A new `ParetoStatusLine` component sits directly next to
+the existing `CouncilAndSiblingLine` in each candidate card: a
+color-coded pill (`non_dominated` = green, `dominated` = amber) plus the
+real, disclosed `paretoReason` string — rendered `null` (nothing shown)
+for any candidate with no real Pareto status (`compile_rejected`/
+`duplicate_pruned`), matching `CouncilAndSiblingLine`'s own established
+`null`-means-nothing-to-show convention. `frontend/src/types.ts` gained
+`ParetoStatus`/`ParetoDimensionValue`/`ParetoFrontierEntry` plus the
+matching additive fields on `FactoryCandidateRecord`/`FactoryRunRecord`
+— field-for-field mirrors of the new backend schema aliases, no drift.
+`api.ts` needed no changes: these are additive fields on responses the
+frontend already fetches via `runResearchFactoryRun()`/
+`getResearchFactoryRuns()`/`getResearchFactoryRunDetail()`.
+
+**Live verification, two ways.** (1) Direct API calls against the
+running dev stack (backend restarted to pick up the new code — the dev
+uvicorn process was NOT running with `--reload`, caught and fixed before
+verification) showed the real evolutionary dominance chain end to end: a
+4-generation single-child lineage where `gen0` was dominated by
+`gen1`/`gen2`/`gen3`, `gen1` by `gen2`/`gen3`, `gen2` by `gen3`, and
+`gen3` itself non-dominated — each successive generation legitimately
+dominating every real ancestor on every comparable axis, exactly the
+"maintain a Pareto frontier for the current lineage" behavior this
+module was built for, not a synthetic test fixture. (2) A full
+interactive Playwright pass through the actual UI: navigated Continue →
+Original Run → Command Center → EXPAND FULL COMMAND CENTER → RESEARCH &
+INTELLIGENCE → SANDBOX → RESEARCH FACTORY, filled in the real hypothesis
+form, clicked "Run Autonomous Factory Cycle," and waited for a real
+5-generation run to complete live. The resulting candidate cards
+rendered real amber "DOMINATED" pills each correctly naming which real
+candidate(s) dominate it and on which real axes (e.g. "Dominated by
+candidate '...-gen2-candidate' (at least as good on every comparable
+dimension, strictly better on: Expectancy, Profit factor, Benchmark
+relationship). Also dominated by 3 other real candidate(s).") and a
+green "NON DOMINATED" pill on the final surviving-lineage candidate,
+with its own real, disclosed reason. Zero browser console errors across
+every navigation and interaction step (temporary verification scripts,
+removed after use). `npx tsc --noEmit`, `npm run lint`, `npm run build`
+all clean; full Playwright regression suite run against the live dev
+stack.
