@@ -22,7 +22,7 @@ const SENSITIVITY_LABEL: Record<NotificationSensitivity, string> = {
 };
 
 export function TravelModePanel() {
-  const { travelMode, travelModeBriefings } = useGameStore();
+  const { travelMode, travelModeBriefings, riskLimits, emergencyStop } = useGameStore();
 
   const [positionCap, setPositionCap] = useState(travelMode.settings.positionSizeCapPct);
   const [riskCap, setRiskCap] = useState(travelMode.settings.dailyRiskCapPct);
@@ -111,6 +111,38 @@ export function TravelModePanel() {
         </button>
         {error && <div className="mt-2 text-[9px] text-cmd-red">{error}</div>}
       </Glass>
+
+      {travelMode.active && (
+        <Glass className="border border-cmd-amber/40 p-3">
+          <TerminalLabel>Travel Mode Status — real, currently-applied posture</TerminalLabel>
+          <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+            <DataRow label="Risk" value="REDUCED" valueClassName="text-cmd-amber" />
+            <DataRow
+              label="Max Position Size (normal → travel)"
+              value={`${riskLimits.maxPositionPct.toFixed(1)}% → ${(riskLimits.maxPositionPct * (travelMode.settings.positionSizeCapPct / 100)).toFixed(1)}%`}
+            />
+            <DataRow
+              label="Risk Per Trade (normal → travel)"
+              value={`${riskLimits.riskPerTradePct.toFixed(1)}% → ${(riskLimits.riskPerTradePct * (travelMode.settings.dailyRiskCapPct / 100)).toFixed(1)}%`}
+            />
+            <DataRow
+              label="Max Open Positions (normal → travel)"
+              value={`${riskLimits.maxOpenPositions} → ${Math.max(1, Math.floor(riskLimits.maxOpenPositions / 2))}`}
+            />
+            <DataRow label="Unattended Confidence Bar" value="+15 pts over normal" />
+            <DataRow label="Notifications" value={SENSITIVITY_LABEL[travelMode.settings.notificationSensitivity]} />
+            <DataRow
+              label="Kill Switch"
+              value={<StatusPill tone={emergencyStop.active ? "red" : "green"}>{emergencyStop.active ? "TRIGGERED" : "ARMED"}</StatusPill>}
+            />
+          </div>
+          <div className="mt-2 text-[8px] text-cmd-textDim/70">
+            These are the real CEO-configured RiskLimits and the real Travel Mode percentages applied on top of them (app/travel_mode.py&apos;s apply_travel_mode_tightening()) — never a
+            fabricated or recomputed number. Max Daily Loss/Weekly/Monthly loss ceilings are not currently narrowed by Travel Mode — only position size, risk per trade, and open-position
+            count are.
+          </div>
+        </Glass>
+      )}
 
       <Glass className="p-3">
         <TerminalLabel>Posture Settings — composes with the Daily Circuit Breaker, never a duplicate override</TerminalLabel>

@@ -24,6 +24,18 @@ if (!rootEl) {
 const isSniperSurface = window.location.pathname.startsWith("/sniper");
 
 if (isSniperSurface) {
+  // CEO directive "UI / Governance / Travel Mode Hardening" — index.css's
+  // global `html, body, #root { height: 100%; overflow: hidden; }` is
+  // intentional for the main app (a fixed-viewport Phaser canvas with its
+  // own internal scroll containers never wants a document-level
+  // scrollbar), but the Sniper surface is an ordinary, taller-than-one-
+  // screen document page mounted into that same #root — the global rule
+  // silently clipped its lower sections with no way to reach them (the
+  // reported "page cannot be scrolled downward" bug). This class scopes
+  // a real-scroll override (see index.css's `html.sniper-surface` rules)
+  // to exactly this surface, leaving the main app's own overflow:hidden
+  // behavior completely untouched.
+  document.documentElement.classList.add("sniper-surface");
   void import("./sniper/SniperApp").then(({ SniperApp }) => {
     createRoot(rootEl).render(
       <StrictMode>

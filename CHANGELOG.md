@@ -7,6 +7,146 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — UI / Governance / Travel Mode Hardening."**
+  Phase 0 forensic audit against the screenshots' three reported
+  problems traced each to a specific root cause, not a vague "polish
+  pass" — see below.
+  - **Scroll bug, fixed at the root cause.** `index.css`'s global
+    `html, body, #root { height: 100%; overflow: hidden; }` is
+    intentional for the main app (a fixed-viewport Phaser canvas that
+    never wants a document scrollbar), but the Sniper Terminal
+    (`src/sniper/SniperApp.tsx`) is a real, taller-than-one-screen
+    document page mounted into that same `#root` — the global rule
+    silently clipped its lower sections with no way to reach them.
+    `main.tsx` now stamps a `sniper-surface` class on `<html>` only for
+    that one surface; `index.css` gained a scoped override
+    (`html.sniper-surface, ... { height: auto; overflow-y: auto; }`)
+    that restores real page scroll for exactly this page, leaving the
+    main app's own `overflow: hidden` completely untouched.
+  - **"COPY OFF cannot be clicked to turn on," root-caused and fixed.**
+    `UpdateSniperEngineRequest.copy_trading_enabled`
+    (`app/routers/sniper.py`) was the one field on that request model
+    with no `Field(alias="copyTradingEnabled")` — the real frontend
+    (`SniperApp.tsx`'s `toggle()`) always sends
+    `{"copyTradingEnabled": ...}`, which never bound to the snake_case
+    field, so `GameState.update_sniper_engine_config()`'s
+    `if copy_trading_enabled is not None` branch never fired and the
+    button silently no-opped. This is the same class of bug fixed in
+    the prior Paper Trading Evidence Reporting 1.0 milestone
+    (`execution_provenance`/`market_data_provenance`) — a static AST
+    sweep of every request/response model in `app/routers/*.py` found
+    two more identical instances in `app/routers/audit.py`
+    (`RemediationRequest.remediation_plan`/`deadline_sim_day`,
+    `ResolveRequest.root_cause`/`corrective_action`) — **out of scope
+    for this directive (unrelated to Copy Mode/Quick Controls) and
+    deliberately not fixed this pass**, disclosed here rather than
+    silently left for a future session to rediscover.
+  - **Copy Mode safety, verified not extended.** Copy Mode
+    (`copy_trading_enabled`) only ever affects the Sniper engine's own
+    paper-only, dry-run-locked pipeline (`app/memecoin_sniper.py`'s
+    `evaluate_live_arming()` always reports `blocked` in this
+    environment) — it shares no code path with the main equities
+    RiskContract/RiskLimits/kill switch. No change was needed or made
+    here; confirmed by direct inspection, not assumed.
+  - **Governance trackability re-audited against the CURRENT
+    codebase, not the module's own founding claim.**
+    `app/process_adherence.py`'s "NOT TRACKABLE YET" list (Stop-Loss
+    Placement, Take-Profit Placement, Entry Condition Match, Exit
+    Condition Match, Confluence Requirements) was written before Hard
+    Risk Gates 2.0 existed. Re-checked against the current schema:
+    `PaperTrade.stop_price`/`target_price`/`entry_price`/`side` are now
+    real, persisted evidence (carried over from `PaperPosition` by
+    `close_position()`, the same way `maePct`/`mfePct` already are).
+    **Stop-Loss Placement and Take-Profit Placement are promoted to
+    real PASS/FAIL checks** (`_stop_loss_check()`/`_take_profit_check()`
+    — PASS only when the real stop/target sits on the correct side of
+    the real entry price for the trade's real direction; FAIL if not;
+    `not_trackable_yet` for any trade with no real stop/target, e.g.
+    one that predates Hard Risk Gates 2.0). **Entry Condition Match,
+    Exit Condition Match, and Confluence Requirements stay honestly
+    `not_trackable_yet`** — `StrategyHypothesis.entry_conditions`/
+    `exit_conditions` are CEO/agent-authored free text (that schema's
+    own docstring: "never independently verified by this schema
+    itself"), not a structured, machine-checkable condition; most
+    decisions carry no `strategy_id` at all (the CEO strategy selector
+    is opt-in); and no confluence-requirement field exists anywhere in
+    this codebase. Comparing a real exit reason against a free-text
+    sentence, or inventing a confluence checklist, would be exactly the
+    fabricated-precision trap this project's engineering discipline
+    exists to prevent.
+  - **Travel Mode audited, found already substantially real — not
+    rebuilt.** Direct inspection of `app/travel_mode.py` found it
+    already does most of what "Travel Mode 2.0" asks for: real
+    activate/deactivate, real conservative tightening on
+    `max_position_pct`/`risk_per_trade_pct`/`max_open_positions` (the
+    last one halved, floor 1 — "max simultaneous positions reduction"
+    already existed), a real +15-point Gatekeeper confidence bar while
+    active, a derived-non-persisted-RiskLimits pattern identical to the
+    Circuit Breaker's (kill switch and hard `RiskLimits` ceiling never
+    touched), and a real audit trail already surfaced through the
+    existing Audit Log (`category="travel_mode_change"`, one entry per
+    activation/deactivation with real timestamp/summary/detail). A
+    fourth `OFF/ACTIVE/PAUSED/EMERGENCY` state machine was
+    **deliberately not built** — Circuit Breaker and Emergency Stop
+    already own the PAUSED/EMERGENCY-equivalent concerns as separate,
+    composable mechanisms (the module's own docstring: "this codebase
+    has exactly three tightening patterns... confirmed by direct
+    inspection"); adding a fourth, overlapping one would violate this
+    directive's own "no duplicate risk system" rule. "Restrict manual
+    overrides while Travel Mode is active" was also **not built** —
+    genuinely new restrictive behavior gating the CEO's own manual
+    decision endpoint, not data plumbing, and not built without
+    explicit confirmation. `TravelModePanel.tsx` gained one real,
+    additive piece: a status summary (visible only while active)
+    showing the real CEO-configured `RiskLimits` values, the real
+    Travel Mode percentages applied on top of them, and real Kill
+    Switch state — with an explicit, honest disclosure that Max
+    Daily/Weekly/Monthly loss ceilings are NOT currently narrowed by
+    Travel Mode (only position size, risk-per-trade, and open-position
+    count are) — never implied otherwise.
+  - **MentorLib additional Training action.** The existing "Repeat
+    Track (Whole Team)" button only ever repeats the *currently active*
+    mentor track. `MentorLibraryPanel.tsx` gained a new "Additional
+    Training — Reinforce a Completed Topic" section: a picker over
+    every already-`graduated` mentor (excluding the active one, already
+    covered above) plus a "Train" button, reusing the exact same real
+    `repeatAcademyMentor()` action — zero new backend code, zero new
+    training engine, one real training record through the existing
+    pipeline. No per-agent weak-skill/failure signal is wired into the
+    picker: none of this codebase's real per-agent evidence (Discipline
+    Chamber, `failure_review.py`, `mistakes.py`) is currently keyed by
+    mentor track, so per the directive's own explicit fallback this
+    honestly offers reinforcement from the existing curriculum, never a
+    fabricated "weakest skill" recommendation.
+  - **Testing.** 3 new backend tests pin the Copy Mode alias fix
+    (`tests/test_memecoin_sniper.py::TestUpdateSniperEngineRequestCamelCase`).
+    9 new backend tests cover the Stop-Loss/Take-Profit promotion —
+    passes/fails on both sides of entry for long and short, the
+    two-not-trackable-conditions boundary (no trade; trade with no real
+    stop), a trade with a valid stop but no target staying honestly
+    `not_trackable_yet` on the target check alone, and the always-not-
+    trackable trio never getting promoted just because a trade exists
+    (`tests/test_process_adherence.py`). Full backend suite/mypy/ruff
+    and frontend tsc/lint/build results in this milestone's own
+    forensic report.
+  - **Live browser verification** (real running dev stack): the Sniper
+    page now genuinely scrolls past the viewport to reach the Trade
+    Journal table at the bottom (confirmed via real `scrollHeight >
+    clientHeight` and the section entering the viewport); the Copy
+    toggle now actually flips real backend state on click and back
+    (confirmed via the button's own displayed label changing on click,
+    not just re-rendering the same value); MentorLib and Travel Mode
+    panels both render with zero console/page errors.
+  - **Not built, disclosed explicitly:** the two identical alias bugs
+    in `app/routers/audit.py` (out of scope — unrelated feature); a
+    Travel Mode `OFF/ACTIVE/PAUSED/EMERGENCY` state machine (redundant
+    with existing Circuit Breaker/Emergency Stop); restricting manual
+    overrides while Travel Mode is active (new restrictive behavior,
+    not built without explicit confirmation); any structured
+    entry/exit-condition or confluence-requirement model (would require
+    inventing data this architecture doesn't have — explicitly
+    forbidden by this directive's own "no fake completeness" rule).
+
 - **CEO directive "TradeTown — Paper Trading Performance & Evidence
   Reporting 1.0" (backend).** Phase 0 found this codebase's existing
   performance surface unusually mature already: `app/

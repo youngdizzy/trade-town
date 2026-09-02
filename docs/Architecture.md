@@ -20208,3 +20208,98 @@ has full backend test coverage from Canonical Trade Lifecycle 1.0, and
 this component is a direct, logic-free render of that response, but a
 human-observed live click-through remains a genuine open item for the
 next milestone that produces a real closed trade to click.
+
+## CEO directive "Paper Trading Evidence Collection / Controlled Burn-in 2.0"
+
+An operational burn-in, not a feature milestone — no production code
+changed. Phase 0 readiness check confirmed PAPER mode (`OperatingMode`
+has no `"live"` value at all for the main equities pipeline), the kill
+switch (`EmergencyStopState`), RiskContract/dynamic scaling, hard
+`RiskLimits`, stale-proposal expiry (`expire_stale_proposals()`), and
+Memecoin Sniper's structural separation (`SniperEngineConfig` shares no
+state with the main equities pipeline) were all real and unmodified —
+no blocker found.
+
+The real dev save was advanced ~12.3 simulated days (4×
+`POST /api/time/advance`, the same real endpoint "End Workday" uses) in
+`operating_mode: "executive"` (full auto-resolution, zero manual CEO
+intervention). Result: **0 closed trades** — 100 research items
+completed, all 100 candidates that reached the Opportunity Gatekeeper
+were honestly rejected (`trade_quality_below_threshold` +
+`liquidity_confirmation_weak` on every one; of the 64 with a resolved
+counterfactual, 26 would-have-won / 38 would-have-lost), and the 3
+candidates that did clear into real `TradeProposal`s all auto-resolved
+to `wait` (majority-buy analyst votes, but `gatekeeperVerdict: None` on
+all three, consistent with the zero-quantity-sizing fallback rather than
+a Gatekeeper rejection — not root-caused further per the directive's own
+"do not automatically fix these" instruction). Zero exceptions in the
+backend log across the whole window.
+
+A restart drill (graceful shutdown mid-burn-in, confirmed
+"persisting final state" in the log, then restart) found byte-for-byte
+parity on every record collection (decisions, ceoDecisions,
+tradeProposals, riskDecisions, opportunityRejections, driftEvents) and
+on cash/position/trade counts — only the sim clock differed, by the
+real wall-clock minutes the server was running between the two
+snapshots.
+
+**Verdict: C — BURN-IN ACTIVE — NO CRITICAL ISSUES. Next: continue
+controlled paper burn-in** (0 closed trades is real, valid evidence at
+Checkpoint 0 — not a defect to fix).
+
+## CEO directive "TradeTown — UI / Governance / Travel Mode Hardening"
+
+Phase 0 forensic audit against three user-reported problems (Sniper
+Quick Controls scroll bug, "COPY OFF" not clickable, Governance
+trackability screen) plus two feature asks (Travel Mode 2.0, an
+additional MentorLib training action). See CHANGELOG.md's own entry for
+the full root-cause writeups; summarized here:
+
+- **Scroll bug** — `index.css`'s global `#root { overflow: hidden }`
+  (correct for the main Phaser app) was silently clipping the Sniper
+  Terminal's own taller-than-one-screen document page, since both mount
+  into the same `#root`. Fixed with a `sniper-surface` class
+  (`main.tsx`) scoping a real-scroll override to exactly that surface.
+- **Copy Mode bug** — `UpdateSniperEngineRequest.copy_trading_enabled`
+  (`app/routers/sniper.py`) had no `Field(alias="copyTradingEnabled")`,
+  the same class of bug fixed in the Paper Trading Evidence Reporting
+  1.0 milestone. A static AST sweep of every router request/response
+  model found two more identical instances in `app/routers/audit.py`
+  (`RemediationRequest`, `ResolveRequest`) — disclosed, not fixed
+  (out of scope for this directive).
+- **Governance trackability** — re-audited against the CURRENT
+  codebase, not `process_adherence.py`'s own founding claim. Stop-Loss
+  and Take-Profit Placement are now real PASS/FAIL checks, using Hard
+  Risk Gates 2.0's real `PaperTrade.stop_price`/`target_price` (built
+  after this module's original honesty boundary was written). Entry
+  Condition Match/Exit Condition Match/Confluence Requirements stay
+  honestly `not_trackable_yet` — no structured, machine-checkable
+  condition data exists anywhere in this codebase for any of the three.
+- **Travel Mode** — audited and found already substantially real
+  (activate/deactivate, real conservative RiskLimits tightening
+  including max-open-positions halving, a real confidence bar increase,
+  a real audit trail via the existing Audit Log). A 4-state machine and
+  "restrict manual overrides" were deliberately not built — the former
+  is redundant with Circuit Breaker/Emergency Stop already covering
+  those concerns as separate mechanisms; the latter is new restrictive
+  behavior that shouldn't ship without explicit confirmation. One real,
+  additive UI piece was added: a status summary panel showing actual
+  configured RiskLimits/Travel Mode percentages/kill switch state,
+  explicitly disclosing that Max Daily/Weekly/Monthly loss ceilings are
+  NOT currently narrowed by Travel Mode.
+- **MentorLib** — a new "Additional Training" picker lets the CEO
+  retrain the company on any already-graduated mentor track (not just
+  the currently active one), reusing the exact same real
+  `repeatAcademyMentor()` action — zero new backend code.
+
+Testing: 3 new tests pin the Copy Mode alias fix; 9 new tests cover the
+Stop-Loss/Take-Profit promotion (pass/fail on both sides of entry for
+long/short, not-trackable boundaries, the always-not-trackable trio
+never getting promoted just because a trade exists). Live browser
+verification (real dev stack): the Sniper page's `scrollHeight` now
+exceeds `clientHeight` and the bottom Trade Journal section is reachable
+and enters the viewport; the Copy toggle's displayed label actually
+flips on click and reverts on a second click (real backend round-trip,
+not a static re-render); MentorLib/Travel Mode panels render with zero
+console/page errors. Full backend suite/mypy/ruff and frontend
+tsc/lint/build results in this milestone's own forensic report.

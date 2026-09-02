@@ -48,6 +48,22 @@ export function MentorLibraryPanel() {
   const activeMentor = foundationalMentorState.mentors.find((m) => m.id === dashboard.activeMentorId) ?? null;
   const learningMode = settings.ceoAcademyLearningMode;
 
+  // CEO directive "UI / Governance / Travel Mode Hardening" — an
+  // additional Training action, distinct from "Repeat Track" above
+  // (which only ever repeats the CURRENTLY active track). This reuses
+  // the exact same real repeatAcademyMentor() action (no new training
+  // engine, no second curriculum), just generalized to any already-
+  // graduated mentor the CEO picks — a real reinforcement pass on a
+  // completed topic, not a duplicate of the existing modal. No per-
+  // agent weak-skill/failure signal is wired into this picker (none of
+  // this codebase's real per-agent evidence — Discipline Chamber,
+  // failure_review.py, mistakes.py — is currently keyed by mentor
+  // track), so per Phase 8's own explicit fallback this offers
+  // reinforcement from the existing completed curriculum honestly,
+  // never a fabricated "weakest skill" recommendation.
+  const [additionalTrainingMentorId, setAdditionalTrainingMentorId] = useState<FoundationalMentorId | "">("");
+  const additionalTrainingCandidates = foundationalMentorState.mentors.filter((m) => m.status === "graduated" && m.id !== activeMentor?.id);
+
   const runControl = async (action: () => Promise<{ foundationalMentorState: typeof foundationalMentorState }>) => {
     setBusy(true);
     setError(null);
@@ -146,6 +162,40 @@ export function MentorLibraryPanel() {
           </div>
         )}
       </Glass>
+
+      {additionalTrainingCandidates.length > 0 && (
+        <Glass className="p-3">
+          <TerminalLabel>Additional Training — Reinforce a Completed Topic</TerminalLabel>
+          <div className="mt-1 text-[9px] text-cmd-textDim">
+            Re-run the whole team through a track they&apos;ve already graduated — the same real training pipeline as Repeat Track above, just for a topic other than the current one.
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <select
+              value={additionalTrainingMentorId}
+              onChange={(e) => setAdditionalTrainingMentorId(e.target.value as FoundationalMentorId | "")}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text"
+            >
+              <option value="">Select a completed track…</option>
+              {additionalTrainingCandidates.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} — {m.trackLabel}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={busy || additionalTrainingMentorId === ""}
+              onClick={() => {
+                if (additionalTrainingMentorId === "") return;
+                void runControl(() => api.repeatAcademyMentor(additionalTrainingMentorId)).then(() => setAdditionalTrainingMentorId(""));
+              }}
+              className="rounded-sm border border-cmd-cyan/50 px-2.5 py-1 text-[9px] uppercase tracking-wide text-cmd-cyan hover:bg-cmd-cyan/10 disabled:opacity-40"
+            >
+              Train
+            </button>
+          </div>
+        </Glass>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Glass className="p-3">

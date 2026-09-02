@@ -628,3 +628,34 @@ class TestTickEngine:
         assert all(p.data_provenance == "simulated" for p in positions)
         assert all(t.data_provenance == "simulated" for t in trades)
         assert all(lead.data_provenance == "simulated" for lead in leads)
+
+
+class TestUpdateSniperEngineRequestCamelCase:
+    """CEO directive "UI / Governance / Travel Mode Hardening" — the
+    reported "COPY OFF cannot be clicked to turn on" bug traced to
+    exactly one root cause: UpdateSniperEngineRequest.copy_trading_enabled
+    (app/routers/sniper.py) had no Field(alias="copyTradingEnabled"),
+    unlike every other camelCase-serialized field in this codebase's
+    request/response models. The real frontend
+    (SniperApp.tsx's toggle()) always sends {"copyTradingEnabled": ...}
+    — that JSON key never bound to the snake_case field, so
+    GameState.update_sniper_engine_config()'s `if copy_trading_enabled is
+    not None` branch never fired and the toggle silently no-opped."""
+
+    def test_camel_case_copy_trading_enabled_key_populates_the_field(self) -> None:
+        from app.routers.sniper import UpdateSniperEngineRequest
+
+        payload = UpdateSniperEngineRequest.model_validate({"copyTradingEnabled": True})
+        assert payload.copy_trading_enabled is True
+
+    def test_snake_case_key_still_works_too(self) -> None:
+        from app.routers.sniper import UpdateSniperEngineRequest
+
+        payload = UpdateSniperEngineRequest.model_validate({"copy_trading_enabled": True})
+        assert payload.copy_trading_enabled is True
+
+    def test_omitted_field_defaults_to_none_not_false(self) -> None:
+        from app.routers.sniper import UpdateSniperEngineRequest
+
+        payload = UpdateSniperEngineRequest.model_validate({"turbo": True})
+        assert payload.copy_trading_enabled is None

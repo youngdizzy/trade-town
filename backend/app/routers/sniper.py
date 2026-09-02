@@ -160,7 +160,14 @@ class UpdateSniperEngineRequest(BaseModel):
     status: str | None = None
     mode: str | None = None
     turbo: bool | None = None
-    copy_trading_enabled: bool | None = None
+    # Regression: this field had no Field(alias=...), unlike its
+    # response-side counterpart (SniperEngineConfig.copy_trading_enabled
+    # already has alias="copyTradingEnabled") — the real frontend sends
+    # {"copyTradingEnabled": ...} (see SniperApp.tsx's toggle()), which
+    # never bound to this field, so update_sniper_engine_config()'s
+    # `if copy_trading_enabled is not None` branch never fired and the
+    # Quick Controls "Copy ON/OFF" button silently did nothing.
+    copy_trading_enabled: bool | None = Field(default=None, alias="copyTradingEnabled")
 
 
 @router.post("/engine", response_model=SniperEngineStatusRead)

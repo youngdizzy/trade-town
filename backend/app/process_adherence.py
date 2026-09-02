@@ -4,17 +4,32 @@ the Process Adherence Score (Design Bible Chapter 66 addendum).
 THE HONESTY BOUNDARY (read this before adding anything to this module):
 the CEO's own request named a "Plan Adherence Engine" comparing PLANNED
 vs. ACTUAL entry/exit conditions, stop-loss/take-profit placement, and
-confluence requirements — none of that exists anywhere in this codebase.
-`app/gatekeeper.py`'s own module docstring already establishes why:
-there is no stop-loss/take-profit order concept, no entry/exit condition
-model, and no confluence checklist anywhere in this paper-trading
-engine, and inventing one here would be exactly the fabricated-precision
-trap this project's engineering discipline exists to prevent. This
-module builds the honest, narrower subset the CEO explicitly asked for
-instead: a real "Process Adherence Score" using ONLY information this
-architecture can actually verify, with every unbuildable component
-reported as `not_trackable_yet` — never scored as pass, never as fail,
-never silently omitted.
+confluence requirements. This module builds a real "Process Adherence
+Score" using ONLY information this architecture can actually verify,
+with every unbuildable component reported as `not_trackable_yet` —
+never scored as pass, never as fail, never silently omitted.
+
+CEO directive "UI / Governance / Travel Mode Hardening," Phase 6 — this
+boundary is RE-AUDITED against the current codebase on every pass, not
+assumed frozen at whatever it was when this module was first written.
+Stop-Loss/Take-Profit Placement used to be `not_trackable_yet` (no
+stop-loss/take-profit order concept existed anywhere in this paper-
+trading engine at the time) — Hard Risk Gates 2.0 later gave
+`PaperTrade` a real, persisted `stop_price`/`target_price` plus a real
+`entry_price`/`side` to validate them against, so `_stop_loss_check()`/
+`_take_profit_check()` below now report a real pass/fail whenever a
+trade has one, honestly falling back to `not_trackable_yet` for any
+trade that predates that directive or never had real ATR evidence.
+Entry Condition Match / Exit Condition Match / Confluence Requirements
+remain genuinely `not_trackable_yet`: `StrategyHypothesis.entry_
+conditions`/`exit_conditions` are CEO/agent-authored free text (that
+schema's own docstring: "never independently verified by this schema
+itself"), not a structured, machine-checkable condition, most decisions
+carry no `strategy_id` at all (the CEO strategy selector is opt-in), and
+no confluence-requirement field exists anywhere in this codebase.
+Comparing a real exit reason against a free-text sentence, or inventing
+a confluence checklist, would be exactly the fabricated-precision trap
+this project's engineering discipline exists to prevent.
 
 Every check below reuses data this codebase already computes for a
 different real reason, never a second, parallel computation:
@@ -39,6 +54,14 @@ different real reason, never a second, parallel computation:
                               real, checkable violation; every other
                               tagged case is compliant by construction
                               (the single real assignment point).
+  Stop-Loss/Take-Profit
+  Placement                 -> PaperTrade.stop_price/target_price/
+                              entry_price/side (Hard Risk Gates 2.0),
+                              carried over from PaperPosition by
+                              app/portfolio.py's close_position() the
+                              same way maePct/mfePct already are —
+                              never a second, independently-derived
+                              price.
 
 `score_pct` is computed only from checks this architecture could
 actually evaluate (`verified_count` = passed + failed); `not_trackable_
@@ -76,13 +99,26 @@ RECENT_DECISIONS_WINDOW = 10
 # discipline was not followed for that specific trade.
 DAY_TRADING_MAX_HOLD_MINUTES = 1440
 
-# app/gatekeeper.py's own module docstring already names these as
-# deliberately unbuilt — repeated here, never re-derived, so this
-# module's own NOT_TRACKABLE_YET list stays in lockstep with that
-# module's honesty boundary if it ever changes.
+# CEO directive "UI / Governance / Travel Mode Hardening," Phase 6 —
+# re-audited against the CURRENT codebase (not this module's own,
+# now-stale founding claim) whether each item below can be made real.
+# Stop-Loss/Take-Profit Placement were promoted out of this list: Hard
+# Risk Gates 2.0 (built after this module was first written) gave
+# PaperTrade a real, persisted stop_price/target_price plus a real
+# entry_price/side to validate them against (see _stop_loss_check()/
+# _take_profit_check() below) — genuine evidence, not a schema stub.
+# Entry Condition Match / Exit Condition Match / Confluence Requirements
+# stay here: StrategyHypothesis.entry_conditions/exit_conditions are
+# CEO/agent-authored free text (its own docstring: "never independently
+# verified by this schema itself"), not a structured, machine-checkable
+# condition — and most decisions carry no strategy_id at all (the CEO
+# strategy selector is opt-in). No confluence-requirement field exists
+# anywhere in this codebase. Comparing a real exit_reason/exit_price
+# against a free-text sentence, or inventing a confluence checklist,
+# would be exactly the fabricated-precision trap this project's
+# engineering discipline exists to prevent — so these three stay
+# honestly not_trackable_yet.
 _NOT_TRACKABLE_CHECKS: tuple[tuple[str, str], ...] = (
-    ("stop_loss_placement", "Stop-Loss Placement"),
-    ("take_profit_placement", "Take-Profit Placement"),
     ("entry_condition_match", "Entry Condition Match"),
     ("exit_condition_match", "Exit Condition Match"),
     ("confluence_requirements", "Confluence Requirements"),
@@ -162,6 +198,86 @@ def _trading_mode_check(trade: PaperTrade | None) -> ProcessAdherenceCheck:
     )
 
 
+def _stop_loss_check(trade: PaperTrade | None) -> ProcessAdherenceCheck:
+    """CEO directive "UI / Governance / Travel Mode Hardening," Phase 6
+    — real evidence: PaperTrade.stop_price/entry_price/side, carried
+    over from PaperPosition by app/portfolio.py's close_position() the
+    same way maePct/mfePct already are. PASS requires the stop to
+    actually sit on the correct side of entry for this trade's real
+    direction — never just "a stop_price exists.\""""
+    if trade is None:
+        return ProcessAdherenceCheck(
+            id="stop_loss_placement",
+            label="Stop-Loss Placement",
+            status="not_trackable_yet",
+            detail="No trade was ever opened for this decision — nothing real to check yet.",
+        )
+    if trade.stop_price is None:
+        return ProcessAdherenceCheck(
+            id="stop_loss_placement",
+            label="Stop-Loss Placement",
+            status="not_trackable_yet",
+            detail="This trade predates Hard Risk Gates 2.0, or no real ATR-based stop evidence existed for this symbol at open time — no real stop price was ever recorded.",
+        )
+    is_long = trade.side == "buy"
+    valid = trade.stop_price > 0 and ((trade.stop_price < trade.entry_price) if is_long else (trade.stop_price > trade.entry_price))
+    direction = "long" if is_long else "short"
+    if valid:
+        return ProcessAdherenceCheck(
+            id="stop_loss_placement",
+            label="Stop-Loss Placement",
+            status="passed",
+            detail=f"Real stop-loss at {trade.stop_price:.4f} is correctly placed {'below' if is_long else 'above'} the {trade.entry_price:.4f} entry for this {direction}.",
+        )
+    return ProcessAdherenceCheck(
+        id="stop_loss_placement",
+        label="Stop-Loss Placement",
+        status="failed",
+        detail=f"Real stop-loss at {trade.stop_price:.4f} is on the wrong side of the {trade.entry_price:.4f} entry for this {direction} — Hard Risk Gates 2.0 should never allow this.",
+    )
+
+
+def _take_profit_check(trade: PaperTrade | None) -> ProcessAdherenceCheck:
+    """Same real-evidence pattern as _stop_loss_check() above, using
+    PaperTrade.target_price — the real reward:risk-multiple level
+    app/executive.py's resolve_proposal() computes at fill time
+    (TARGET_REWARD_RISK_MULTIPLE x the real ATR stop distance), never a
+    fabricated one. A trade can have a valid stop but no target
+    (target_price is only set alongside a valid stop_distance) — that
+    combination is real and honestly not_trackable_yet, never inferred
+    as a failure."""
+    if trade is None:
+        return ProcessAdherenceCheck(
+            id="take_profit_placement",
+            label="Take-Profit Placement",
+            status="not_trackable_yet",
+            detail="No trade was ever opened for this decision — nothing real to check yet.",
+        )
+    if trade.target_price is None:
+        return ProcessAdherenceCheck(
+            id="take_profit_placement",
+            label="Take-Profit Placement",
+            status="not_trackable_yet",
+            detail="This trade predates Hard Risk Gates 2.0, or no real ATR-based stop evidence existed for this symbol at open time — no real take-profit target was ever recorded.",
+        )
+    is_long = trade.side == "buy"
+    valid = trade.target_price > 0 and ((trade.target_price > trade.entry_price) if is_long else (trade.target_price < trade.entry_price))
+    direction = "long" if is_long else "short"
+    if valid:
+        return ProcessAdherenceCheck(
+            id="take_profit_placement",
+            label="Take-Profit Placement",
+            status="passed",
+            detail=f"Real take-profit at {trade.target_price:.4f} is correctly placed {'above' if is_long else 'below'} the {trade.entry_price:.4f} entry for this {direction}.",
+        )
+    return ProcessAdherenceCheck(
+        id="take_profit_placement",
+        label="Take-Profit Placement",
+        status="failed",
+        detail=f"Real take-profit at {trade.target_price:.4f} is on the wrong side of the {trade.entry_price:.4f} entry for this {direction} — this should never happen if target computation is intact.",
+    )
+
+
 def _not_trackable_checks() -> list[ProcessAdherenceCheck]:
     return [ProcessAdherenceCheck(id=check_id, label=label, status="not_trackable_yet", detail=_NOT_TRACKABLE_DETAIL) for check_id, label in _NOT_TRACKABLE_CHECKS]
 
@@ -176,6 +292,8 @@ def compute_process_adherence(decision: TradeDecision, trade: PaperTrade | None,
         *_gatekeeper_checks(decision),
         _discipline_check(discipline_review),
         _trading_mode_check(trade),
+        _stop_loss_check(trade),
+        _take_profit_check(trade),
         *_not_trackable_checks(),
     ]
     passed_count = sum(1 for c in checks if c.status == "passed")

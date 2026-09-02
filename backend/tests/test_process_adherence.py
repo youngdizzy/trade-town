@@ -1,10 +1,13 @@
 """Covers app/process_adherence.py — Trading Psychology & Discipline,
 Piece C: the Process Adherence Score. Every case here traces to the
 CEO's own review: score ONLY from what this architecture can actually
-verify; stop-loss/take-profit/entry-condition/exit-condition/confluence
-must always report `not_trackable_yet` — never pass, never fail, never
-silently omitted; the score must never imply full plan adherence was
-measured.
+verify. Entry-condition/exit-condition/confluence must always report
+`not_trackable_yet` — never pass, never fail, never silently omitted.
+Stop-loss/take-profit placement (CEO directive "UI / Governance /
+Travel Mode Hardening," Phase 6) are real pass/fail checks whenever a
+trade has real Hard Risk Gates 2.0 stop/target evidence, and honestly
+`not_trackable_yet` otherwise — the score must never imply full plan
+adherence was measured for the three that remain unbuildable.
 """
 from __future__ import annotations
 
@@ -24,7 +27,13 @@ from app.schemas import (
     TradeDecision,
 )
 
-_NOT_TRACKABLE_IDS = {"stop_loss_placement", "take_profit_placement", "entry_condition_match", "exit_condition_match", "confluence_requirements"}
+# CEO directive "UI / Governance / Travel Mode Hardening," Phase 6 —
+# Stop-Loss/Take-Profit Placement were promoted to real pass/fail checks
+# (Hard Risk Gates 2.0's own PaperTrade.stop_price/target_price); only
+# these three remain always not_trackable_yet (no structured plan data
+# exists for any of them — see process_adherence.py's own docstring).
+_ALWAYS_NOT_TRACKABLE_IDS = {"entry_condition_match", "exit_condition_match", "confluence_requirements"}
+_NOT_TRACKABLE_IDS = {"stop_loss_placement", "take_profit_placement", *_ALWAYS_NOT_TRACKABLE_IDS}
 
 
 def _now_iso() -> str:
@@ -82,13 +91,22 @@ def _wait_decision(*, decision_id: str = "decision-wait") -> TradeDecision:
     )
 
 
-def _trade(*, decision_id: str = "decision-1", trading_style: str | None = "day", duration_minutes: int = 60) -> PaperTrade:
+def _trade(
+    *,
+    decision_id: str = "decision-1",
+    trading_style: str | None = "day",
+    duration_minutes: int = 60,
+    side: str = "buy",
+    entry_price: float = 100.0,
+    stop_price: float | None = None,
+    target_price: float | None = None,
+) -> PaperTrade:
     return PaperTrade(
         id="trade-1",
         symbol="NEXA",
-        side="buy",
+        side=side,  # type: ignore[arg-type]
         quantity=10.0,
-        entryPrice=100.0,
+        entryPrice=entry_price,
         exitPrice=110.0,
         pnl=100.0,
         pnlPct=10.0,
@@ -100,6 +118,8 @@ def _trade(*, decision_id: str = "decision-1", trading_style: str | None = "day"
         openedAt=_now_iso(),
         closedAt=_now_iso(),
         tradingStyle=trading_style,  # type: ignore[arg-type]
+        stopPrice=stop_price,
+        targetPrice=target_price,
     )
 
 
@@ -156,19 +176,113 @@ class TestComputeProcessAdherence:
         assert read.score_pct is not None
         assert read.score_pct < 50.0
 
-    def test_stop_loss_take_profit_entry_exit_confluence_are_always_not_trackable(self) -> None:
+    def test_entry_exit_confluence_are_always_not_trackable(self) -> None:
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        # A trade WITH real stop/target evidence — proves entry/exit/
+        # confluence stay not_trackable_yet regardless, never promoted
+        # just because a trade happens to exist.
+        trade = _trade(stop_price=95.0, target_price=115.0)
+        read = compute_process_adherence(decision, trade, None)
+
+        not_trackable_ids = {c.id for c in read.checks if c.status == "not_trackable_yet"}
+        assert _ALWAYS_NOT_TRACKABLE_IDS.issubset(not_trackable_ids)
+        for check in read.checks:
+            if check.id in _ALWAYS_NOT_TRACKABLE_IDS:
+                assert check.status == "not_trackable_yet"
+                assert "future execution/order-plan infrastructure" in check.detail
+        # Never scored as pass or fail — confirm they never contribute to verified_count.
+        assert read.not_trackable_count >= len(_ALWAYS_NOT_TRACKABLE_IDS)
+
+    def test_stop_loss_and_take_profit_not_trackable_when_no_trade_exists(self) -> None:
         verdict = _verdict([_check("confidence", True)])
         decision = _decision(gatekeeper_verdict=verdict)
         read = compute_process_adherence(decision, None, None)
 
-        not_trackable_ids = {c.id for c in read.checks if c.status == "not_trackable_yet"}
-        assert _NOT_TRACKABLE_IDS.issubset(not_trackable_ids)
-        for check in read.checks:
-            if check.id in _NOT_TRACKABLE_IDS:
-                assert check.status == "not_trackable_yet"
-                assert "future execution/order-plan infrastructure" in check.detail
-        # Never scored as pass or fail — confirm they never contribute to verified_count.
-        assert read.not_trackable_count >= len(_NOT_TRACKABLE_IDS)
+        by_id = {c.id: c for c in read.checks}
+        assert by_id["stop_loss_placement"].status == "not_trackable_yet"
+        assert by_id["take_profit_placement"].status == "not_trackable_yet"
+
+    def test_stop_loss_and_take_profit_not_trackable_when_trade_has_no_real_stop(self) -> None:
+        # A real, closed trade — but it predates Hard Risk Gates 2.0, or
+        # never had real ATR evidence — stop_price/target_price both None.
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        trade = _trade(stop_price=None, target_price=None)
+        read = compute_process_adherence(decision, trade, None)
+
+        by_id = {c.id: c for c in read.checks}
+        assert by_id["stop_loss_placement"].status == "not_trackable_yet"
+        assert by_id["take_profit_placement"].status == "not_trackable_yet"
+
+    def test_stop_loss_passes_when_correctly_placed_below_entry_for_a_long(self) -> None:
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        trade = _trade(side="buy", entry_price=100.0, stop_price=95.0)
+        read = compute_process_adherence(decision, trade, None)
+
+        check = next(c for c in read.checks if c.id == "stop_loss_placement")
+        assert check.status == "passed"
+
+    def test_stop_loss_fails_when_on_the_wrong_side_of_entry_for_a_long(self) -> None:
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        # A "stop" placed ABOVE entry on a long is not a real stop-loss.
+        trade = _trade(side="buy", entry_price=100.0, stop_price=105.0)
+        read = compute_process_adherence(decision, trade, None)
+
+        check = next(c for c in read.checks if c.id == "stop_loss_placement")
+        assert check.status == "failed"
+
+    def test_stop_loss_passes_when_correctly_placed_above_entry_for_a_short(self) -> None:
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        trade = _trade(side="sell", entry_price=100.0, stop_price=105.0)
+        read = compute_process_adherence(decision, trade, None)
+
+        check = next(c for c in read.checks if c.id == "stop_loss_placement")
+        assert check.status == "passed"
+
+    def test_take_profit_passes_when_correctly_placed_above_entry_for_a_long(self) -> None:
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        trade = _trade(side="buy", entry_price=100.0, target_price=115.0)
+        read = compute_process_adherence(decision, trade, None)
+
+        check = next(c for c in read.checks if c.id == "take_profit_placement")
+        assert check.status == "passed"
+
+    def test_take_profit_fails_when_on_the_wrong_side_of_entry_for_a_long(self) -> None:
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        trade = _trade(side="buy", entry_price=100.0, target_price=95.0)
+        read = compute_process_adherence(decision, trade, None)
+
+        check = next(c for c in read.checks if c.id == "take_profit_placement")
+        assert check.status == "failed"
+
+    def test_take_profit_can_be_not_trackable_while_stop_loss_passes(self) -> None:
+        # A trade can have a valid stop but no target — real, honest,
+        # never inferred as a failure just because one axis is missing.
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        trade = _trade(side="buy", entry_price=100.0, stop_price=95.0, target_price=None)
+        read = compute_process_adherence(decision, trade, None)
+
+        by_id = {c.id: c for c in read.checks}
+        assert by_id["stop_loss_placement"].status == "passed"
+        assert by_id["take_profit_placement"].status == "not_trackable_yet"
+
+    def test_stop_loss_and_take_profit_contribute_to_the_real_score(self) -> None:
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        trade = _trade(side="buy", entry_price=100.0, stop_price=95.0, target_price=115.0)
+        read = compute_process_adherence(decision, trade, None)
+
+        assert read.score_pct == 100.0
+        # discipline_review=None adds one more not_trackable_yet check on
+        # top of the three always-not-trackable ids.
+        assert read.not_trackable_count == len(_ALWAYS_NOT_TRACKABLE_IDS) + 1
 
     def test_mixed_pass_fail_and_not_trackable(self) -> None:
         verdict = _verdict([_check("confidence", True), _check("risk_manager", False)])

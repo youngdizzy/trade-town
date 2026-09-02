@@ -11,6 +11,22 @@ body,
   background: #000;
 }
 
+/* CEO directive "UI / Governance / Travel Mode Hardening" — the Sniper
+   Terminal (src/sniper/SniperApp.tsx, mounted via main.tsx's own
+   `sniper-surface` class) is a real, naturally-flowing document page,
+   not a fixed-viewport Phaser canvas. It needs genuine page scroll to
+   reach content below the fold — the global rule above deliberately
+   denies that to the main app, so this override is scoped to exactly
+   this one surface via the class main.tsx sets, never applying globally. */
+html.sniper-surface,
+html.sniper-surface body,
+html.sniper-surface #root {
+  height: auto;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 * {
   image-rendering: pixelated;
   image-rendering: crisp-edges;

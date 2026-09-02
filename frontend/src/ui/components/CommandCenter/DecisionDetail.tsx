@@ -367,8 +367,9 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
                 ))}
               </div>
               <p className="mt-2 text-[8px] text-cmd-textDim/70">
-                Full plan adherence requires future execution/order-plan infrastructure this paper-trading engine does not have yet — stop-loss/take-profit/entry/exit/confluence checks
-                above are honestly reported as not trackable, never scored as pass or fail.
+                Stop-loss/take-profit placement are real, evidence-based checks (Hard Risk Gates 2.0&apos;s own stop/target prices). Entry condition, exit condition, and confluence
+                requirement matching still require structured plan infrastructure this paper-trading engine does not have yet — those three are honestly reported as not trackable,
+                never scored as pass or fail.
               </p>
             </Glass>
           )}
