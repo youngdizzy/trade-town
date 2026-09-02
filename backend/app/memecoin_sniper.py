@@ -42,6 +42,8 @@ from app.schemas import (
     SniperCreatorRisk,
     SniperEngineConfig,
     SniperEngineStatusRead,
+    SniperEvent,
+    SniperEventType,
     SniperExitReason,
     SniperFailureCode,
     SniperLead,
@@ -393,6 +395,22 @@ def size_paper_position(config: SniperEngineConfig, risk_state: SniperRiskState,
     return round(size_sol, 4), round(stop_price, 12), round(target_price, 12)
 
 
+def position_risk_sol(entry_price: float, stop_price: float, size_sol: float) -> float:
+    """The real SOL amount at stake if the ORIGINAL hard stop is hit —
+    `size_sol * |entry_price - stop_price| / entry_price`. The one real
+    formula both `open_position()` (an open position's own `risk_sol`
+    field) and `close_position()` (`SniperTrade.risk_sol`) use, so the
+    two never drift into two different definitions of "risk" for the
+    same position. Always measured against the ORIGINAL stop, never a
+    tighter trailing stop — matching this module's own established
+    R-multiple convention (`close_position()` already computed
+    R-multiple this same way before this helper existed)."""
+    if entry_price <= 0:
+        return 0.0
+    stop_distance_pct = abs(entry_price - stop_price) / entry_price
+    return size_sol * stop_distance_pct
+
+
 def open_position(candidate: SniperCandidate, size_sol: float, stop_price: float, target_price: float, opened_at: str) -> SniperPosition:
     return SniperPosition(
         id=f"snipe-{candidate.mint[:12]}-{opened_at}",
@@ -409,6 +427,7 @@ def open_position(candidate: SniperCandidate, size_sol: float, stop_price: float
         rMultiple=0.0,
         pnlSol=0.0,
         pnlPct=0.0,
+        riskSol=round(position_risk_sol(candidate.price_usd, stop_price, size_sol), 6),
     )
 
 
@@ -477,8 +496,7 @@ def derive_failure_code(exit_reason: SniperExitReason, pnl_pct: float) -> list[S
 def close_position(position: SniperPosition, exit_price: float, exit_reason: SniperExitReason, closed_at: str) -> tuple[SniperPosition, SniperTrade]:
     pnl_pct = 100.0 * (exit_price - position.entry_price) / position.entry_price if position.entry_price > 0 else 0.0
     pnl_sol = round(position.size_sol * pnl_pct / 100.0, 6)
-    stop_distance_pct = abs(position.entry_price - position.stop_price) / position.entry_price if position.entry_price > 0 else 1.0
-    risk_sol = position.size_sol * stop_distance_pct
+    risk_sol = position_risk_sol(position.entry_price, position.stop_price, position.size_sol)
     r_multiple = round((pnl_sol / risk_sol), 3) if risk_sol > 0 else 0.0
 
     closed_position = position.model_copy(update={"status": "closed", "current_price": exit_price, "pnl_pct": round(pnl_pct, 3), "pnl_sol": pnl_sol, "r_multiple": r_multiple})
@@ -618,6 +636,12 @@ def _simulate_price_step(current_price: float, entry_price: float) -> float:
     return max(new_price, entry_price * 0.01)
 
 
+def _event(event_type: SniperEventType, now: str, *, mint: str | None = None, symbol: str | None = None, detail: str) -> SniperEvent:
+    """One real, structured tick event — see `SniperEvent`'s own
+    docstring for why this replaced a same-tick, discarded `list[str]`."""
+    return SniperEvent(id=f"evt-{uuid.uuid4().hex[:12]}", timestamp=now, type=event_type, mint=mint, symbol=symbol, detail=detail)
+
+
 @dataclass
 class SniperTickResult:
     """The one real, combined tick result — mirrors app/scanner.py's
@@ -630,7 +654,7 @@ class SniperTickResult:
     leads: list[SniperLead]
     lessons: list[SniperLesson]
     risk_state: SniperRiskState
-    events: list[str]
+    events: list[SniperEvent]
     new_trades: list[SniperTrade]
 
 
@@ -652,7 +676,7 @@ def tick_sniper_engine(
     `"paused"` branch below, matching Section 26's "pause new entries"
     distinct from "freeze everything")."""
     now = _now_iso()
-    events: list[str] = []
+    events: list[SniperEvent] = []
     new_trades: list[SniperTrade] = []
 
     if config.status == "stopped":
@@ -673,21 +697,41 @@ def tick_sniper_engine(
             trade_history = [*trade_history, trade]
             new_trades.append(trade)
             risk_state = update_risk_state_after_trade(risk_state, trade, now)
-            events.append(f"EXIT mint={trade.mint} symbol={trade.symbol} reason={exit_reason} pnl={trade.pnl_sol:+.4f}sol r={trade.r_multiple:+.2f}")
+            events.append(
+                _event(
+                    "exit",
+                    now,
+                    mint=trade.mint,
+                    symbol=trade.symbol,
+                    detail=f"{exit_reason} — {trade.pnl_sol:+.4f} SOL ({trade.r_multiple:+.2f}R)",
+                )
+            )
         else:
             updated_positions[i] = updated
 
     if len(trade_history) > MAX_TRADE_HISTORY:
         trade_history = trade_history[-MAX_TRADE_HISTORY:]
 
+    # Part VIII (Risk Visualization) — real, honest fix: `open_risk_sol`
+    # gates `evaluate_entry_firewall()`'s own `max_open_risk_pct` check
+    # below, but was never actually written anywhere in this module
+    # before this pass (it silently stayed at its schema default of 0.0
+    # forever, making that specific firewall gate a dead no-op). Recomputed
+    # here — right after the closed-trades loop above, same point
+    # `risk_state.consecutive_losses`/`kill_switch_triggered` are already
+    # current for this tick's firewall evaluation below — from the real,
+    # per-position `risk_sol` field (`position_risk_sol()`), never a second
+    # formula.
+    risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
+
     if config.status == "running" and random.random() < DISCOVERY_CHANCE_PER_TICK:
         candidate = build_candidate(f"cand-{uuid.uuid4().hex[:10]}", now)
         candidates = [candidate, *candidates][:MAX_CANDIDATES]
-        events.append(f"DISCOVERED mint={candidate.mint} symbol={candidate.symbol}")
+        events.append(_event("discovered", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"score {candidate.opportunity_score}, {candidate.classification}"))
         if candidate.safety_status == "rejected":
-            events.append(f"SAFETY_REJECT mint={candidate.mint} reason={candidate.decision_reason}")
+            events.append(_event("safety_reject", now, mint=candidate.mint, symbol=candidate.symbol, detail=candidate.decision_reason))
         elif candidate.classification in ("qualified", "high_conviction"):
-            events.append(f"QUALIFIED mint={candidate.mint} score={candidate.opportunity_score}")
+            events.append(_event("qualified", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"score {candidate.opportunity_score}"))
             open_count = sum(1 for p in updated_positions if p.status == "open")
             allowed, reason = evaluate_entry_firewall(candidate, config, risk_state, open_count)
             if allowed:
@@ -696,15 +740,16 @@ def tick_sniper_engine(
                     size_sol, stop_price, target_price = sizing
                     new_position = open_position(candidate, size_sol, stop_price, target_price, now)
                     updated_positions.append(new_position)
-                    events.append(f"SNIPED mint={candidate.mint} symbol={candidate.symbol} size={size_sol}sol score={candidate.opportunity_score}")
+                    events.append(_event("sniped", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"size {size_sol} SOL, score {candidate.opportunity_score}"))
+                    risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
             else:
-                events.append(f"NO_TRADE mint={candidate.mint} {reason}")
+                events.append(_event("no_trade", now, mint=candidate.mint, symbol=candidate.symbol, detail=reason))
 
     if trade_history and len(trade_history) % 20 == 0:
         lesson = generate_lesson_from_history(trade_history, now)
         if lesson is not None and not any(existing.observation == lesson.observation for existing in lessons):
             lessons = [lesson, *lessons][:MAX_LESSONS]
-            events.append("LESSON " + lesson.observation)
+            events.append(_event("lesson", now, detail=lesson.observation))
 
     return SniperTickResult(candidates, updated_positions, trade_history, leads, lessons, risk_state, events, new_trades)
 

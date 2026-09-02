@@ -177,6 +177,10 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "sniper_lessons",
         "sniper_risk_state",
         "sniper_engine_config",
+        # Professional Trading Terminal directive — real, capped rolling
+        # event log, same tick-mutated category as the sniper_* fields
+        # above (not the permanent sniper_trade_history archive below).
+        "sniper_events",
     ),
     "research": ("research", "watchlist", "black_box"),
     # foundational_mentor_state lives here (not in `derived`) because,

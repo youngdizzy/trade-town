@@ -7,6 +7,135 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Terminal 2.0 + Multi-Trade Visualization +
+  Memecoin Sniper Architecture Correction + Professional Trading
+  Workspace"** (second increment on top of the pass directly below —
+  same directive family, deeper spec). Phase 0 forensic audit (direct
+  schema/router/engine inspection, not blind recon, since the previous
+  pass had just built this same surface) found the terminal itself
+  already covered most of the directive's Part III/V asks (entry/stop/
+  target/current/P&L/R/size/state all real and rendered); the genuinely
+  new, real gaps were Part VII (Trade Event Timeline) and Part VIII
+  (Risk Visualization) — and auditing those two surfaced a real,
+  previously-undetected backend bug along the way.
+  - **A real bug found by the audit itself, backend: `open_risk_sol` was
+    never written anywhere.** `evaluate_entry_firewall()`'s own
+    `max_open_risk_pct` gate reads `risk_state.open_risk_sol` to block a
+    new entry once total open risk is too high — but nothing in
+    `app/memecoin_sniper.py` ever WROTE that field; it stayed at its
+    schema default of `0.0` forever, silently making that specific
+    safety gate a dead no-op for as long as this domain has existed.
+    Fixed with a new `position_risk_sol(entry_price, stop_price,
+    size_sol)` helper (the one real formula both a `SniperPosition`'s
+    own new `riskSol` field and `SniperTrade.riskSol` now share — no
+    more duplicated formula between `open_position()` and
+    `close_position()`), and a real recompute
+    (`sum(p.risk_sol for open positions)`) inserted at the same point
+    in `tick_sniper_engine()` that `consecutive_losses`/
+    `kill_switch_triggered` were already being kept current for the same
+    tick's firewall check, plus the equivalent recompute in
+    `GameState.close_sniper_position()`'s manual-exit path (which
+    bypasses the tick loop entirely). 6 new backend tests cover this,
+    including one that proves the firewall gate now actually blocks a
+    real over-limit entry (`TestEntryFirewall::
+    test_max_open_risk_pct_blocks_entry_when_real_open_risk_is_too_high`).
+  - **Part VIII (Risk Visualization), real, no duplicate engine.** The
+    Sniper terminal's Risk Status card already showed drawdown/daily
+    loss/open risk/size multiplier/consecutive losses/kill switch —
+    extended (never rebuilt) with the real MAX and UTILIZATION% the
+    directive asks for, computed from fields that were already real and
+    already fetched (`SniperEngineConfig.maxOpenRiskPct`/
+    `maxDailyLossPct`/`riskPerTradePct`, `SniperRiskState.equitySol`) —
+    zero new backend fields needed for this half. The focused trade
+    card gained a real "Risk (SOL)" row from the new `riskSol` field
+    (constant per position, since — matching this module's own
+    pre-existing R-multiple convention — risk is always measured
+    against the ORIGINAL hard stop, never a tighter trailing stop), and
+    the terminal's aggregate strip gained a real "Total open risk"
+    figure (`sum` of every open position's own `riskSol`). Explicitly
+    NOT fabricated: a decomposed BASE/DRAWDOWN/VOLATILITY/HEALTH
+    breakdown like the directive's own illustrative example — this
+    domain's real dynamic risk scaling is genuinely a single combined
+    `sizeMultiplier` factor (consecutive-losses + drawdown-driven, see
+    `update_risk_state_after_trade()`), not decomposed sub-factors the
+    way the main portfolio's separate Risk Contract is; showing a fake
+    breakdown here would misrepresent how this specific engine actually
+    computes size. Correlated exposure (Part X) is shown as an honest
+    "NOT AVAILABLE" label with the real reason named (Sniper positions
+    aren't part of `app/portfolio_intelligence.py::
+    count_correlated_positions`, the main portfolio's real correlation
+    engine, and this pass did not build a second one) rather than
+    silently omitted or faked.
+  - **Part VII (Trade Event Timeline), real, from an existing signal
+    nobody had kept.** `tick_sniper_engine()` already generated a real
+    per-tick `events: list[str]` (DISCOVERED/SAFETY_REJECT/QUALIFIED/
+    SNIPED/NO_TRADE/EXIT/LESSON) — but `app/nexus.py` never captured it;
+    the list was built fresh and thrown away every single tick. Turned
+    into a real, structured, PERSISTED record: new `SniperEvent` schema
+    (id/timestamp/type/mint/symbol/detail), a capped rolling
+    `sniper_events` list (`MAX_SNIPER_EVENTS = 300`) on `GameSaveState`,
+    populated by `app/nexus.py`'s tick loop and by
+    `close_sniper_position()`'s manual-exit path (which needed its own
+    `manual_exit` event, since it bypasses the tick loop). New endpoint
+    `GET /api/sniper/events?mint=...&limit=...` (mint filter powers the
+    terminal's own per-trade timeline). The Sniper app's "Recent
+    Activity" section — previously an honestly-disclosed simplification
+    derived from already-fetched candidates/trades — now reads this
+    real event log directly; the focused trade card gained its own
+    "Trade Event Timeline" section scoped to that position's mint. 5 new
+    backend tests cover structured-event shape, the discovery→sniped
+    path, and the manual-exit event/risk-recompute pair.
+  - **Deliberately NOT built this pass, disclosed, with the specific
+    reason**: no fabricated strategy VERSION number — recon confirmed
+    (again) there is genuinely only one real Sniper engine with no
+    version/lineage registry anywhere in this codebase (unlike the main
+    equities Strategy Lab's real `StrategyCompiledDefinition` versions),
+    so inventing a "2.3.1"-style number with nothing real behind it
+    would be exactly the fabrication this directive's own Part IV
+    forbids; the terminal keeps its existing honest single-engine label
+    instead. No wallet add/remove/select UI — Part XI's own fallback
+    clause ("if secure wallet infrastructure does not yet exist,
+    implement the interface/abstraction safely and explicitly document
+    the limitation") is satisfied by the existing, clearly-stated
+    disclosure card rather than buttons that would look functional but
+    aren't. No chart trade-markers (ENTRY/PARTIAL EXIT/STOP UPDATE/
+    FINAL EXIT dots on the candlestick canvas) — the overlay LINES
+    already communicate entry/stop/target/current clearly, this domain
+    has no real partial-exit concept to mark (confirmed: neither
+    `SniperPosition` nor `SniperTrade` has a partial-fill field — every
+    trade is all-or-nothing), and the remaining marker types are a
+    lower-value, purely-decorative canvas-drawing addition relative to
+    the two real backend gaps this pass actually closed. No expanded
+    DISCOVERED/WATCHING/QUALIFIED/APPROVED/ENTERED/REJECTED/EXITED
+    candidate lifecycle — the real backend already has two honest,
+    real dimensions (`classification`: rejected/watch/qualified/
+    high_conviction; `timingState`: watch/early_setup/confirmation/
+    entry_window/late/exhausted) already rendered in the Discovery
+    section; inventing a third, unbacked state machine on top would add
+    complexity without a real signal behind it. No multi-chart view
+    (Part VI mode 4) — the directive's own words: "do NOT build a
+    massive chart framework just for this feature."
+  - **Testing.** Backend: `python -m mypy app/` and `python -m ruff
+    check app/ tests/` clean; 11 new tests across
+    `tests/test_memecoin_sniper.py` (7) and `tests/test_state.py` (2)
+    beyond what's named above; full backend suite green. Frontend:
+    `npx tsc --noEmit`/`npm run lint`/`npm run build` all clean. Live-
+    verified with a real (non-mocked) Playwright pass against the
+    running dev stack: `GET /api/sniper/events` returns real, live
+    DISCOVERED/SAFETY_REJECT events with real timestamps/detail text
+    from the actually-running engine; the Risk Status card renders the
+    real "0.0000 SOL — max 0.305 SOL (0% utilized)" open-risk line; the
+    terminal's own "Recent activity — real, persisted event log"
+    section renders that same live data. `SniperPosition.riskSol` was
+    confirmed real and non-zero for a freshly-`open_position()`-created
+    position via the backend test suite; the two pre-existing (already-
+    closed, pre-dating this change) positions in the live dev save
+    correctly show `riskSol: 0.0` — an honest Pydantic default for save
+    data that predates the field, not a bug — since no NEW live entry
+    opened within this pass's own bounded live-verification window
+    (same real discovery→entry rarity this directive's prior increment
+    already documented).
+
 - **CEO directive "TradeTown — Memecoin Sniper + Professional Trading
   Terminal, UI Correction / Visualization Rebuild."** Corrects two real
   problems the directive itself named: the Memecoin Sniper had been

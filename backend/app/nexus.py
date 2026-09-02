@@ -323,6 +323,15 @@ MAX_PAPER_TRADE_JOURNAL = 200
 # per tick, so this stays a meaningful timeline the same way
 # MAX_MARKET_ENVIRONMENT_HISTORY's regime-change timeline does.
 MAX_DRIFT_EVENTS = 200
+# Professional Trading Terminal directive, Part VII — real, structured
+# Sniper events (see app/schemas.py's SniperEvent docstring for why these
+# used to be generated every tick and then silently discarded). Rolling
+# window, not a permanent journal (sniper_trade_history already is the
+# permanent record for closed trades) — capped the same way
+# sniper_candidates/sniper_positions already are inside
+# tick_sniper_engine() itself, just applied here since events/new_trades
+# are per-tick output, not accumulated state passed into that function.
+MAX_SNIPER_EVENTS = 300
 # v0.7 Feature 17 — one Debate generated per new TradeProposal (see
 # generate_debate below); capped the same way every other per-proposal
 # record here is.
@@ -1248,6 +1257,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     sniper_lessons = list(state.sniper_lessons)
     sniper_risk_state = state.sniper_risk_state
     sniper_engine_config = state.sniper_engine_config
+    sniper_events = list(state.sniper_events)
     decisions = list(state.decisions)
     trade_proposals = list(state.trade_proposals)
     ceo_decisions = list(state.ceo_decisions)
@@ -1472,6 +1482,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     sniper_leads = sniper_tick_result.leads
     sniper_lessons = sniper_tick_result.lessons
     sniper_risk_state = sniper_tick_result.risk_state
+    if sniper_tick_result.events:
+        sniper_events = [*sniper_events, *sniper_tick_result.events]
+        if len(sniper_events) > MAX_SNIPER_EVENTS:
+            sniper_events = sniper_events[-MAX_SNIPER_EVENTS:]
 
     # Memecoin Sniper Professional Trading Terminal directive — the
     # Sniper's own price walk (memecoin_sniper.py's _simulate_price_step)
@@ -3257,6 +3271,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "sniper_leads": sniper_leads,
             "sniper_lessons": sniper_lessons,
             "sniper_risk_state": sniper_risk_state,
+            "sniper_events": sniper_events,
             "decisions": decisions,
             "trade_proposals": trade_proposals,
             "ceo_decisions": ceo_decisions,

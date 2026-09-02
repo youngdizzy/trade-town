@@ -4106,7 +4106,20 @@ position's real `currentPrice` with the market-data provider (via
 `MarketDataProvider.set_live_price_override()`), so the returned candle
 series is correctly scaled to the position's own real, sub-$1 price
 range rather than the provider's generic hash-seeded range for an
-unrecognized symbol.
+unrecognized symbol. `riskSol` is the real SOL amount at stake against
+the position's ORIGINAL hard stop (never a tighter trailing stop),
+computed once at entry — see `app/memecoin_sniper.py::
+position_risk_sol()`.
+
+### `GET /api/sniper/events?mint=...&limit=50`
+
+Returns the most recent `SniperEvent[]` (newest first) — the real,
+persisted event log ("Terminal 2.0" directive, Part VII):
+`discovered`/`safety_reject`/`qualified`/`sniped`/`no_trade`/`exit`/
+`manual_exit`/`lesson`. `mint` (optional) filters to one token's own
+history — the Sniper terminal's focused-trade Trade Event Timeline uses
+this. `limit` defaults to 50, max 300 (the same cap the rolling
+`sniper_events` list itself is capped at server-side).
 
 ### `GET /api/sniper/trades?limit=100`
 
@@ -4126,7 +4139,11 @@ fabricated lesson below that floor.
 ### `GET /api/sniper/risk`
 
 Returns the current `SniperRiskState` — equity, drawdown, daily loss,
-consecutive losses, size multiplier, kill-switch status.
+consecutive losses, size multiplier, kill-switch status. `openRiskSol`
+is a real, live-recomputed sum of every open position's own `riskSol`
+("Terminal 2.0" directive — this field used to silently stay at its
+schema default of `0.0` forever, making `evaluate_entry_firewall()`'s
+own `maxOpenRiskPct` gate a dead no-op; now real).
 
 ### `GET /api/sniper/live-arming`
 

@@ -1167,3 +1167,36 @@ class TestCloseSniperPosition:
         assert trade.exit_reason == "manual_exit"
         assert saved.sniper_positions[0].status == "closed"
         assert saved.sniper_trade_history == [trade]
+
+    def test_closing_a_position_appends_a_real_manual_exit_event(self) -> None:
+        """Professional Trading Terminal directive, Part VII — the
+        manual-close path bypasses tick_sniper_engine() entirely, so it
+        needs its own real event, not a gap in the timeline."""
+        from app.memecoin_sniper import build_candidate, open_position
+
+        state = GameState()
+        candidate = build_candidate("c1", "2024-01-01T00:00:00+00:00").model_copy(update={"price_usd": 1.0, "mint": "mmm", "symbol": "ZZZ"})
+        position = open_position(candidate, 1.0, 0.9, 1.5, "2024-01-01T00:00:00+00:00")
+        state.data = state.data.model_copy(update={"sniper_positions": [position]})
+        saved, trade, error = asyncio.run(state.close_sniper_position(position.id))
+        assert error is None
+        assert len(saved.sniper_events) == 1
+        event = saved.sniper_events[0]
+        assert event.type == "manual_exit"
+        assert event.mint == "mmm"
+        assert event.symbol == "ZZZ"
+
+    def test_closing_a_position_recomputes_open_risk_sol_to_zero(self) -> None:
+        """The real bug this pass found and fixed: open_risk_sol never
+        actually tracked real open positions before. Confirms the manual-
+        close path (not just the tick loop) keeps it honest."""
+        from app.memecoin_sniper import build_candidate, open_position
+
+        state = GameState()
+        candidate = build_candidate("c1", "2024-01-01T00:00:00+00:00").model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.9, 1.5, "2024-01-01T00:00:00+00:00")
+        assert position.risk_sol > 0.0
+        state.data = state.data.model_copy(update={"sniper_positions": [position], "sniper_risk_state": state.data.sniper_risk_state.model_copy(update={"open_risk_sol": position.risk_sol})})
+        saved, _trade, error = asyncio.run(state.close_sniper_position(position.id))
+        assert error is None
+        assert saved.sniper_risk_state.open_risk_sol == 0.0

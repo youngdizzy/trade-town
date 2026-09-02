@@ -12545,6 +12545,7 @@ SniperFailureCode = Literal[
     "unknown_failure",
 ]
 SniperCreatorRisk = Literal["confirmed", "strong_signal", "weak_signal", "unknown"]
+SniperEventType = Literal["discovered", "safety_reject", "qualified", "sniped", "no_trade", "exit", "manual_exit", "lesson"]
 
 
 class SniperSafetyCheck(CamelModel):
@@ -12632,6 +12633,16 @@ class SniperPosition(CamelModel):
     max_favorable_excursion_pct: float = Field(default=0.0, alias="maxFavorableExcursionPct")
     max_adverse_excursion_pct: float = Field(default=0.0, alias="maxAdverseExcursionPct")
     hold_time_seconds: float = Field(default=0.0, alias="holdTimeSeconds")
+    # Professional Trading Terminal directive, Part VIII (Risk
+    # Visualization) — the real SOL amount at stake if the ORIGINAL hard
+    # `stop_price` is hit (`size_sol * |entry_price - stop_price| /
+    # entry_price`), computed once at `open_position()` and never
+    # recomputed against a tighter trailing stop, matching this module's
+    # own established `close_position()`/`SniperTrade.risk_sol`
+    # convention (R-multiple has always been measured against the
+    # original stop, not the trailing one — see
+    # `app/memecoin_sniper.py::position_risk_sol()`).
+    risk_sol: float = Field(default=0.0, alias="riskSol")
     data_provenance: Literal["simulated"] = Field(default="simulated", alias="dataProvenance")
 
 
@@ -12660,6 +12671,26 @@ class SniperTrade(CamelModel):
     thesis: str
     thesis_validated: bool | None = Field(default=None, alias="thesisValidated")
     data_provenance: Literal["simulated"] = Field(default="simulated", alias="dataProvenance")
+
+
+class SniperEvent(CamelModel):
+    """Professional Trading Terminal directive, Part VII (Trade Event
+    Timeline) — a real, structured, persisted event. `app/
+    memecoin_sniper.py::tick_sniper_engine()` already generated these
+    moments every tick (as plain formatted strings in
+    `SniperTickResult.events`) but nothing ever captured or persisted
+    them — `app/nexus.py` discarded the list every tick. This is that
+    same real signal, structured and now actually kept. `timestamp` is
+    always the real tick/action time this event happened, never
+    manufactured after the fact. `mint`/`symbol` are `None` only for the
+    one event type that has no associated token (`lesson`)."""
+
+    id: str
+    timestamp: str
+    type: SniperEventType
+    mint: str | None = None
+    symbol: str | None = None
+    detail: str
 
 
 class SniperLead(CamelModel):
@@ -12942,6 +12973,12 @@ class GameSaveState(CamelModel):
     sniper_lessons: list[SniperLesson] = Field(default_factory=list, alias="sniperLessons")
     sniper_risk_state: SniperRiskState = Field(default_factory=SniperRiskState, alias="sniperRiskState")
     sniper_engine_config: SniperEngineConfig = Field(default_factory=SniperEngineConfig, alias="sniperEngineConfig")
+    # Professional Trading Terminal directive, Part VII — real, capped,
+    # rolling event log (not the permanent trade journal, which stays
+    # `sniper_trade_history` above/below) — same category as
+    # sniper_candidates/sniper_positions (tick-mutated, pruned, not
+    # recomputed from scratch).
+    sniper_events: list[SniperEvent] = Field(default_factory=list, alias="sniperEvents")
     # CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
     # Scaling" — the real, permanent, append-only audit trail naming
     # exactly which `RiskContract` version governed each real sizing/

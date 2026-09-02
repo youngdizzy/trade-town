@@ -21,6 +21,7 @@ from app.memecoin_sniper import (
     generate_lesson_from_history,
     manage_position_tick,
     open_position,
+    position_risk_sol,
     run_safety_firewall,
     score_candidate,
     size_paper_position,
@@ -193,6 +194,20 @@ class TestEntryFirewall:
         assert allowed is True
         assert reason == "PASS"
 
+    def test_max_open_risk_pct_blocks_entry_when_real_open_risk_is_too_high(self) -> None:
+        """Professional Trading Terminal directive, Part VIII — this gate
+        used to be a dead no-op (`open_risk_sol` was never written
+        anywhere, always its schema default of 0.0). Confirms the gate is
+        now real: with `open_risk_sol` at real, honest parity with
+        `max_open_risk_pct * equity`, a new candidate is correctly
+        blocked."""
+        candidate = self._candidate(safety_status="safe_enough", classification="qualified", timing_state="entry_window", opportunity_score=90.0, rug_risk="low", creator_risk="weak_signal")
+        config = SniperEngineConfig(maxOpenRiskPct=3.0)
+        risk = SniperRiskState(equitySol=10.0, openRiskSol=0.3)  # exactly at the 3% cap
+        allowed, reason = evaluate_entry_firewall(candidate, config, risk, 0)
+        assert allowed is False
+        assert "max_open_risk_pct" in reason
+
 
 class TestPositionSizing:
     def test_returns_none_with_zero_equity(self) -> None:
@@ -261,6 +276,30 @@ class TestExitEngine:
         assert position.trailing_active is True
         position, exit_reason = manage_position_tick(position, 1.10, 1.0)
         assert exit_reason == "trailing_stop"
+
+
+class TestPositionRiskSol:
+    """Professional Trading Terminal directive, Part VIII — the single
+    real risk-in-SOL formula shared by an open position's own `risk_sol`
+    field and a closed trade's `SniperTrade.risk_sol`, so the two can
+    never drift into two different definitions of the same real number."""
+
+    def test_matches_the_hand_computed_stop_distance(self) -> None:
+        assert abs(position_risk_sol(1.0, 0.88, 2.0) - 0.24) < 1e-9
+
+    def test_zero_at_zero_entry_price(self) -> None:
+        assert position_risk_sol(0.0, 0.5, 10.0) == 0.0
+
+    def test_open_position_carries_a_real_risk_sol_field(self) -> None:
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 2.0, 0.88, 1.55, _NOW)
+        assert abs(position.risk_sol - 0.24) < 1e-9
+
+    def test_close_position_risk_sol_matches_the_open_positions_own_field(self) -> None:
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 2.0, 0.88, 1.55, _NOW)
+        _closed, trade = close_position(position, 1.0, "manual_exit", _NOW)
+        assert abs(trade.risk_sol - position.risk_sol) < 1e-9
 
 
 class TestClosePositionAndFailureCodes:
@@ -366,6 +405,66 @@ class TestTickEngine:
         result = tick_sniper_engine(config, risk, [], [position], [], [], [], tick_seconds=200.0)
         assert len(result.candidates) == 0
         assert any(p.status == "closed" for p in result.positions) or any(p.hold_time_seconds > 0 for p in result.positions)
+
+    def test_a_closing_position_produces_a_real_structured_exit_event(self) -> None:
+        """Professional Trading Terminal directive, Part VII — the tick
+        engine's own events used to be plain formatted strings this pass
+        found were generated then immediately discarded by app/nexus.py
+        every tick. Confirms they're now real, structured `SniperEvent`s
+        with a real mint/symbol/type, not just non-empty text."""
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0, "mint": "mmm", "symbol": "ZZZ"})
+        position = open_position(candidate, 1.0, 0.99, 1.55, _NOW)  # tight stop, guaranteed to trip
+        config = SniperEngineConfig(status="paused")
+        risk = SniperRiskState()
+        random.seed(1)
+        result = tick_sniper_engine(config, risk, [], [position], [], [], [], tick_seconds=200.0)
+        exit_events = [e for e in result.events if e.type == "exit"]
+        assert len(exit_events) == 1
+        assert exit_events[0].mint == "mmm"
+        assert exit_events[0].symbol == "ZZZ"
+        assert exit_events[0].timestamp
+
+    def test_open_risk_sol_recomputes_from_real_open_positions_after_a_close(self) -> None:
+        """The bug this pass found and fixed: `open_risk_sol` used to
+        never be written anywhere, staying at its schema default of 0.0
+        forever. Confirms it now tracks reality: a lone open position's
+        risk closes out to exactly 0.0 once that position closes."""
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.99, 1.55, _NOW)
+        assert position.risk_sol > 0.0
+        config = SniperEngineConfig(status="paused")
+        risk = SniperRiskState(openRiskSol=position.risk_sol)
+        random.seed(1)
+        result = tick_sniper_engine(config, risk, [], [position], [], [], [], tick_seconds=200.0)
+        assert all(p.status == "closed" for p in result.positions)
+        assert result.risk_state.open_risk_sol == 0.0
+
+    def test_open_risk_sol_reflects_a_still_open_position(self) -> None:
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.5, 5.0, _NOW)  # wide stop/target — won't trip in one small tick
+        config = SniperEngineConfig(status="paused")
+        risk = SniperRiskState()
+        random.seed(1)
+        result = tick_sniper_engine(config, risk, [], [position], [], [], [], tick_seconds=1.0)
+        assert any(p.status == "open" for p in result.positions)
+        assert abs(result.risk_state.open_risk_sol - position.risk_sol) < 1e-6
+
+    def test_a_new_entry_produces_a_sniped_event(self) -> None:
+        random.seed(42)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState(equitySol=1000.0)
+        candidates: list = []
+        positions: list = []
+        sniped_events = []
+        for _ in range(3000):
+            result = tick_sniper_engine(config, risk, candidates, positions, [], [], [], tick_seconds=1.0)
+            candidates, positions, risk = result.candidates, result.positions, result.risk_state
+            sniped_events.extend(e for e in result.events if e.type == "sniped")
+            if sniped_events:
+                break
+        assert len(sniped_events) > 0
+        assert sniped_events[0].mint is not None
+        assert sniped_events[0].detail
 
     def test_never_produces_a_live_data_provenance_anywhere(self) -> None:
         random.seed(3)

@@ -13,6 +13,7 @@ from app.persistence import persist_modules
 from app.schemas import (
     SniperCandidate,
     SniperEngineStatusRead,
+    SniperEvent,
     SniperLead,
     SniperLesson,
     SniperLiveArmingStatus,
@@ -54,6 +55,19 @@ async def sniper_positions(open_only: bool = Query(default=False, alias="openOnl
 async def sniper_trades(limit: int = Query(default=100, ge=1, le=500)) -> list[SniperTrade]:
     state = await game_state.snapshot()
     return list(reversed(state.sniper_trade_history))[:limit]
+
+
+@router.get("/events", response_model=list[SniperEvent])
+async def sniper_events(mint: str | None = Query(default=None), limit: int = Query(default=50, ge=1, le=300)) -> list[SniperEvent]:
+    """Professional Trading Terminal directive, Part VII — the real,
+    persisted event timeline (see SniperEvent's own docstring). Newest
+    first; `mint` filters to one token's own history (used by the
+    terminal's focused-trade timeline)."""
+    state = await game_state.snapshot()
+    events = state.sniper_events
+    if mint is not None:
+        events = [e for e in events if e.mint == mint]
+    return list(reversed(events))[:limit]
 
 
 @router.get("/leads", response_model=list[SniperLead])

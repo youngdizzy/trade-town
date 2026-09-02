@@ -101,7 +101,7 @@ from app.memory import record
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
 from app.market_intelligence import compute_market_intelligence_state, compute_strategy_match
-from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
+from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS, MAX_SNIPER_EVENTS
 from app.paper_trade_journal import add_ceo_note
 from app.portfolio import default_portfolio, sim_minutes
 from app.portfolio_intelligence import compute_portfolio_intelligence
@@ -1147,6 +1147,7 @@ class GameState:
         real, already-simulated `current_price` — never a fabricated
         fill price. Returns `(state, trade_or_none, error)`."""
         from app.memecoin_sniper import close_position, update_risk_state_after_trade
+        from app.schemas import SniperEvent
 
         async with self.lock:
             positions = list(self.data.sniper_positions)
@@ -1158,7 +1159,21 @@ class GameState:
             positions[index] = closed_position
             trade_history = [*self.data.sniper_trade_history, trade]
             risk_state = update_risk_state_after_trade(self.data.sniper_risk_state, trade, now)
-            self.data = self.data.model_copy(update={"sniper_positions": positions, "sniper_trade_history": trade_history, "sniper_risk_state": risk_state})
+            # Real per-position risk (open_risk_sol) must drop immediately
+            # when a position closes manually, not just at the next tick —
+            # same real recompute app/memecoin_sniper.py's tick loop does.
+            risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in positions if p.status == "open"), 6)})
+            # Professional Trading Terminal directive, Part VII — the
+            # manual-exit path bypasses tick_sniper_engine() entirely, so
+            # it needs its own real event, same shape as the tick loop's
+            # own "exit" events (see SniperEvent's own docstring).
+            events = [
+                *self.data.sniper_events,
+                SniperEvent(id=f"evt-{trade.id}", timestamp=now, type="manual_exit", mint=trade.mint, symbol=trade.symbol, detail=f"{reason} — {trade.pnl_sol:+.4f} SOL ({trade.r_multiple:+.2f}R)"),
+            ][-MAX_SNIPER_EVENTS:]
+            self.data = self.data.model_copy(
+                update={"sniper_positions": positions, "sniper_trade_history": trade_history, "sniper_risk_state": risk_state, "sniper_events": events}
+            )
             return self.data, trade, None
 
     async def activate_emergency_stop(self) -> tuple[GameSaveState, str | None]:
