@@ -18063,3 +18063,125 @@ Portfolio Analyst's existing `high_redundancy` classification (Section
 attack (Section 13); Research Council extension (Section 16 — the
 pattern already exists via Champion/Challenger and Portfolio Analyst);
 caching (Section 25); UI (Section 26).
+
+## CEO directive "TradeTown — Memecoin Sniper Agent" (backend, paper-only/simulated scope)
+
+A new specialist domain — Solana memecoin discovery, safety screening,
+scoring, paper execution, and journaling — added to the live tick loop,
+running continuously in the background exactly like every other
+TradeTown system.
+
+**Scope confirmed explicitly by the CEO before implementation** (the
+directive's own end-state includes real Solana wallet management and
+live on-chain execution — this pass builds the paper-only, simulated
+data layer only, not real blockchain integration): no real Solana RPC,
+Jupiter, Jito, wallet, or social-API credentials exist in this
+environment, and none were added. `app/memecoin_sniper.py`'s
+`_generate_raw_candidate()` is a real, deterministic simulator — the
+same `random`-module convention `app/scanner.py`/`app/market_data.py`
+already use — never presented as real on-chain data. Every
+`SniperCandidate`/`SniperPosition`/`SniperTrade`/`SniperLead` carries
+`dataProvenance: "simulated"`, and `evaluate_live_arming()` always
+returns `armed: false` with real, named blocking reasons. There is no
+code path anywhere in this domain that can place a real on-chain trade.
+
+### `app/memecoin_sniper.py` — the real pipeline
+
+`run_safety_firewall()` (Section 5) — mint/freeze authority, holder
+concentration, liquidity sufficiency/stability, creator risk, slippage;
+a single hard-reject check fails the whole firewall regardless of every
+other check. `score_candidate()` (Section 6/11) — a real, disclosed,
+7-component weighted score (buy pressure 25%/momentum 20%/liquidity
+15%/holder structure 15%/creator quality 10%/whale confirmation 10%/
+social narrative 5%, matching the directive's own literal weights),
+never a mysterious composite. `classify_candidate()` (Section 10) — HARD
+SAFETY REJECTION > SCORE, always: a candidate with
+`safety_status="rejected"` can never classify as anything but
+`"rejected"` regardless of score — live-verified against a real
+candidate that scored 70.7 (comfortably inside "qualified" territory)
+but correctly classified `"rejected"` because its freeze authority was
+still active and its liquidity was collapsing. `classify_timing()`
+(Section 16/17, the anti-chase system) — `"late"`/`"exhausted"` timing
+states a high score cannot override. `evaluate_entry_firewall()`
+(Section 14) — 8 real gates, all must pass, naming the exact blocking
+condition on refusal. `size_paper_position()` (Section 15/16/19/20) —
+the exact same real formula `app/position_sizing.py` already uses for
+TradeTown's live pipeline (risk_amount = equity × risk% ×
+size_multiplier; position_size = risk_amount / stop_distance), then
+liquidity-capped at 2% of the candidate's own real (simulated)
+liquidity — a second, independent implementation of the identical
+formula (different units: SOL/simulated-Solana-liquidity vs. USD/
+`RiskLimits`), not a shared function, disclosed as such.
+`manage_position_tick()` (Section 18) — the real deterministic exit
+engine: hard stop (12%), take profit (+55%), trailing stop (activates
+at +28%, trails 12%), max hold (70s dead-bag timeout).
+`update_risk_state_after_trade()` (Section 20/21/26/27) —
+`size_multiplier` only ever decreases automatically (drawdown ≥4% halves
+it, 3 consecutive losses halves it); drawdown ≥6% arms the kill switch;
+"never increase size to recover losses" is structurally true, not just
+documented — there is no code path that raises `size_multiplier`.
+`generate_lesson_from_history()` (Section 22) — a real correlation over
+the actual journal, requiring a real 20-trade minimum sample; `None`
+(never fabricated) below that floor.
+
+### Live-wired into the tick loop
+
+`app/nexus.py::tick_sniper_engine()` mirrors `app/scanner.py::tick_scanner()`'s
+own `(full, new)` + chance-per-tick pacing convention
+(`DISCOVERY_CHANCE_PER_TICK = 0.25`). Only mutates state when the CEO
+has set the engine to `"running"`/`"paused"` via the sniper API;
+`"stopped"` (the default) leaves every list untouched. `"paused"` still
+lets the exit engine manage already-open positions (protecting existing
+risk never stops) but discovers no new candidates — Section 26's "pause
+new entries" vs. "freeze everything" distinction.
+
+### Persistence
+
+`GameSaveState` gained `sniperCandidates`/`sniperPositions`/
+`sniperTradeHistory`/`sniperLeads`/`sniperLessons`/`sniperRiskState`/
+`sniperEngineConfig`, all additive/defaulted — an older save loads with
+the real, honest empty/default state, never a validation failure, same
+as every prior save-format expansion in this codebase (v0.5→v0.6's
+riskLimits/riskWarnings/scannerAlerts/decisions, etc.). `sniperTradeHistory`
+(the permanent, append-only trade journal) was placed in the existing
+`trade_history` archive module (alongside decisions/trade_proposals —
+same real, ever-growing, never-recomputed category); the rest live in
+the existing `company` module. No new save module was created.
+`app/save_modules.py::_validate_module_map()` (a real assertion that
+runs at import time, failing loudly if any `GameSaveState` field is
+unassigned to a module) caught and confirmed correct placement of every
+new field before this shipped.
+
+### API surface
+
+`app/routers/sniper.py` plus two new `GameState` methods
+(`update_sniper_engine_config()`, `close_sniper_position()`) — see
+docs/API.md's "Memecoin Sniper" section for the full endpoint list.
+`update_sniper_engine_config()` always rejects `mode="live"` with a real
+error naming the exact missing prerequisites, since accepting that write
+would create a config the engine could never honestly honor in this
+environment.
+
+### Live verification
+
+With the dev stack running and the engine set to `"running"` via `POST
+/api/sniper/engine`, the live background tick loop (not a test, not a
+mock) discovered real candidates (`CATCAT`/`BONKINU`/`DOGEINU`/`MOON`/
+...), correctly rejected a 70.7-scoring candidate on safety grounds,
+populated 6 simulated leads, correctly returned HTTP 400 with the real
+blocking reasons for `POST /engine {"mode":"live"}`, and correctly 404'd
+closing a nonexistent position.
+
+### Deliberately NOT implemented this pass, honestly, per the CEO's own explicit scope decision
+
+No real Solana RPC/Jupiter/Jito integration; no real wallet management
+or credential storage; no real social/X research; no real on-chain
+whale/leaderboard data — each remains a real, separate, substantially
+larger system this pass does not attempt. No dedicated physical
+building/NPC in the game world yet — adding a new `AgentId` is a large,
+cross-cutting change touching scheduling (`app/nexus.py`'s per-agent
+Schedule), dialogue, and sprite rendering across dozens of files,
+deliberately deferred rather than rushed; this pass surfaces the
+specialist as a new Command Center panel instead. No copy-trading
+execution logic beyond the config toggle (Sections 11-13). No scalp mode
+as a distinct configuration (folded into the existing risk template).

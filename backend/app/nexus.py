@@ -171,6 +171,7 @@ from app.travel_mode import (
     should_auto_activate,
     travel_mode_confidence_bonus,
 )
+from app.memecoin_sniper import tick_sniper_engine
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
 from app.treasury import apply_monthly_savings_rules, record_monthly_report
@@ -1219,6 +1220,15 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     knowledge_multiplier = PRIORITY_KNOWLEDGE_MULTIPLIER if company_priority == "learning" else 1.0
     research_speed_multiplier = PRIORITY_RESEARCH_SPEED_MULTIPLIER if company_priority == "research" else 1.0
     scanner_alerts = list(state.scanner_alerts)
+    # CEO directive "TradeTown — Memecoin Sniper Agent." Paper-only,
+    # simulated — see app/memecoin_sniper.py's own module docstring.
+    sniper_candidates = list(state.sniper_candidates)
+    sniper_positions = list(state.sniper_positions)
+    sniper_trade_history = list(state.sniper_trade_history)
+    sniper_leads = list(state.sniper_leads)
+    sniper_lessons = list(state.sniper_lessons)
+    sniper_risk_state = state.sniper_risk_state
+    sniper_engine_config = state.sniper_engine_config
     decisions = list(state.decisions)
     trade_proposals = list(state.trade_proposals)
     ceo_decisions = list(state.ceo_decisions)
@@ -1412,6 +1422,29 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     timestamp=_now_iso(),
                 )
             )
+
+    # --- Memecoin Sniper specialist (paper-only, simulated) ---------------
+    # Real, independent domain — see app/memecoin_sniper.py's own module
+    # docstring for why every candidate/position/trade/lead this produces
+    # is honestly labeled `dataProvenance: "simulated"`. Only mutates
+    # state when the CEO has set the engine to "running"/"paused" via the
+    # sniper API — "stopped" (the default) leaves every list untouched.
+    sniper_tick_result = tick_sniper_engine(
+        sniper_engine_config,
+        sniper_risk_state,
+        sniper_candidates,
+        sniper_positions,
+        sniper_trade_history,
+        sniper_leads,
+        sniper_lessons,
+        tick_seconds=settings.tick_interval_seconds,
+    )
+    sniper_candidates = sniper_tick_result.candidates
+    sniper_positions = sniper_tick_result.positions
+    sniper_trade_history = sniper_tick_result.trade_history
+    sniper_leads = sniper_tick_result.leads
+    sniper_lessons = sniper_tick_result.lessons
+    sniper_risk_state = sniper_tick_result.risk_state
 
     # --- v0.6: PaperBroker fills orders placed on earlier ticks -----------
     # Runs before this tick's own decision/order-placement step below, so
@@ -3084,6 +3117,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "risk_limits": risk_limits,
             "risk_warnings": risk_warnings,
             "scanner_alerts": scanner_alerts,
+            "sniper_candidates": sniper_candidates,
+            "sniper_positions": sniper_positions,
+            "sniper_trade_history": sniper_trade_history,
+            "sniper_leads": sniper_leads,
+            "sniper_lessons": sniper_lessons,
+            "sniper_risk_state": sniper_risk_state,
             "decisions": decisions,
             "trade_proposals": trade_proposals,
             "ceo_decisions": ceo_decisions,

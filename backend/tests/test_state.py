@@ -923,3 +923,58 @@ class TestSubmitCeoDecisionStrategyRuleSnapshot:
         asyncio.run(state.register_compiled_strategy_version(name="50 EMA Breakout Pullback (Long)", source_text=text))
         assert state.data.ceo_decisions[-1].strategy_compiled_definition_version == 2
         assert len(state.data.compiled_strategy_versions["50-ema-breakout-pullback-long"]) == 3
+
+
+class TestSniperEngineControls:
+    """CEO directive "TradeTown — Memecoin Sniper Agent" — GameState's
+    real engine control surface. Section 23's own hard boundary: `mode`
+    can never be set to `"live"` in this environment."""
+
+    def test_starting_the_engine_updates_status(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_sniper_engine_config(status="running"))
+        assert error is None
+        assert saved.sniper_engine_config.status == "running"
+
+    def test_live_mode_is_always_rejected(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_sniper_engine_config(mode="live"))
+        assert error is not None
+        assert "blocked" in error.lower()
+        assert saved.sniper_engine_config.mode == "dry_run"
+
+    def test_invalid_status_is_rejected(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_sniper_engine_config(status="not_a_real_status"))
+        assert error is not None
+        assert saved.sniper_engine_config.status == "stopped"
+
+    def test_turbo_and_copy_trading_toggle_independently(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_sniper_engine_config(turbo=True, copy_trading_enabled=True))
+        assert error is None
+        assert saved.sniper_engine_config.turbo is True
+        assert saved.sniper_engine_config.copy_trading_enabled is True
+
+
+class TestCloseSniperPosition:
+    def test_closing_a_nonexistent_position_returns_an_error(self) -> None:
+        state = GameState()
+        saved, trade, error = asyncio.run(state.close_sniper_position("does-not-exist"))
+        assert trade is None
+        assert error is not None
+        assert saved is state.data
+
+    def test_closing_a_real_open_position_journals_a_trade(self) -> None:
+        from app.memecoin_sniper import build_candidate, open_position
+
+        state = GameState()
+        candidate = build_candidate("c1", "2024-01-01T00:00:00+00:00").model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.9, 1.5, "2024-01-01T00:00:00+00:00")
+        state.data = state.data.model_copy(update={"sniper_positions": [position]})
+        saved, trade, error = asyncio.run(state.close_sniper_position(position.id))
+        assert error is None
+        assert trade is not None
+        assert trade.exit_reason == "manual_exit"
+        assert saved.sniper_positions[0].status == "closed"
+        assert saved.sniper_trade_history == [trade]

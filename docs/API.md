@@ -3894,3 +3894,74 @@ price source. Only `mock` is implemented as of v0.5 — see
 for the adapter pattern to add a real one; `simulation.py`'s placeholder
 backtest math (see "Paper trading, simulation & coaching (v0.5)") would
 also switch to a real historical data source through the same interface.
+
+## Memecoin Sniper (paper-only, simulated)
+
+CEO directive "TradeTown — Memecoin Sniper Agent." **PAPER-ONLY,
+SIMULATED DATA, DISCLOSED, BY EXPLICIT DECISION** — no real Solana RPC,
+Jupiter, Jito, wallet, or social-API credentials exist in this
+environment. Every candidate/position/trade/lead these endpoints return
+carries `dataProvenance: "simulated"`. See `app/memecoin_sniper.py`'s
+own module docstring for the full honesty boundary.
+
+### `GET /api/sniper/status`
+
+Returns `SniperEngineStatusRead` — the one combined dashboard read:
+`config` (`SniperEngineConfig`), `risk` (`SniperRiskState`),
+`liveArming` (`SniperLiveArmingStatus` — always `armed: false` here,
+with the real, named blocking reasons), `openPositionCount`,
+`todayPnlSol`, `todayTradeCount`, `winRatePct`, `expectancyR` (the last
+two `null` when no trade has closed today — never a fabricated rate).
+
+### `GET /api/sniper/candidates?limit=30`
+
+Returns the most recently discovered `SniperCandidate[]` (Section 32's
+evidence card) — full safety-check breakdown, 7-component score
+breakdown, classification, and timing state.
+
+### `GET /api/sniper/positions?openOnly=false`
+
+Returns `SniperPosition[]`. `openOnly=true` filters to currently-open
+paper positions only.
+
+### `GET /api/sniper/trades?limit=100`
+
+Returns the permanent, append-only `SniperTrade[]` journal (Section 20),
+most recent first.
+
+### `GET /api/sniper/leads`
+
+Returns simulated smart-money `SniperLead[]` (Section 9/10).
+
+### `GET /api/sniper/lessons`
+
+Returns `SniperLesson[]` (Section 22) — a real correlation over the
+actual trade journal, requiring a real 20-trade minimum sample; never a
+fabricated lesson below that floor.
+
+### `GET /api/sniper/risk`
+
+Returns the current `SniperRiskState` — equity, drawdown, daily loss,
+consecutive losses, size multiplier, kill-switch status.
+
+### `GET /api/sniper/live-arming`
+
+Returns `SniperLiveArmingStatus` — always `armed: false` in this
+environment, with the exact real reasons (no RPC/Jupiter/wallet
+configured, no real non-simulated paper-trading evidence exists).
+
+### `POST /api/sniper/engine`
+
+Body: `{ "status": "stopped" | "running" | "paused", "mode": "dry_run", "turbo": bool, "copyTradingEnabled": bool }`
+(every field optional — only supplied fields change). `mode: "live"` is
+always rejected with HTTP 400 and the real blocking reasons — see
+`GameState.update_sniper_engine_config()`'s own docstring. `"paused"`
+still lets the exit engine manage already-open positions; only new
+discovery/entries stop. Returns the updated `SniperEngineStatusRead`.
+
+### `POST /api/sniper/positions/{position_id}/close`
+
+Manual exit (Section 18) — closes at the position's own real,
+already-simulated `currentPrice`, never a fabricated fill price. 404 if
+no open position with that id exists. Returns the resulting
+`SniperTrade`.

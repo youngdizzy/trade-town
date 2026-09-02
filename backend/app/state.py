@@ -155,6 +155,7 @@ from app.schemas import (
     SettingsState,
     SignalCalibrationState,
     SignalChoice,
+    SniperTrade,
     Strategy,
     SubmitQuantResearchExperimentResult,
     TalentState,
@@ -936,6 +937,62 @@ class GameState:
                 return self.data, "Company Health tier thresholds must stay in strictly descending order: Excellent > Good > Stable > Needs Attention."
             self.data = self.data.model_copy(update={"risk_limits": new_limits})
             return self.data, None
+
+    async def update_sniper_engine_config(
+        self,
+        *,
+        status: str | None = None,
+        mode: str | None = None,
+        turbo: bool | None = None,
+        copy_trading_enabled: bool | None = None,
+    ) -> tuple[GameSaveState, str | None]:
+        """CEO directive "TradeTown — Memecoin Sniper Agent," Section 23 —
+        the CEO's real engine control surface. `mode="live"` is always
+        rejected: `app/memecoin_sniper.py::evaluate_live_arming()` always
+        reports blocked in this environment (no real Solana RPC/Jupiter/
+        wallet credentials configured — see that function's own real,
+        named reasons), so accepting the write here would create a
+        config the engine could never honestly honor."""
+        async with self.lock:
+            updates: dict[str, object] = {}
+            if status is not None:
+                if status not in ("stopped", "running", "paused"):
+                    return self.data, f"Invalid engine status {status!r} — must be stopped, running, or paused."
+                updates["status"] = status
+            if mode is not None:
+                if mode == "live":
+                    return self.data, "Live trading is blocked in this environment — no real Solana RPC/Jupiter/wallet credentials are configured. See GET /api/sniper/live-arming for the exact real reasons."
+                if mode != "dry_run":
+                    return self.data, f"Invalid engine mode {mode!r} — must be dry_run (live is blocked; see GET /api/sniper/live-arming)."
+                updates["mode"] = mode
+            if turbo is not None:
+                updates["turbo"] = turbo
+            if copy_trading_enabled is not None:
+                updates["copy_trading_enabled"] = copy_trading_enabled
+            if not updates:
+                return self.data, None
+            new_config = self.data.sniper_engine_config.model_copy(update=updates)
+            self.data = self.data.model_copy(update={"sniper_engine_config": new_config})
+            return self.data, None
+
+    async def close_sniper_position(self, position_id: str, *, reason: str = "manual_exit") -> tuple[GameSaveState, SniperTrade | None, str | None]:
+        """Section 18's manual exit path. Closes at the position's own
+        real, already-simulated `current_price` — never a fabricated
+        fill price. Returns `(state, trade_or_none, error)`."""
+        from app.memecoin_sniper import close_position, update_risk_state_after_trade
+
+        async with self.lock:
+            positions = list(self.data.sniper_positions)
+            index = next((i for i, p in enumerate(positions) if p.id == position_id and p.status == "open"), None)
+            if index is None:
+                return self.data, None, f"No open sniper position with id {position_id!r}."
+            now = datetime.now(timezone.utc).isoformat()
+            closed_position, trade = close_position(positions[index], positions[index].current_price, reason, now)  # type: ignore[arg-type]
+            positions[index] = closed_position
+            trade_history = [*self.data.sniper_trade_history, trade]
+            risk_state = update_risk_state_after_trade(self.data.sniper_risk_state, trade, now)
+            self.data = self.data.model_copy(update={"sniper_positions": positions, "sniper_trade_history": trade_history, "sniper_risk_state": risk_state})
+            return self.data, trade, None
 
     async def activate_emergency_stop(self) -> tuple[GameSaveState, str | None]:
         """Design Bible Chapter 67 (TTOS) Part 3 — the CEO's real Global

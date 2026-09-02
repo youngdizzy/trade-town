@@ -148,6 +148,19 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # singleton — not recomputed, same as trading_modes/travel_mode
         # above.
         "vision_board",
+        # CEO directive "TradeTown — Memecoin Sniper Agent." Real,
+        # tick-mutated engine state (candidates/positions/leads/lessons
+        # are ever-changing lists a tick appends to and prunes, not
+        # recomputed from scratch) — same category as strategies/
+        # champion_history above. sniper_trade_history (permanent,
+        # ever-growing, never pruned) lives in the trade_history archive
+        # module below instead, alongside decisions/trade_proposals.
+        "sniper_candidates",
+        "sniper_positions",
+        "sniper_leads",
+        "sniper_lessons",
+        "sniper_risk_state",
+        "sniper_engine_config",
     ),
     "research": ("research", "watchlist", "black_box"),
     # foundational_mentor_state lives here (not in `derived`) because,
@@ -193,6 +206,11 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "gatekeeper_rejections",
         "opportunity_rejections",
         "executive_meeting_log",
+        # CEO directive "TradeTown — Memecoin Sniper Agent" — the
+        # permanent, append-only paper-trade journal (Section 20). Real,
+        # ever-growing, never-recomputed — same category as decisions/
+        # trade_proposals above.
+        "sniper_trade_history",
     ),
     "knowledge_archive": (
         "case_studies",
