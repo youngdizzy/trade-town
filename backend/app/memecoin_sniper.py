@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from app.schemas import (
+    SniperBlockReason,
     SniperCandidate,
     SniperClassification,
     SniperCreatorRisk,
@@ -346,32 +347,35 @@ def evaluate_entry_firewall(
     config: SniperEngineConfig,
     risk_state: SniperRiskState,
     open_position_count: int,
-) -> tuple[bool, str]:
-    """Section 14 — ALL gates must pass. Returns `(allowed, reason)` —
-    `reason` names the exact blocking condition when `allowed` is
-    `False`, never a vague refusal."""
+) -> tuple[bool, str, SniperBlockReason | None]:
+    """Section 14 — ALL gates must pass. Returns `(allowed, reason,
+    block_reason)` — `reason` names the exact blocking condition when
+    `allowed` is `False`, never a vague refusal; `block_reason` is that
+    same real gate's own category (see `SniperBlockReason`'s own
+    docstring — one value per `if` branch below, in the same order),
+    `None` only when `allowed` is `True`."""
     if candidate.safety_status != "safe_enough":
-        return False, f"BLOCKED_BY: safety_status={candidate.safety_status}"
+        return False, f"BLOCKED_BY: safety_status={candidate.safety_status}", "safety"
     if candidate.data_quality != "sufficient":
-        return False, "BLOCKED_BY: data_quality"
+        return False, "BLOCKED_BY: data_quality", "data_quality"
     if candidate.timing_state not in ("entry_window", "confirmation"):
-        return False, f"BLOCKED_BY: timing_state={candidate.timing_state}"
+        return False, f"BLOCKED_BY: timing_state={candidate.timing_state}", "timing"
     min_score = config.min_score_turbo if config.turbo else config.min_score_normal
     if candidate.opportunity_score is None or candidate.opportunity_score < min_score:
-        return False, f"BLOCKED_BY: score {candidate.opportunity_score} < {min_score}"
+        return False, f"BLOCKED_BY: score {candidate.opportunity_score} < {min_score}", "score"
     if candidate.rug_risk == "high":
-        return False, "BLOCKED_BY: rug_risk=high"
+        return False, "BLOCKED_BY: rug_risk=high", "risk_profile"
     if candidate.creator_risk == "confirmed":
-        return False, "BLOCKED_BY: creator_risk=confirmed"
+        return False, "BLOCKED_BY: creator_risk=confirmed", "risk_profile"
     if risk_state.kill_switch_triggered:
-        return False, "BLOCKED_BY: kill_switch_triggered"
+        return False, "BLOCKED_BY: kill_switch_triggered", "kill_switch"
     if risk_state.daily_loss_sol >= risk_state.equity_sol * (config.max_daily_loss_pct / 100.0):
-        return False, "BLOCKED_BY: max_daily_loss_pct"
+        return False, "BLOCKED_BY: max_daily_loss_pct", "daily_loss"
     if open_position_count >= config.max_open_positions:
-        return False, "BLOCKED_BY: max_open_positions"
+        return False, "BLOCKED_BY: max_open_positions", "max_positions"
     if risk_state.open_risk_sol >= risk_state.equity_sol * (config.max_open_risk_pct / 100.0):
-        return False, "BLOCKED_BY: max_open_risk_pct"
-    return True, "PASS"
+        return False, "BLOCKED_BY: max_open_risk_pct", "max_open_risk"
+    return True, "PASS", None
 
 
 def size_paper_position(config: SniperEngineConfig, risk_state: SniperRiskState, candidate: SniperCandidate) -> tuple[float, float, float] | None:
@@ -431,9 +435,13 @@ def open_position(candidate: SniperCandidate, size_sol: float, stop_price: float
     )
 
 
-def manage_position_tick(position: SniperPosition, current_price: float, elapsed_seconds: float) -> tuple[SniperPosition, SniperExitReason | None]:
+def manage_position_tick(position: SniperPosition, current_price: float, elapsed_seconds: float, *, now: str | None = None) -> tuple[SniperPosition, SniperExitReason | None]:
     """Section 18/19 — the real, deterministic exit engine. Never
-    fabricates a fill; the caller decides how to close."""
+    fabricates a fill; the caller decides how to close. `now` (the real
+    tick timestamp) is optional and defaults to the real current time —
+    only used to stamp `trailing_activated_at` the one time trailing
+    genuinely activates ("Terminal 2.1" directive, Phase 2 — a real
+    timestamp for a truthful TRAIL ACTIVATION chart marker)."""
     pnl_pct = 100.0 * (current_price - position.entry_price) / position.entry_price if position.entry_price > 0 else 0.0
     hold_time = position.hold_time_seconds + elapsed_seconds
     mfe = max(position.max_favorable_excursion_pct, pnl_pct)
@@ -441,9 +449,13 @@ def manage_position_tick(position: SniperPosition, current_price: float, elapsed
 
     trailing_active = position.trailing_active
     trailing_stop_price = position.trailing_stop_price
+    trailing_activated_at = position.trailing_activated_at
+    trailing_activated_price = position.trailing_activated_price
     if not trailing_active and pnl_pct >= DEFAULT_TRAILING_ACTIVATION_PCT:
         trailing_active = True
         trailing_stop_price = current_price * (1.0 - DEFAULT_TRAILING_DISTANCE_PCT / 100.0)
+        trailing_activated_at = now if now is not None else _now_iso()
+        trailing_activated_price = current_price
     elif trailing_active:
         candidate_stop = current_price * (1.0 - DEFAULT_TRAILING_DISTANCE_PCT / 100.0)
         trailing_stop_price = max(trailing_stop_price or 0.0, candidate_stop)
@@ -458,6 +470,8 @@ def manage_position_tick(position: SniperPosition, current_price: float, elapsed
             "hold_time_seconds": round(hold_time, 1),
             "trailing_active": trailing_active,
             "trailing_stop_price": round(trailing_stop_price, 12) if trailing_stop_price is not None else None,
+            "trailing_activated_at": trailing_activated_at,
+            "trailing_activated_price": round(trailing_activated_price, 12) if trailing_activated_price is not None else None,
         }
     )
 
@@ -508,6 +522,10 @@ def close_position(position: SniperPosition, exit_price: float, exit_reason: Sni
         closedAt=closed_at,
         entryPrice=position.entry_price,
         exitPrice=exit_price,
+        stopPrice=position.stop_price,
+        targetPrice=position.target_price,
+        trailingActivatedAt=position.trailing_activated_at,
+        trailingActivatedPrice=position.trailing_activated_price,
         sizeSol=position.size_sol,
         riskSol=round(risk_sol, 6),
         rMultiple=r_multiple,
@@ -520,6 +538,15 @@ def close_position(position: SniperPosition, exit_price: float, exit_reason: Sni
         failureCodes=derive_failure_code(exit_reason, pnl_pct),
         thesis=f"Entered {position.symbol} at real (simulated) score {position.entry_score} — {exit_reason} at {pnl_pct:+.1f}%.",
         thesisValidated=pnl_sol > 0,
+        # Copied from the position being closed, not re-defaulted — so a
+        # future real versioning system would carry the position's OWN
+        # real identity forward onto its trade record, rather than two
+        # independent constants that only happen to agree today. See
+        # SniperStrategyVersionStatus's own docstring.
+        strategyId=position.strategy_id,
+        strategyName=position.strategy_name,
+        strategyVersionId=position.strategy_version_id,
+        strategyVersionStatus=position.strategy_version_status,
     )
     return closed_position, trade
 
@@ -564,15 +591,23 @@ def update_risk_state_after_trade(risk_state: SniperRiskState, trade: SniperTrad
     )
 
 
-def evaluate_live_arming() -> SniperLiveArmingStatus:
+def evaluate_live_arming(*, has_active_wallet: bool = False) -> SniperLiveArmingStatus:
     """Section 23/24 — always honestly blocked in this environment. Real,
-    named reasons — never a fabricated readiness."""
+    named reasons — never a fabricated readiness. `has_active_wallet`
+    ("Terminal 2.1" directive, Phase 5) reflects real
+    `sniper_wallets`/`isActive` state: adding a wallet's public METADATA
+    removes the "no wallet configured" reason (it would be dishonest to
+    keep claiming that once a wallet genuinely IS configured), but
+    `armed` still can never become `True` here — the other three
+    reasons (RPC/Jupiter/validation) have nothing to do with wallet
+    metadata and none of them are satisfiable in this environment."""
     reasons = [
         "No Solana RPC endpoint configured.",
         "No Jupiter execution provider configured.",
-        "No live wallet configured (secure credential storage for a real signing key does not exist in this codebase).",
         "No successful real (non-simulated) paper-trading validation exists — every trade on file is simulated.",
     ]
+    if not has_active_wallet:
+        reasons.insert(2, "No active wallet configured (and even a configured wallet has no secure credential storage for a real signing key behind it — see SniperWallet's own docstring).")
     return SniperLiveArmingStatus(armed=False, blockingReasons=reasons, checkedAt=_now_iso())
 
 
@@ -636,10 +671,10 @@ def _simulate_price_step(current_price: float, entry_price: float) -> float:
     return max(new_price, entry_price * 0.01)
 
 
-def _event(event_type: SniperEventType, now: str, *, mint: str | None = None, symbol: str | None = None, detail: str) -> SniperEvent:
+def _event(event_type: SniperEventType, now: str, *, mint: str | None = None, symbol: str | None = None, detail: str, block_reason: SniperBlockReason | None = None) -> SniperEvent:
     """One real, structured tick event — see `SniperEvent`'s own
     docstring for why this replaced a same-tick, discarded `list[str]`."""
-    return SniperEvent(id=f"evt-{uuid.uuid4().hex[:12]}", timestamp=now, type=event_type, mint=mint, symbol=symbol, detail=detail)
+    return SniperEvent(id=f"evt-{uuid.uuid4().hex[:12]}", timestamp=now, type=event_type, mint=mint, symbol=symbol, detail=detail, blockReason=block_reason)
 
 
 @dataclass
@@ -690,7 +725,7 @@ def tick_sniper_engine(
         if position.status != "open":
             continue
         new_price = _simulate_price_step(position.current_price, position.entry_price)
-        updated, exit_reason = manage_position_tick(position, new_price, tick_seconds)
+        updated, exit_reason = manage_position_tick(position, new_price, tick_seconds, now=now)
         if exit_reason is not None:
             closed_position, trade = close_position(updated, new_price, exit_reason, now)
             updated_positions[i] = closed_position
@@ -733,7 +768,7 @@ def tick_sniper_engine(
         elif candidate.classification in ("qualified", "high_conviction"):
             events.append(_event("qualified", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"score {candidate.opportunity_score}"))
             open_count = sum(1 for p in updated_positions if p.status == "open")
-            allowed, reason = evaluate_entry_firewall(candidate, config, risk_state, open_count)
+            allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk_state, open_count)
             if allowed:
                 sizing = size_paper_position(config, risk_state, candidate)
                 if sizing is not None:
@@ -743,7 +778,7 @@ def tick_sniper_engine(
                     events.append(_event("sniped", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"size {size_sol} SOL, score {candidate.opportunity_score}"))
                     risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
             else:
-                events.append(_event("no_trade", now, mint=candidate.mint, symbol=candidate.symbol, detail=reason))
+                events.append(_event("no_trade", now, mint=candidate.mint, symbol=candidate.symbol, detail=reason, block_reason=block_reason))
 
     if trade_history and len(trade_history) % 20 == 0:
         lesson = generate_lesson_from_history(trade_history, now)
@@ -761,6 +796,7 @@ def build_engine_status_read(
     trade_history: list[SniperTrade],
     *,
     today_start_iso: str,
+    has_active_wallet: bool = False,
 ) -> SniperEngineStatusRead:
     """The one real, combined status read the dashboard polls. Pure
     aggregation over already-real state — no new evidence computed."""
@@ -776,7 +812,7 @@ def build_engine_status_read(
     return SniperEngineStatusRead(
         config=config,
         risk=risk_state,
-        liveArming=evaluate_live_arming(),
+        liveArming=evaluate_live_arming(has_active_wallet=has_active_wallet),
         openPositionCount=len(open_positions),
         todayPnlSol=today_pnl_sol,
         todayTradeCount=len(today_trades),

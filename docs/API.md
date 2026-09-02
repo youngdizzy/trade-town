@@ -4109,7 +4109,13 @@ range rather than the provider's generic hash-seeded range for an
 unrecognized symbol. `riskSol` is the real SOL amount at stake against
 the position's ORIGINAL hard stop (never a tighter trailing stop),
 computed once at entry — see `app/memecoin_sniper.py::
-position_risk_sol()`.
+position_risk_sol()`. `strategyId`/`strategyName`/`strategyVersionId`/
+`strategyVersionStatus` are the position's real, honest identity
+("Terminal 2.1" directive, Phase 1) — `strategyVersionStatus` is always
+`"unavailable"` today (no compiled/versioned strategy registry exists
+for this single-engine domain); never a fabricated version number.
+`trailingActivatedAt`/`trailingActivatedPrice` are both `null` until
+trailing genuinely activates, then set once and never updated again.
 
 ### `GET /api/sniper/events?mint=...&limit=50`
 
@@ -4119,12 +4125,27 @@ persisted event log ("Terminal 2.0" directive, Part VII):
 `manual_exit`/`lesson`. `mint` (optional) filters to one token's own
 history — the Sniper terminal's focused-trade Trade Event Timeline uses
 this. `limit` defaults to 50, max 300 (the same cap the rolling
-`sniper_events` list itself is capped at server-side).
+`sniper_events` list itself is capped at server-side). `blockReason`
+("Terminal 2.1" directive, Phase 3) is set only on `type="no_trade"`
+events — one of 9 real categories
+(`safety`/`data_quality`/`timing`/`score`/`risk_profile`/
+`kill_switch`/`daily_loss`/`max_positions`/`max_open_risk`), one per
+real gate inside `evaluate_entry_firewall()`, `null` for every other
+event type.
 
 ### `GET /api/sniper/trades?limit=100`
 
 Returns the permanent, append-only `SniperTrade[]` journal (Section 20),
-most recent first.
+most recent first. `stopPrice`/`targetPrice`/`trailingActivatedAt`/
+`trailingActivatedPrice` are copied from the position at close time
+("Terminal 2.1" directive, Phase 2 — needed for a truthful closed-trade
+chart with real STOP/TP/TRAIL markers); both `stopPrice`/`targetPrice`
+are `null` only for a trade that closed before this pass added the
+field (an old save's pre-existing history) — never a fabricated price.
+`strategyId`/etc. mirror `SniperPosition`'s own identity fields, copied
+forward from the position rather than re-defaulted, so a trade keeps
+its own real historical identity even if this domain ever gains real
+versioning later.
 
 ### `GET /api/sniper/leads`
 
@@ -4148,8 +4169,40 @@ own `maxOpenRiskPct` gate a dead no-op; now real).
 ### `GET /api/sniper/live-arming`
 
 Returns `SniperLiveArmingStatus` — always `armed: false` in this
-environment, with the exact real reasons (no RPC/Jupiter/wallet
-configured, no real non-simulated paper-trading evidence exists).
+environment. Reasons are real and dynamic: RPC/Jupiter/non-simulated-
+validation are always listed (nothing in this environment can satisfy
+them); the "no active wallet configured" reason is present only when
+`sniper_wallets` has no active entry — adding one via the wallet
+endpoints below genuinely removes that specific reason ("Terminal 2.1"
+directive, Phase 5), while `armed` still can never become `true`.
+
+### `GET /api/sniper/wallets`
+
+Returns `SniperWallet[]` — real, persisted wallet METADATA only. No
+field for a private key, seed phrase, or any other secret exists on
+this model at all (this codebase has no secure secret-storage
+infrastructure).
+
+### `POST /api/sniper/wallets`
+
+Body: `{ "label": string, "publicAddress": string, "network"?: string }`
+(`network` defaults to `"solana-mainnet"`). Adds one wallet's public
+metadata; the first wallet added becomes active automatically. 400 if
+`label`/`publicAddress` is empty. Returns the created `SniperWallet`.
+Never accepts, stores, or returns a private key/seed phrase — there is
+no field for one.
+
+### `DELETE /api/sniper/wallets/{wallet_id}`
+
+Removes one wallet's metadata. 404 if no wallet with that id exists.
+Paper trades in this codebase never route through a wallet at all (no
+real execution path could have referenced one), so removing a wallet
+never touches `sniperPositions`/`sniperTradeHistory`.
+
+### `POST /api/sniper/wallets/{wallet_id}/activate`
+
+Marks one wallet active and every other wallet inactive. 404 if no
+wallet with that id exists. Returns the full updated `SniperWallet[]`.
 
 ### `POST /api/sniper/engine`
 

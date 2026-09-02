@@ -165,6 +165,7 @@ from app.schemas import (
     SignalCalibrationState,
     SignalChoice,
     SniperTrade,
+    SniperWallet,
     Strategy,
     SubmitQuantResearchExperimentResult,
     TalentState,
@@ -1175,6 +1176,64 @@ class GameState:
                 update={"sniper_positions": positions, "sniper_trade_history": trade_history, "sniper_risk_state": risk_state, "sniper_events": events}
             )
             return self.data, trade, None
+
+    async def add_sniper_wallet(self, *, label: str, public_address: str, network: str) -> tuple[GameSaveState, SniperWallet | None, str | None]:
+        """"Terminal 2.1" directive, Phase 5 — real wallet METADATA only
+        (see `SniperWallet`'s own docstring for why no secret field
+        exists anywhere on this model). The first wallet added becomes
+        active automatically; later ones stay inactive until
+        `set_active_sniper_wallet()` is called explicitly."""
+        label = label.strip()
+        public_address = public_address.strip()
+        network = network.strip()
+        if not label:
+            return self.data, None, "A wallet label is required."
+        if not public_address:
+            return self.data, None, "A public address is required."
+        if not network:
+            return self.data, None, "A network is required."
+        async with self.lock:
+            wallets = list(self.data.sniper_wallets)
+            wallet = SniperWallet(
+                id=f"wallet-{uuid.uuid4().hex[:10]}",
+                label=label,
+                publicAddress=public_address,
+                network=network,
+                isActive=len(wallets) == 0,
+                addedAt=datetime.now(timezone.utc).isoformat(),
+            )
+            wallets.append(wallet)
+            self.data = self.data.model_copy(update={"sniper_wallets": wallets})
+            return self.data, wallet, None
+
+    async def remove_sniper_wallet(self, wallet_id: str) -> tuple[GameSaveState, str | None]:
+        """Removes wallet METADATA only. Never touches
+        `sniper_positions`/`sniper_trade_history` — paper trades in this
+        codebase never route through a wallet at all (there is no real
+        execution path that could have referenced one), so there is no
+        historical trade identity to preserve or break here; that
+        real architectural fact is the actual reason removal is safe,
+        not an unverified assumption."""
+        async with self.lock:
+            wallets = list(self.data.sniper_wallets)
+            index = next((i for i, w in enumerate(wallets) if w.id == wallet_id), None)
+            if index is None:
+                return self.data, f"No wallet with id {wallet_id!r}."
+            removed_was_active = wallets[index].is_active
+            del wallets[index]
+            if removed_was_active and wallets:
+                wallets[0] = wallets[0].model_copy(update={"is_active": True})
+            self.data = self.data.model_copy(update={"sniper_wallets": wallets})
+            return self.data, None
+
+    async def set_active_sniper_wallet(self, wallet_id: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            wallets = list(self.data.sniper_wallets)
+            if not any(w.id == wallet_id for w in wallets):
+                return self.data, f"No wallet with id {wallet_id!r}."
+            wallets = [w.model_copy(update={"is_active": w.id == wallet_id}) for w in wallets]
+            self.data = self.data.model_copy(update={"sniper_wallets": wallets})
+            return self.data, None
 
     async def activate_emergency_stop(self) -> tuple[GameSaveState, str | None]:
         """Design Bible Chapter 67 (TTOS) Part 3 — the CEO's real Global

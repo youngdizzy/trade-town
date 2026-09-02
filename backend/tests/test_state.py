@@ -1200,3 +1200,104 @@ class TestCloseSniperPosition:
         saved, _trade, error = asyncio.run(state.close_sniper_position(position.id))
         assert error is None
         assert saved.sniper_risk_state.open_risk_sol == 0.0
+
+
+class TestSniperWallets:
+    """"Terminal 2.1" directive, Phase 5 — real wallet METADATA CRUD, no
+    secrets anywhere (SniperWallet has no field for one at all)."""
+
+    def test_add_wallet_requires_all_three_fields(self) -> None:
+        state = GameState()
+        saved, wallet, error = asyncio.run(state.add_sniper_wallet(label="", public_address="abc", network="solana-mainnet"))
+        assert wallet is None
+        assert error is not None
+        assert saved is state.data
+
+    def test_add_wallet_persists_real_metadata_only(self) -> None:
+        state = GameState()
+        saved, wallet, error = asyncio.run(state.add_sniper_wallet(label="Ops wallet", public_address="9xQe...abcd", network="solana-mainnet"))
+        assert error is None
+        assert wallet is not None
+        assert wallet.label == "Ops wallet"
+        assert wallet.public_address == "9xQe...abcd"
+        assert wallet.network == "solana-mainnet"
+        assert saved.sniper_wallets == [wallet]
+        # No secret field exists on the model at all.
+        assert not hasattr(wallet, "private_key")
+        assert not hasattr(wallet, "secret_key")
+        assert not hasattr(wallet, "seed_phrase")
+
+    def test_first_wallet_added_becomes_active_automatically(self) -> None:
+        state = GameState()
+        _saved, wallet, _error = asyncio.run(state.add_sniper_wallet(label="Ops", public_address="addr1", network="solana-mainnet"))
+        assert wallet is not None
+        assert wallet.is_active is True
+
+    def test_second_wallet_added_does_not_become_active(self) -> None:
+        state = GameState()
+        asyncio.run(state.add_sniper_wallet(label="Ops", public_address="addr1", network="solana-mainnet"))
+        _saved, second, _error = asyncio.run(state.add_sniper_wallet(label="Backup", public_address="addr2", network="solana-mainnet"))
+        assert second is not None
+        assert second.is_active is False
+
+    def test_set_active_wallet_switches_activity_exclusively(self) -> None:
+        state = GameState()
+        _s1, first, _e1 = asyncio.run(state.add_sniper_wallet(label="Ops", public_address="addr1", network="solana-mainnet"))
+        _s2, second, _e2 = asyncio.run(state.add_sniper_wallet(label="Backup", public_address="addr2", network="solana-mainnet"))
+        assert first is not None and second is not None
+        saved, error = asyncio.run(state.set_active_sniper_wallet(second.id))
+        assert error is None
+        active_ids = [w.id for w in saved.sniper_wallets if w.is_active]
+        assert active_ids == [second.id]
+
+    def test_set_active_wallet_rejects_unknown_id(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.set_active_sniper_wallet("does-not-exist"))
+        assert error is not None
+        assert saved is state.data
+
+    def test_remove_wallet_requires_confirmation_at_the_api_layer_not_silent(self) -> None:
+        """This method itself has no "are you sure" concept — that's a
+        real UI-layer confirmation dialog, not backend state. What IS
+        backend-verifiable: removal is a real, explicit, single-target
+        operation, never a silent bulk wipe."""
+        state = GameState()
+        _s1, first, _e1 = asyncio.run(state.add_sniper_wallet(label="Ops", public_address="addr1", network="solana-mainnet"))
+        assert first is not None
+        saved, error = asyncio.run(state.remove_sniper_wallet(first.id))
+        assert error is None
+        assert saved.sniper_wallets == []
+
+    def test_removing_the_active_wallet_promotes_another_if_any_remain(self) -> None:
+        state = GameState()
+        _s1, first, _e1 = asyncio.run(state.add_sniper_wallet(label="Ops", public_address="addr1", network="solana-mainnet"))
+        _s2, second, _e2 = asyncio.run(state.add_sniper_wallet(label="Backup", public_address="addr2", network="solana-mainnet"))
+        assert first is not None and second is not None
+        saved, error = asyncio.run(state.remove_sniper_wallet(first.id))
+        assert error is None
+        assert len(saved.sniper_wallets) == 1
+        assert saved.sniper_wallets[0].is_active is True
+
+    def test_remove_unknown_wallet_returns_an_error(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.remove_sniper_wallet("does-not-exist"))
+        assert error is not None
+        assert saved is state.data
+
+    def test_removing_a_wallet_never_touches_trade_history(self) -> None:
+        """Paper trades in this codebase never route through a wallet at
+        all — there is no real execution path that could have
+        referenced one — so historical trade identity is trivially
+        preserved across wallet removal, not by accident."""
+        from app.memecoin_sniper import build_candidate, close_position, open_position
+
+        state = GameState()
+        candidate = build_candidate("c1", "2024-01-01T00:00:00+00:00").model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.9, 1.5, "2024-01-01T00:00:00+00:00")
+        _closed, trade = close_position(position, 1.0, "manual_exit", "2024-01-01T00:01:00+00:00")
+        state.data = state.data.model_copy(update={"sniper_trade_history": [trade]})
+        _s1, wallet, _e1 = asyncio.run(state.add_sniper_wallet(label="Ops", public_address="addr1", network="solana-mainnet"))
+        assert wallet is not None
+        saved, error = asyncio.run(state.remove_sniper_wallet(wallet.id))
+        assert error is None
+        assert saved.sniper_trade_history == [trade]

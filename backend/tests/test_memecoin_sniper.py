@@ -166,33 +166,59 @@ class TestEntryFirewall:
         candidate = self._candidate(safety_status="rejected")
         config = SniperEngineConfig()
         risk = SniperRiskState()
-        allowed, reason = evaluate_entry_firewall(candidate, config, risk, 0)
+        allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk, 0)
         assert allowed is False
         assert "safety_status" in reason
+        assert block_reason == "safety"
 
     def test_kill_switch_triggered_blocks_entry(self) -> None:
         candidate = self._candidate(safety_status="safe_enough", classification="qualified", timing_state="entry_window", opportunity_score=90.0, rug_risk="low", creator_risk="weak_signal")
         config = SniperEngineConfig()
         risk = SniperRiskState(killSwitchTriggered=True)
-        allowed, reason = evaluate_entry_firewall(candidate, config, risk, 0)
+        allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk, 0)
         assert allowed is False
         assert "kill_switch" in reason
+        assert block_reason == "kill_switch"
 
     def test_max_positions_blocks_entry(self) -> None:
         candidate = self._candidate(safety_status="safe_enough", classification="qualified", timing_state="entry_window", opportunity_score=90.0, rug_risk="low", creator_risk="weak_signal")
         config = SniperEngineConfig()
         risk = SniperRiskState()
-        allowed, reason = evaluate_entry_firewall(candidate, config, risk, config.max_open_positions)
+        allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk, config.max_open_positions)
         assert allowed is False
         assert "max_open_positions" in reason
+        assert block_reason == "max_positions"
 
     def test_all_gates_passing_allows_entry(self) -> None:
         candidate = self._candidate(safety_status="safe_enough", classification="qualified", timing_state="entry_window", opportunity_score=90.0, rug_risk="low", creator_risk="weak_signal")
         config = SniperEngineConfig()
         risk = SniperRiskState()
-        allowed, reason = evaluate_entry_firewall(candidate, config, risk, 0)
+        allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk, 0)
         assert allowed is True
         assert reason == "PASS"
+        assert block_reason is None
+
+    def test_every_real_gate_maps_to_its_own_distinct_block_reason(self) -> None:
+        """"Terminal 2.1" directive, Phase 3 — every real gate the
+        firewall can actually take must produce a real, distinct
+        category; none of the 9 real gates should silently collapse into
+        another's category or into `None`."""
+        base = self._candidate(safety_status="safe_enough", classification="qualified", timing_state="entry_window", opportunity_score=90.0, rug_risk="low", creator_risk="weak_signal")
+        default_config = SniperEngineConfig()
+        default_risk = SniperRiskState()
+        cases: list[tuple[object, object, object, str]] = [
+            (base.model_copy(update={"data_quality": "insufficient"}), default_config, default_risk, "data_quality"),
+            (base.model_copy(update={"timing_state": "watch"}), default_config, default_risk, "timing"),
+            (base.model_copy(update={"opportunity_score": 1.0}), default_config, default_risk, "score"),
+            (base.model_copy(update={"rug_risk": "high"}), default_config, default_risk, "risk_profile"),
+            (base.model_copy(update={"creator_risk": "confirmed"}), default_config, default_risk, "risk_profile"),
+            (base, SniperEngineConfig(maxDailyLossPct=1.0), SniperRiskState(equitySol=10.0, dailyLossSol=1.0), "daily_loss"),
+            (base, SniperEngineConfig(maxOpenRiskPct=1.0), SniperRiskState(equitySol=10.0, openRiskSol=1.0), "max_open_risk"),
+        ]
+        for candidate, config, risk, expected in cases:
+            allowed, _reason, block_reason = evaluate_entry_firewall(candidate, config, risk, 0)  # type: ignore[arg-type]
+            assert allowed is False, f"expected block for {expected}"
+            assert block_reason == expected
 
     def test_max_open_risk_pct_blocks_entry_when_real_open_risk_is_too_high(self) -> None:
         """Professional Trading Terminal directive, Part VIII — this gate
@@ -204,9 +230,10 @@ class TestEntryFirewall:
         candidate = self._candidate(safety_status="safe_enough", classification="qualified", timing_state="entry_window", opportunity_score=90.0, rug_risk="low", creator_risk="weak_signal")
         config = SniperEngineConfig(maxOpenRiskPct=3.0)
         risk = SniperRiskState(equitySol=10.0, openRiskSol=0.3)  # exactly at the 3% cap
-        allowed, reason = evaluate_entry_firewall(candidate, config, risk, 0)
+        allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk, 0)
         assert allowed is False
         assert "max_open_risk_pct" in reason
+        assert block_reason == "max_open_risk"
 
 
 class TestPositionSizing:
@@ -302,6 +329,61 @@ class TestPositionRiskSol:
         assert abs(trade.risk_sol - position.risk_sol) < 1e-9
 
 
+class TestStrategyIdentity:
+    """"Terminal 2.1" directive, Phase 1 — no fabricated strategy
+    version. Every position/trade must carry a real, honest identity:
+    a real, stable engine id/name, and `strategyVersionStatus` that can
+    only ever be `"unavailable"` (never a fabricated version number)
+    since no compiled/versioned strategy-definition registry exists for
+    this domain."""
+
+    def test_open_position_carries_real_honest_identity(self) -> None:
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.88, 1.55, _NOW)
+        assert position.strategy_id == "memecoin-sniper"
+        assert position.strategy_name != ""
+        assert position.strategy_version_id is None
+        assert position.strategy_version_status == "unavailable"
+
+    def test_closed_trade_carries_the_positions_own_identity_forward(self) -> None:
+        """Copied from the position, not independently re-defaulted — so
+        a future real versioning system would carry a position's own
+        real identity onto its trade record."""
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.88, 1.55, _NOW)
+        _closed, trade = close_position(position, 1.0, "manual_exit", _NOW)
+        assert trade.strategy_id == position.strategy_id
+        assert trade.strategy_name == position.strategy_name
+        assert trade.strategy_version_id == position.strategy_version_id
+        assert trade.strategy_version_status == position.strategy_version_status
+
+
+class TestTrailingActivatedAt:
+    """"Terminal 2.1" directive, Phase 2 — a real timestamp for a
+    truthful TRAIL ACTIVATION chart marker."""
+
+    def test_none_before_trailing_activates(self) -> None:
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.88, 1.55, _NOW)
+        assert position.trailing_activated_at is None
+
+    def test_set_once_when_trailing_first_activates(self) -> None:
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.60, 2.0, _NOW)
+        activation_time = "2024-01-01T00:05:00+00:00"
+        updated, _exit = manage_position_tick(position, 1.30, 1.0, now=activation_time)  # +30% >= DEFAULT_TRAILING_ACTIVATION_PCT
+        assert updated.trailing_active is True
+        assert updated.trailing_activated_at == activation_time
+        assert updated.trailing_activated_price == 1.30
+
+    def test_never_overwritten_on_later_ticks(self) -> None:
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.60, 2.0, _NOW)
+        first, _ = manage_position_tick(position, 1.30, 1.0, now="2024-01-01T00:05:00+00:00")
+        second, _ = manage_position_tick(first, 1.35, 1.0, now="2024-01-01T00:06:00+00:00")
+        assert second.trailing_activated_at == "2024-01-01T00:05:00+00:00"
+
+
 class TestClosePositionAndFailureCodes:
     def test_close_position_computes_real_r_multiple(self) -> None:
         candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
@@ -310,6 +392,56 @@ class TestClosePositionAndFailureCodes:
         assert closed.status == "closed"
         assert trade.r_multiple == -1.0
         assert trade.failure_codes == ["momentum_exhaustion"]
+
+    def test_closed_trade_carries_the_real_stop_target_and_trailing_activation(self) -> None:
+        """"Terminal 2.1" directive, Phase 2 — a closed trade's own real
+        levels, needed for truthful STOP/TP/TRAIL chart markers on its
+        historical chart."""
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.60, 2.0, _NOW)
+        activated, _exit = manage_position_tick(position, 1.30, 1.0, now="2024-01-01T00:05:00+00:00")
+        assert activated.trailing_activated_at == "2024-01-01T00:05:00+00:00"
+        _closed, trade = close_position(activated, 1.15, "trailing_stop", "2024-01-01T00:06:00+00:00")
+        assert trade.stop_price == position.stop_price
+        assert trade.target_price == position.target_price
+
+    def test_a_pre_existing_trade_missing_stop_target_fields_still_loads(self) -> None:
+        """Real regression this pass caught (and fixed) via its own live
+        verification: SniperTrade.stopPrice/targetPrice were briefly
+        required fields with no default, which broke loading ANY
+        pre-existing save whose permanent sniper_trade_history predated
+        them — the exact kind of accidental data-loss bug CLAUDE.md's own
+        "never silently rewrite/discard history" principle exists to
+        prevent. Confirms a trade dict shaped like OLD save data (no
+        stopPrice/targetPrice keys at all) still validates, with an
+        honest `None` — never a fabricated price — for both."""
+        old_style_trade_dict = {
+            "id": "t1",
+            "mint": "m",
+            "symbol": "X",
+            "openedAt": _NOW,
+            "closedAt": _NOW,
+            "entryPrice": 1.0,
+            "exitPrice": 0.88,
+            "sizeSol": 1.0,
+            "riskSol": 0.12,
+            "rMultiple": -1.0,
+            "pnlSol": -0.12,
+            "maxFavorableExcursionPct": 0.0,
+            "maxAdverseExcursionPct": -12.0,
+            "holdTimeSeconds": 10.0,
+            "exitReason": "stop_loss",
+            "failureCodes": ["momentum_exhaustion"],
+            "thesis": "x",
+            "thesisValidated": False,
+            # No stopPrice/targetPrice/trailingActivatedAt/strategyId/etc.
+            # keys at all — exactly what an old, pre-this-pass save's
+            # sniper_trade_history entries actually look like.
+        }
+        trade = SniperTrade.model_validate(old_style_trade_dict)
+        assert trade.stop_price is None
+        assert trade.target_price is None
+        assert trade.strategy_id == "memecoin-sniper"  # a real, honest default, not a missing-field crash
 
     def test_winning_trade_has_no_failure_codes(self) -> None:
         assert derive_failure_code("take_profit", 55.0) == []
@@ -321,33 +453,33 @@ class TestClosePositionAndFailureCodes:
 class TestRiskStateUpdates:
     def test_losing_trade_increases_consecutive_losses(self) -> None:
         risk = SniperRiskState()
-        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=0.88, sizeSol=1.0, riskSol=0.12, rMultiple=-1.0, pnlSol=-0.12, maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=-12.0, holdTimeSeconds=10.0, exitReason="stop_loss", failureCodes=["momentum_exhaustion"], thesis="x", thesisValidated=False)  # type: ignore[call-arg]
+        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=0.88, stopPrice=0.88, targetPrice=1.55, sizeSol=1.0, riskSol=0.12, rMultiple=-1.0, pnlSol=-0.12, maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=-12.0, holdTimeSeconds=10.0, exitReason="stop_loss", failureCodes=["momentum_exhaustion"], thesis="x", thesisValidated=False)  # type: ignore[call-arg]
         updated = update_risk_state_after_trade(risk, trade, _NOW)
         assert updated.consecutive_losses == 1
         assert updated.equity_sol < risk.equity_sol
 
     def test_winning_trade_resets_consecutive_losses(self) -> None:
         risk = SniperRiskState(consecutiveLosses=2)
-        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=1.55, sizeSol=1.0, riskSol=0.12, rMultiple=4.6, pnlSol=0.55, maxFavorableExcursionPct=55.0, maxAdverseExcursionPct=0.0, holdTimeSeconds=10.0, exitReason="take_profit", failureCodes=[], thesis="x", thesisValidated=True)  # type: ignore[call-arg]
+        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=1.55, stopPrice=0.88, targetPrice=1.55, sizeSol=1.0, riskSol=0.12, rMultiple=4.6, pnlSol=0.55, maxFavorableExcursionPct=55.0, maxAdverseExcursionPct=0.0, holdTimeSeconds=10.0, exitReason="take_profit", failureCodes=[], thesis="x", thesisValidated=True)  # type: ignore[call-arg]
         updated = update_risk_state_after_trade(risk, trade, _NOW)
         assert updated.consecutive_losses == 0
 
     def test_size_multiplier_never_increases_above_one(self) -> None:
         risk = SniperRiskState(sizeMultiplier=0.5)
-        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=1.55, sizeSol=1.0, riskSol=0.12, rMultiple=4.6, pnlSol=0.55, maxFavorableExcursionPct=55.0, maxAdverseExcursionPct=0.0, holdTimeSeconds=10.0, exitReason="take_profit", failureCodes=[], thesis="x", thesisValidated=True)  # type: ignore[call-arg]
+        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=1.55, stopPrice=0.88, targetPrice=1.55, sizeSol=1.0, riskSol=0.12, rMultiple=4.6, pnlSol=0.55, maxFavorableExcursionPct=55.0, maxAdverseExcursionPct=0.0, holdTimeSeconds=10.0, exitReason="take_profit", failureCodes=[], thesis="x", thesisValidated=True)  # type: ignore[call-arg]
         updated = update_risk_state_after_trade(risk, trade, _NOW)
         assert updated.size_multiplier <= 0.5 or updated.size_multiplier == 1.0
 
     def test_drawdown_past_6pct_triggers_kill_switch(self) -> None:
         risk = SniperRiskState(equitySol=100.0, peakEquitySol=100.0, killSwitchArmed=True)
-        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=0.0, sizeSol=100.0, riskSol=100.0, rMultiple=-8.0, pnlSol=-8.0, maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=-100.0, holdTimeSeconds=10.0, exitReason="stop_loss", failureCodes=["momentum_exhaustion"], thesis="x", thesisValidated=False)  # type: ignore[call-arg]
+        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=0.0, stopPrice=0.88, targetPrice=1.55, sizeSol=100.0, riskSol=100.0, rMultiple=-8.0, pnlSol=-8.0, maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=-100.0, holdTimeSeconds=10.0, exitReason="stop_loss", failureCodes=["momentum_exhaustion"], thesis="x", thesisValidated=False)  # type: ignore[call-arg]
         updated = update_risk_state_after_trade(risk, trade, _NOW)
         assert updated.kill_switch_triggered is True
         assert updated.kill_switch_reason is not None
 
     def test_kill_switch_never_triggers_when_not_armed(self) -> None:
         risk = SniperRiskState(equitySol=100.0, peakEquitySol=100.0, killSwitchArmed=False)
-        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=0.0, sizeSol=100.0, riskSol=100.0, rMultiple=-8.0, pnlSol=-8.0, maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=-100.0, holdTimeSeconds=10.0, exitReason="stop_loss", failureCodes=["momentum_exhaustion"], thesis="x", thesisValidated=False)  # type: ignore[call-arg]
+        trade = SniperTrade(id="t1", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=0.0, stopPrice=0.88, targetPrice=1.55, sizeSol=100.0, riskSol=100.0, rMultiple=-8.0, pnlSol=-8.0, maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=-100.0, holdTimeSeconds=10.0, exitReason="stop_loss", failureCodes=["momentum_exhaustion"], thesis="x", thesisValidated=False)  # type: ignore[call-arg]
         updated = update_risk_state_after_trade(risk, trade, _NOW)
         assert updated.kill_switch_triggered is False
 
@@ -357,6 +489,20 @@ class TestLiveArming:
         status = evaluate_live_arming()
         assert status.armed is False
         assert len(status.blocking_reasons) > 0
+
+    def test_no_wallet_reason_present_by_default(self) -> None:
+        status = evaluate_live_arming()
+        assert any("wallet" in r.lower() for r in status.blocking_reasons)
+
+    def test_wallet_reason_drops_once_a_wallet_is_active_but_still_blocked(self) -> None:
+        """"Terminal 2.1" directive, Phase 5 — adding a wallet never
+        arms live trading; the OTHER real prerequisites (RPC/Jupiter/
+        validation) stay unmet regardless."""
+        without = evaluate_live_arming(has_active_wallet=False)
+        with_wallet = evaluate_live_arming(has_active_wallet=True)
+        assert with_wallet.armed is False
+        assert len(with_wallet.blocking_reasons) == len(without.blocking_reasons) - 1
+        assert not any("no active wallet" in r.lower() for r in with_wallet.blocking_reasons)
 
 
 class TestLeadsAndLessons:
@@ -371,9 +517,9 @@ class TestLeadsAndLessons:
     def test_lesson_generated_when_timing_failures_are_worse(self) -> None:
         history = []
         for i in range(15):
-            history.append(SniperTrade(id=f"t{i}", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=1.1, sizeSol=1.0, riskSol=0.12, rMultiple=0.8, pnlSol=0.1, maxFavorableExcursionPct=10.0, maxAdverseExcursionPct=0.0, holdTimeSeconds=10.0, exitReason="take_profit", failureCodes=[], thesis="x", thesisValidated=True))  # type: ignore[call-arg]
+            history.append(SniperTrade(id=f"t{i}", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=1.1, stopPrice=0.88, targetPrice=1.55, sizeSol=1.0, riskSol=0.12, rMultiple=0.8, pnlSol=0.1, maxFavorableExcursionPct=10.0, maxAdverseExcursionPct=0.0, holdTimeSeconds=10.0, exitReason="take_profit", failureCodes=[], thesis="x", thesisValidated=True))  # type: ignore[call-arg]
         for i in range(10):
-            history.append(SniperTrade(id=f"tf{i}", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=0.95, sizeSol=1.0, riskSol=0.12, rMultiple=-0.4, pnlSol=-0.05, maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=-5.0, holdTimeSeconds=70.0, exitReason="max_hold", failureCodes=["timing_failure"], thesis="x", thesisValidated=False))  # type: ignore[call-arg]
+            history.append(SniperTrade(id=f"tf{i}", mint="m", symbol="X", openedAt=_NOW, closedAt=_NOW, entryPrice=1.0, exitPrice=0.95, stopPrice=0.88, targetPrice=1.55, sizeSol=1.0, riskSol=0.12, rMultiple=-0.4, pnlSol=-0.05, maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=-5.0, holdTimeSeconds=70.0, exitReason="max_hold", failureCodes=["timing_failure"], thesis="x", thesisValidated=False))  # type: ignore[call-arg]
         lesson = generate_lesson_from_history(history, _NOW)
         assert lesson is not None
         assert lesson.sample_size == 10

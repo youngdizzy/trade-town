@@ -181,6 +181,10 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # event log, same tick-mutated category as the sniper_* fields
         # above (not the permanent sniper_trade_history archive below).
         "sniper_events",
+        # "Terminal 2.1" directive, Phase 5 — CEO-managed wallet
+        # metadata, real mutated state (not recomputed), same category
+        # as sniper_engine_config above.
+        "sniper_wallets",
     ),
     "research": ("research", "watchlist", "black_box"),
     # foundational_mentor_state lives here (not in `derived`) because,

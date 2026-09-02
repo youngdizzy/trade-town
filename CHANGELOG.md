@@ -7,6 +7,197 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Memecoin Sniper Terminal 2.1, Close the
+  Remaining Disclosed Gaps."** Closes the five gaps the prior increment's
+  own forensic report explicitly named as deferred: a fabricated
+  strategy version, missing chart trade markers, no candidate lifecycle/
+  block-reason structure, no wallet management, and (already-satisfied)
+  multi-trade visualization. A companion directive in the same message,
+  "Trade Intelligence Loop 1.0," asked for a full closed-loop
+  signal→decision→risk→execution→outcome→analysis→learning→research
+  system spanning nearly every subsystem in this codebase (strategy
+  compiler, research factory, adversarial research, portfolio
+  intelligence, institutional memory, academy, ...). That is a genuinely
+  separate, multi-session-scale initiative — not started this pass
+  (disclosed explicitly, not silently dropped); see this entry's own
+  "Next milestone" note below.
+  - **Phase 1 — no fabricated strategy version.** `SniperPosition`/
+    `SniperTrade` gained real, honest identity fields:
+    `strategyId`/`strategyName` (the one real engine's stable
+    identifier — not fabrication, since it's the accurate name of the
+    actual thing), `strategyVersionId: null`, `strategyVersionStatus:
+    "unavailable"` (a real Literal type whose only OTHER value,
+    `"versioned"`, is honestly unreachable today — nothing in this
+    domain can produce it, since no compiled/versioned strategy-
+    definition registry exists here, unlike the main equities Strategy
+    Lab's real `compiledDefinitionId`/`Version`). Snapshotted once at
+    creation and copied forward at close (never re-defaulted), so
+    historical trade identity can never silently change. The terminal
+    now shows "Strategy: Memecoin Sniper — Liquidity/Momentum
+    Discovery / Version: Not versioned" — never an invented "v2.3.1".
+  - **Phase 2 — real chart trade markers, reusing the existing
+    `ChartOverlayMarker` mechanism** (already built for liquidity-
+    sweep/BOS markers elsewhere — no new charting code). ENTRY (real
+    `openedAt`/`entryPrice`), TRAIL ON (only once real
+    `trailingActivatedAt`/`trailingActivatedPrice` exist — two new
+    fields set the instant `manage_position_tick()` first flips
+    `trailingActive`, never approximated from the activation-percentage
+    constant), and a labeled EXIT marker (STOP/TP/TRAIL STOP/MANUAL
+    EXIT, from the trade's own real `exitReason`) for a CLOSED trade.
+    No PARTIAL EXIT marker (this domain has no partial-fill concept at
+    all — confirmed, not assumed) and no FAILED ENTRY marker on the
+    chart (a candidate-level event with no position/trade of its own to
+    chart against — shown in the Discovery event feed instead).
+    `SniperTrade` gained `stopPrice`/`targetPrice`/`trailingActivatedAt`/
+    `trailingActivatedPrice`, copied from the position at close — not
+    derivable from entry/exit/risk alone (target has no relationship to
+    risk_sol at all).
+  - **The terminal now supports focusing a CLOSED trade, not just an
+    open position** (`SniperTerminal.tsx` gained a "Recently Closed"
+    list alongside "Active Trades," a new `ClosedTradeDetail`
+    component reusing the same chart/marker/timeline treatment) —
+    without this, the new EXIT/STOP/TP markers would have had nowhere
+    to actually render, since the terminal previously only showed
+    currently-open positions.
+  - **A real, near-miss data-loss bug this same work introduced — and
+    caught, and fully recovered from, before it ever reached a commit.**
+    `SniperTrade.stopPrice`/`targetPrice` were first added as REQUIRED
+    fields with no default. `sniper_trade_history` is a PERMANENT,
+    never-pruned archive — the running dev backend's own real save
+    (day 18, real trade history) predated these fields, so on the next
+    restart `load_state()` correctly detected the schema mismatch,
+    attempted its own real migration path, and (correctly, given a
+    required field genuinely can't be defaulted) fell back to a fresh
+    default state — which `main.py`'s startup then persisted, silently
+    overwriting the real `save_modules` rows with empty ones. Caught
+    immediately via this pass's own live-verification restart (the
+    startup log's `ERROR:tradetown.persistence:Save modules could not
+    be migrated` line), not discovered later. Root cause fixed by making
+    both fields `float | None = None` (an honest `None` — never a
+    fabricated price — for the one real case this can happen: a trade
+    that closed before the field existed). Full recovery performed
+    using this codebase's own existing, already-real safety net: `app/
+    persistence.py`'s fallback path backs up every raw module row to
+    `save_backups` (reason `"pre_fresh_fallback"`, explicitly exempted
+    from the periodic-backup cap — "kept forever") BEFORE ever
+    discarding anything. A one-off recovery script reassembled the 12
+    backed-up module rows from the exact pre-incident timestamp,
+    validated them against the now-fixed schema (`GameSaveState.
+    model_validate` succeeded cleanly), and re-persisted them via the
+    same `persist_modules()` the real app already uses — confirmed by
+    the next restart's own log (`Loaded existing save (day 18, 09:20)`,
+    the real Sniper trade history intact) and by every downstream
+    Sniper endpoint (`/positions`, `/trades`) returning the same real
+    CATGG/PEPEX history this pass had been looking at all along. New
+    regression test (`TestClosePositionAndFailureCodes::
+    test_a_pre_existing_trade_missing_stop_target_fields_still_loads`)
+    validates a dict shaped like old save data (no stopPrice/targetPrice
+    keys at all) directly against `SniperTrade`, so this exact class of
+    bug can't silently reappear.
+  - **A second real bug this pass's own live verification surfaced (pre-
+    existing, not introduced this pass): `CandlestickChart.tsx`'s price
+    labels used a flat `.toFixed(2)`** for every axis gridline and every
+    ENTRY/MARK/SL/TP overlay label — invisible for every stock/futures/
+    FX symbol this chart previously rendered (always ≥ ~$1), but a real
+    sub-$0.01 memecoin price (the majority of real Sniper prices)
+    rounds straight to `"0.00"`, exactly what this pass's own closed-
+    trade screenshot first showed. This is the frontend twin of the
+    prior increment's backend `_round_price()` fix
+    (`app/market_data.py`) — same problem, same magnitude-aware fix,
+    now on the display side too: a new `fmtPrice()` helper (`>= $1`
+    keeps the exact original 2-decimal behavior; `< $1` scales decimal
+    count to the price's own magnitude), used at all 5 price-label call
+    sites. Confirmed fixed via a second live screenshot showing real
+    axis values like `0.004313`/`MARK 0.003696` instead of a repeated
+    `0.00`.
+  - **Phase 3 — structured candidate lifecycle / block reasons.** New
+    `SniperBlockReason` (9 real categories — `safety`/`data_quality`/
+    `timing`/`score`/`risk_profile`/`kill_switch`/`daily_loss`/
+    `max_positions`/`max_open_risk`), one per real gate inside
+    `evaluate_entry_firewall()`, in the exact order that function checks
+    them — never a decorative taxonomy invented on top. That function's
+    return type gained a third element (`block_reason`); the `no_trade`
+    `SniperEvent` now carries it. Deliberately NOT the directive's
+    literal 9-state temporal lifecycle (DISCOVERED→SCREENING→ELIGIBLE→
+    ...→EXECUTED→EXPIRED) — disclosed why: this engine's real
+    architecture generates a candidate, runs safety, scores, classifies,
+    and (if qualified) runs the firewall and opens a position all
+    within ONE atomic function call inside a single tick — there is no
+    real multi-stage async pipeline with distinguishable SCREENING/
+    TRIGGERED/EXECUTION_PENDING phases to report on honestly; inventing
+    one would be exactly the "decorative state the engine cannot
+    truthfully produce" the directive's own Phase 3 forbids. Used the
+    real dimensions that DO exist instead: a new "Recently rejected —
+    real reasons, never hidden" section (the directive's own words:
+    hiding a rejected candidate is worse than showing it) using the
+    already-real `classification`/`decisionReason`/`safetyChecks`; an
+    "ENTERED" badge on opportunity cards (real join against open
+    positions by mint).
+  - **Phase 5 — wallet management, real metadata CRUD, still zero
+    secrets.** New `SniperWallet` model (id/label/publicAddress/network/
+    isActive/addedAt) — no field for a private key, seed phrase, or any
+    other secret exists anywhere on it (this codebase has no secure
+    secret-storage infrastructure; a secret field would have to be
+    fabricated-secure or plaintext, both forbidden, so it simply isn't
+    there). New `GameState.add_sniper_wallet()`/`remove_sniper_wallet()`/
+    `set_active_sniper_wallet()` and matching `POST/DELETE /api/sniper/
+    wallets`, `POST /api/sniper/wallets/{id}/activate`. `evaluate_live_
+    arming()` gained a `has_active_wallet` parameter — a real wallet
+    genuinely removes the "no wallet configured" blocking reason (it
+    would be dishonest to keep claiming that once one exists), but
+    `armed` can still never become `True` here — the other three real
+    prerequisites (RPC/Jupiter/non-simulated validation) stay unmet
+    regardless, and the frontend states this explicitly. Removal
+    requires a real confirmation dialog, never silent. Paper trades in
+    this codebase never route through a wallet at all (no real
+    execution path could have referenced one), so "historical trades
+    survive wallet removal" is real, not by luck — a wallet was never
+    linked to one to begin with; this is stated directly rather than
+    implying a link-and-preserve mechanism that doesn't exist.
+  - **Multi-trade visualization (the fifth named gap): already
+    satisfied**, confirmed by direct comparison against the directive's
+    own fallback wording ("if the current chart architecture supports
+    multiple synchronized charts efficiently... otherwise use one
+    shared market chart + trade selector + overlay markers + active-
+    position cards") — exactly the architecture the prior increment
+    already shipped. No new work needed; stated explicitly rather than
+    silently skipped.
+  - **Testing.** Backend: `python -m mypy app/`, `python -m ruff check
+    app/ tests/` clean; 9 new tests across `tests/test_memecoin_sniper.py`
+    (strategy identity ×2, trailing-activation timestamp/price ×3,
+    structured block-reason mapping for all 9 real gates, the pre-
+    existing-trade backward-compatibility regression test) and
+    `tests/test_state.py` (10, wallet CRUD — add/remove/activate,
+    no-secret-field assertion, historical-trade-survives-removal);
+    full backend suite green. Frontend: `npx tsc --noEmit`/`npm run
+    lint`/`npm run build` all clean. Live-verified with a real (non-
+    mocked) Playwright pass against the running dev stack: the
+    "Recently rejected" section rendered real, live, currently-changing
+    rejected candidates with real reasons; a real closed trade (from
+    this session's own recovered save) rendered its full ENTRY/STOP
+    chart-marker story with the corrected sub-cent price labels and the
+    real "Strategy: Memecoin Sniper... / Version: Not versioned"
+    identity; wallet add/activate/remove was exercised end-to-end
+    against the real backend (confirmed no stray test wallet was left
+    behind in the real save afterward).
+  - **Next highest-leverage milestone**, per the directive's own
+    request for exactly one recommendation: "Trade Intelligence Loop
+    1.0" (the paired directive in this same message) — but scoped down
+    from its own literal ask, which spans nearly the entire backend, to
+    a genuinely startable first slice: formalizing ONE canonical trade
+    lifecycle (signal→decision→risk→execution→outcome) for the MAIN
+    equities pipeline first (which already has most of the real pieces
+    this directive wants — `CeoDecisionRecord`, `RiskDecision`,
+    `PaperTradeJournalEntry`, `compute_strategy_degradation()`,
+    `StrategyHealthState` — scattered across real records with no single
+    queryable "trace this trade end-to-end" view), before attempting the
+    directive's own much larger ask (repeated-failure pattern detection
+    feeding real research-factory hypotheses, prediction-vs-outcome
+    calibration, parent/child strategy comparison gates). Attempting the
+    full directive in one pass would mean touching a dozen subsystems
+    shallowly — exactly the "unintegrated scaffolding" this codebase's
+    own no-placeholder-systems discipline forbids.
+
 - **CEO directive "TradeTown — Terminal 2.0 + Multi-Trade Visualization +
   Memecoin Sniper Architecture Correction + Professional Trading
   Workspace"** (second increment on top of the pass directly below —

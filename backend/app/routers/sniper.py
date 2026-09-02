@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.memecoin_sniper import build_engine_status_read
 from app.persistence import persist_modules
@@ -20,6 +20,7 @@ from app.schemas import (
     SniperPosition,
     SniperRiskState,
     SniperTrade,
+    SniperWallet,
 )
 from app.state import game_state
 
@@ -31,10 +32,21 @@ def _today_start_iso() -> str:
     return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
 
+def _has_active_wallet(wallets: list[SniperWallet]) -> bool:
+    return any(w.is_active for w in wallets)
+
+
 @router.get("/status", response_model=SniperEngineStatusRead)
 async def sniper_status() -> SniperEngineStatusRead:
     state = await game_state.snapshot()
-    return build_engine_status_read(state.sniper_engine_config, state.sniper_risk_state, state.sniper_positions, state.sniper_trade_history, today_start_iso=_today_start_iso())
+    return build_engine_status_read(
+        state.sniper_engine_config,
+        state.sniper_risk_state,
+        state.sniper_positions,
+        state.sniper_trade_history,
+        today_start_iso=_today_start_iso(),
+        has_active_wallet=_has_active_wallet(state.sniper_wallets),
+    )
 
 
 @router.get("/candidates", response_model=list[SniperCandidate])
@@ -94,7 +106,52 @@ async def sniper_live_arming() -> SniperLiveArmingStatus:
     environment. See app/memecoin_sniper.py::evaluate_live_arming()."""
     from app.memecoin_sniper import evaluate_live_arming
 
-    return evaluate_live_arming()
+    state = await game_state.snapshot()
+    return evaluate_live_arming(has_active_wallet=_has_active_wallet(state.sniper_wallets))
+
+
+@router.get("/wallets", response_model=list[SniperWallet])
+async def sniper_wallets() -> list[SniperWallet]:
+    """"Terminal 2.1" directive, Phase 5 — real wallet METADATA only. See
+    `SniperWallet`'s own docstring for why no secret ever appears here."""
+    state = await game_state.snapshot()
+    return state.sniper_wallets
+
+
+class AddSniperWalletRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    label: str
+    public_address: str = Field(alias="publicAddress")
+    network: str = "solana-mainnet"
+
+
+@router.post("/wallets", response_model=SniperWallet)
+async def add_sniper_wallet(payload: AddSniperWalletRequest) -> SniperWallet:
+    state, wallet, error = await game_state.add_sniper_wallet(label=payload.label, public_address=payload.public_address, network=payload.network)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    assert wallet is not None
+    return wallet
+
+
+@router.delete("/wallets/{wallet_id}")
+async def remove_sniper_wallet(wallet_id: str) -> dict[str, bool]:
+    state, error = await game_state.remove_sniper_wallet(wallet_id)
+    if error is not None:
+        raise HTTPException(status_code=404, detail=error)
+    persist_modules(state)
+    return {"removed": True}
+
+
+@router.post("/wallets/{wallet_id}/activate", response_model=list[SniperWallet])
+async def activate_sniper_wallet(wallet_id: str) -> list[SniperWallet]:
+    state, error = await game_state.set_active_sniper_wallet(wallet_id)
+    if error is not None:
+        raise HTTPException(status_code=404, detail=error)
+    persist_modules(state)
+    return state.sniper_wallets
 
 
 class UpdateSniperEngineRequest(BaseModel):
@@ -117,7 +174,14 @@ async def update_sniper_engine(payload: UpdateSniperEngineRequest) -> SniperEngi
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
-    return build_engine_status_read(state.sniper_engine_config, state.sniper_risk_state, state.sniper_positions, state.sniper_trade_history, today_start_iso=_today_start_iso())
+    return build_engine_status_read(
+        state.sniper_engine_config,
+        state.sniper_risk_state,
+        state.sniper_positions,
+        state.sniper_trade_history,
+        today_start_iso=_today_start_iso(),
+        has_active_wallet=_has_active_wallet(state.sniper_wallets),
+    )
 
 
 @router.post("/positions/{position_id}/close", response_model=SniperTrade)

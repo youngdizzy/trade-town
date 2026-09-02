@@ -12546,6 +12546,31 @@ SniperFailureCode = Literal[
 ]
 SniperCreatorRisk = Literal["confirmed", "strong_signal", "weak_signal", "unknown"]
 SniperEventType = Literal["discovered", "safety_reject", "qualified", "sniped", "no_trade", "exit", "manual_exit", "lesson"]
+# "Terminal 2.1 — Close the Remaining Disclosed Gaps" directive, Phase 1
+# — this domain has exactly one real engine and no compiled/versioned
+# strategy-definition registry (unlike the main equities Strategy Lab's
+# real `Strategy.compiled_definition_id`/`compiled_definition_version`,
+# which are themselves `None` until a real compiled definition exists —
+# the identical null-when-absent precedent this Literal follows).
+# `"versioned"` is a real, honestly-unreachable value today (nothing in
+# this codebase can ever produce it) — kept only so a future real
+# versioning system has a real state to report into, matching how
+# `SniperEngineMode` already keeps a real-but-always-blocked `"live"`.
+SniperStrategyVersionStatus = Literal["versioned", "unavailable"]
+# The one real, stable identifier for this domain's single engine — not
+# a fabricated per-trade variant. Reused as a constant default on both
+# SniperPosition and SniperTrade below.
+SNIPER_STRATEGY_ID = "memecoin-sniper"
+SNIPER_STRATEGY_NAME = "Memecoin Sniper — Liquidity/Momentum Discovery"
+# "Terminal 2.1" directive, Phase 3 — one real category per real gate
+# inside `app/memecoin_sniper.py::evaluate_entry_firewall()`, in the
+# exact order that function checks them. Never a decorative taxonomy:
+# every value here corresponds to exactly one `if` branch that function
+# can actually take, so a `SniperBlockReason` on an event always names a
+# real, reproducible reason a real candidate was really blocked.
+SniperBlockReason = Literal[
+    "safety", "data_quality", "timing", "score", "risk_profile", "kill_switch", "daily_loss", "max_positions", "max_open_risk"
+]
 
 
 class SniperSafetyCheck(CamelModel):
@@ -12625,6 +12650,16 @@ class SniperPosition(CamelModel):
     target_price: float = Field(alias="targetPrice")
     trailing_active: bool = Field(default=False, alias="trailingActive")
     trailing_stop_price: float | None = Field(default=None, alias="trailingStopPrice")
+    # "Terminal 2.1" directive, Phase 2 — the real timestamp AND real
+    # price a truthful TRAIL ACTIVATION chart marker needs
+    # (`trailing_active` alone has neither). Set once, the instant
+    # `manage_position_tick()` first flips `trailing_active` to `True`;
+    # never updated again for this position — a marker needs the real
+    # (timestamp, price) pair, never an approximation from the
+    # activation percentage constant (that would put the marker at a
+    # price the position never actually traded at).
+    trailing_activated_at: str | None = Field(default=None, alias="trailingActivatedAt")
+    trailing_activated_price: float | None = Field(default=None, alias="trailingActivatedPrice")
     opened_at: str = Field(alias="openedAt")
     status: SniperPositionStatus
     r_multiple: float | None = Field(default=None, alias="rMultiple")
@@ -12643,6 +12678,16 @@ class SniperPosition(CamelModel):
     # original stop, not the trailing one — see
     # `app/memecoin_sniper.py::position_risk_sol()`).
     risk_sol: float = Field(default=0.0, alias="riskSol")
+    # "Terminal 2.1" directive, Phase 1 — real, honest, immutable identity
+    # (see SniperStrategyVersionStatus's own docstring above for why
+    # `strategy_version_status` can only ever be `"unavailable"` today —
+    # never a fabricated version number). Set once at Pydantic-default
+    # time, same as `data_provenance` below; never mutated afterward, so
+    # a position's identity can never silently change after the fact.
+    strategy_id: str = Field(default=SNIPER_STRATEGY_ID, alias="strategyId")
+    strategy_name: str = Field(default=SNIPER_STRATEGY_NAME, alias="strategyName")
+    strategy_version_id: str | None = Field(default=None, alias="strategyVersionId")
+    strategy_version_status: SniperStrategyVersionStatus = Field(default="unavailable", alias="strategyVersionStatus")
     data_provenance: Literal["simulated"] = Field(default="simulated", alias="dataProvenance")
 
 
@@ -12658,6 +12703,23 @@ class SniperTrade(CamelModel):
     closed_at: str = Field(alias="closedAt")
     entry_price: float = Field(alias="entryPrice")
     exit_price: float = Field(alias="exitPrice")
+    # "Terminal 2.1" directive, Phase 2 — the position's own real
+    # stop/target price levels, copied from it at close time. Not
+    # derivable purely from entry_price/exit_price/risk_sol (target has
+    # no relationship to risk_sol at all), and a closed trade's own chart
+    # needs the REAL levels that actually governed it, not a guess.
+    # `None` (never a fabricated number) for a trade closed before this
+    # field existed — a required field here would have broken loading
+    # any pre-existing save's permanent sniper_trade_history archive
+    # (this was caught and fixed during this same pass's own live
+    # verification, before it ever reached a committed state).
+    stop_price: float | None = Field(default=None, alias="stopPrice")
+    target_price: float | None = Field(default=None, alias="targetPrice")
+    # Copied from the position's own trailing_activated_at/_price, if
+    # trailing ever activated before this trade closed — see
+    # SniperPosition's own field docstring.
+    trailing_activated_at: str | None = Field(default=None, alias="trailingActivatedAt")
+    trailing_activated_price: float | None = Field(default=None, alias="trailingActivatedPrice")
     size_sol: float = Field(alias="sizeSol")
     risk_sol: float = Field(alias="riskSol")
     r_multiple: float = Field(alias="rMultiple")
@@ -12670,6 +12732,17 @@ class SniperTrade(CamelModel):
     failure_codes: list[SniperFailureCode] = Field(default_factory=list, alias="failureCodes")
     thesis: str
     thesis_validated: bool | None = Field(default=None, alias="thesisValidated")
+    # "Terminal 2.1" directive, Phase 1 — same real, honest, immutable
+    # identity as SniperPosition above, snapshotted onto the PERMANENT
+    # trade-journal record so historical trades keep their own real
+    # identity forever, even if this domain ever gains real versioning
+    # later (a future trade would then snapshot a real
+    # `strategyVersionId`/`"versioned"` status; THIS record would still
+    # honestly say `"unavailable"`, exactly as it was at the time).
+    strategy_id: str = Field(default=SNIPER_STRATEGY_ID, alias="strategyId")
+    strategy_name: str = Field(default=SNIPER_STRATEGY_NAME, alias="strategyName")
+    strategy_version_id: str | None = Field(default=None, alias="strategyVersionId")
+    strategy_version_status: SniperStrategyVersionStatus = Field(default="unavailable", alias="strategyVersionStatus")
     data_provenance: Literal["simulated"] = Field(default="simulated", alias="dataProvenance")
 
 
@@ -12691,6 +12764,11 @@ class SniperEvent(CamelModel):
     mint: str | None = None
     symbol: str | None = None
     detail: str
+    # "Terminal 2.1" directive, Phase 3 — set only on `type="no_trade"`
+    # events (the one real category `evaluate_entry_firewall()` actually
+    # produces a reason for); `None` for every other event type, never a
+    # guessed classification.
+    block_reason: SniperBlockReason | None = Field(default=None, alias="blockReason")
 
 
 class SniperLead(CamelModel):
@@ -12766,6 +12844,29 @@ class SniperEngineConfig(CamelModel):
     max_open_risk_pct: float = Field(default=3.0, alias="maxOpenRiskPct")
     max_open_positions: int = Field(default=4, alias="maxOpenPositions")
     entry_cooldown_seconds: float = Field(default=9.0, alias="entryCooldownSeconds")
+
+
+class SniperWallet(CamelModel):
+    """"Terminal 2.1" directive, Phase 5 — real, persisted wallet
+    METADATA only. There is deliberately no field anywhere on this model
+    for a private key, seed phrase, or any other secret — this codebase
+    has no secure secret-storage infrastructure (confirmed by this
+    pass's own audit: no encryption-at-rest, no KMS/HSM integration, no
+    secret manager exists anywhere), so a secret field here would either
+    have to be fabricated-secure (forbidden) or plaintext (a real
+    security defect) — neither is acceptable, so the field simply does
+    not exist. `publicAddress` is safe to display/log/persist (it's
+    public by definition on any real chain). Adding a wallet NEVER
+    changes `SniperLiveArmingStatus.armed` — see that model's own
+    docstring for the three OTHER real prerequisites (RPC/Jupiter/
+    validation) that stay permanently unmet in this environment."""
+
+    id: str
+    label: str
+    public_address: str = Field(alias="publicAddress")
+    network: str
+    is_active: bool = Field(default=False, alias="isActive")
+    added_at: str = Field(alias="addedAt")
 
 
 class SniperLiveArmingStatus(CamelModel):
@@ -12979,6 +13080,10 @@ class GameSaveState(CamelModel):
     # sniper_candidates/sniper_positions (tick-mutated, pruned, not
     # recomputed from scratch).
     sniper_events: list[SniperEvent] = Field(default_factory=list, alias="sniperEvents")
+    # "Terminal 2.1" directive, Phase 5 — CEO-managed wallet METADATA
+    # (never a secret). Small, user-curated list — no cap needed, unlike
+    # the tick-mutated sniper_* lists above.
+    sniper_wallets: list[SniperWallet] = Field(default_factory=list, alias="sniperWallets")
     # CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
     # Scaling" — the real, permanent, append-only audit trail naming
     # exactly which `RiskContract` version governed each real sizing/
