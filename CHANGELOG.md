@@ -7,6 +7,82 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Paper Burn-in Test-Isolation Hardening."** A real
+  incident, root-caused during the Paper Trading Evidence Collection /
+  Controlled Burn-in 2.0 milestone: `tests/alertCenter.spec.ts`'s
+  "Emergency Stop produces a sticky critical toast" test really
+  activated Emergency Stop against the SHARED REAL DEV SAVE (its own
+  `"EMERGENCY STOP ACTIVATED"` assertion passed), then crashed mid-test
+  ("Protocol error... session closed") before it could resume trading —
+  leaving a live paper-trading burn-in silently blocked for a real,
+  extended period. TradeTown itself worked exactly as designed; the test
+  environment had no isolation from the save a burn-in depends on. Fixed
+  the environment, not the trading logic — no strategy, Gatekeeper,
+  RiskContract, RiskLimits, kill switch, Emergency Stop, Travel Mode,
+  governance, execution, sizing, lifecycle, or performance/evidence code
+  was touched by this pass.
+  - **Root cause, precisely.** `frontend/playwright.config.ts` has no
+    `webServer` of its own (documented in its own comment: backend/
+    frontend are assumed already running, started out-of-band) — so the
+    suite always mutates whatever database the backend on `:8000`
+    happens to be pointed at, with zero enforcement that it's an
+    isolated save. `backend/app/config.py`'s own `DATABASE_URL` env var
+    already provides real save isolation (the exact mechanism this
+    session's own burn-in scripts already used) — the gap was that
+    Playwright never checked it.
+  - **`GET /api/health` gained `isDefaultDevSave`**
+    (`backend/app/schemas.py`'s `HealthResponse`, now a `CamelModel` for
+    consistency with every other real API response) — a real, non-secret
+    boolean (never the raw `DATABASE_URL`, which could embed credentials
+    on a non-sqlite deployment) comparing the active `settings.
+    database_url` against a new named `DEFAULT_DATABASE_URL` constant in
+    `app/config.py`, kept in one place so the default string can never
+    silently drift between the two call sites.
+  - **`frontend/tests/global-setup.ts`** (new) — a real Playwright
+    `globalSetup` hook (wired into `playwright.config.ts`) that queries
+    that endpoint BEFORE any test file runs and throws — aborting the
+    entire suite, zero tests executed, zero mutation possible — whenever
+    the backend reports it's pointed at the shared default dev save.
+    This is deliberately fail-CLOSED-before-mutation, not a cleanup
+    promise: the original incident proved cleanup hooks (`afterEach`)
+    don't run after a crash, so the only reliable fix is never letting
+    the mutation start in the first place. The pure decision function
+    (`shouldAbort()`) is exported and separately unit-tested
+    (`tests/testIsolationGuard.spec.ts`, 4 tests) without needing a live
+    backend; the end-to-end behavior (an aborted run against the real
+    save, a normal run against an isolated one) was verified live — see
+    this milestone's own forensic report.
+  - **Every existing spec file is unchanged** — the classification
+    question this directive posed (read-only vs. isolated-mutating vs.
+    shared-state-mutating) resolved to a single answer once inspected:
+    this entire suite is documented, by design, as exercising "the real
+    running app" against "the sim clock ticking in real time for the
+    whole file" (see e.g. `commandCenter.spec.ts`'s own header comment)
+    — none of it is meaningfully read-only, so the correct fix protects
+    the shared default save uniformly for the whole suite, rather than
+    trying to carve out a "safe" read-only subset that doesn't really
+    exist.
+  - **Verification.** Full backend suite/mypy/ruff and frontend tsc/
+    lint/build all clean. Live proof against the real dev save: running
+    `npx playwright test` while the backend was pointed at it aborted
+    immediately with a clear, actionable error (naming the exact
+    `DATABASE_URL` override to use) — the real burn-in evidence
+    (`decisions: 3`, `opportunityRejections: 100`, `driftEvents: 24`,
+    `emergencyStop.active: false`, `$100,000` cash, `0` trades/
+    positions) was confirmed byte-identical before and after the
+    attempt. The same command against a backend started with an
+    isolated `DATABASE_URL` ran normally to completion.
+  - **Not built, disclosed explicitly:** an automated end-to-end test
+    that itself starts two real backend processes and asserts on the
+    CLI-level pass/fail of a whole nested Playwright invocation — this
+    milestone's own live demonstration (recorded in its forensic report)
+    serves that purpose without adding meta-test-harness complexity to
+    the suite; a per-file A/B/C mutating-vs-read-only classification
+    (Phase 1's own ask) — superseded by the uniform "the shared default
+    save is always protected" invariant above, which is simpler and
+    strictly safer than maintaining a classification that any new spec
+    file could silently violate.
+
 - **CEO directive "TradeTown — UI / Governance / Travel Mode Hardening."**
   Phase 0 forensic audit against the screenshots' three reported
   problems traced each to a specific root cause, not a vague "polish

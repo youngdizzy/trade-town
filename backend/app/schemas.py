@@ -14659,5 +14659,14 @@ class PaperTradingEvidenceReport(CamelModel):
     limitations: list[str] = Field(default_factory=list)
 
 
-class HealthResponse(BaseModel):
+class HealthResponse(CamelModel):
     status: Literal["ok"] = "ok"
+    # CEO directive "Paper Burn-in Test-Isolation Hardening" — a real,
+    # non-secret signal (never the raw DATABASE_URL, which could embed
+    # credentials on a non-sqlite deployment) that lets test tooling
+    # detect, before running anything, whether this backend is pointed
+    # at the shared default dev save (app/config.py's own hardcoded
+    # default) rather than an isolated DATABASE_URL a test run set up
+    # for itself. See frontend/tests/global-setup.ts, which refuses to
+    # run the suite at all when this is true.
+    is_default_dev_save: bool = Field(alias="isDefaultDevSave")

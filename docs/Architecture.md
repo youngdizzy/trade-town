@@ -20303,3 +20303,51 @@ flips on click and reverts on a second click (real backend round-trip,
 not a static re-render); MentorLib/Travel Mode panels render with zero
 console/page errors. Full backend suite/mypy/ruff and frontend
 tsc/lint/build results in this milestone's own forensic report.
+
+## CEO directive "Paper Burn-in Test-Isolation Hardening"
+
+A real incident, root-caused during the Paper Trading Evidence
+Collection / Controlled Burn-in 2.0 milestone: `tests/alertCenter.spec.ts`
+really activated Emergency Stop against the shared real dev save, then
+crashed before resuming — silently blocking a live burn-in for a real,
+extended period. TradeTown's own safety mechanism worked correctly; the
+test environment had no isolation from the save a burn-in depends on.
+This pass fixes the environment only — zero trading-logic files
+touched.
+
+**Root cause.** `frontend/playwright.config.ts` has no `webServer` of
+its own — the whole suite always mutates whatever database the backend
+on `:8000` happens to be pointed at, with no enforcement that it's
+isolated. `backend/app/config.py`'s `DATABASE_URL` already provides
+real save isolation (the same mechanism this session's own burn-in
+scripts used); Playwright simply never checked it.
+
+**Fix — fail closed before mutation, not cleanup-after-the-fact.**
+`GET /api/health` gained a real, non-secret `isDefaultDevSave` boolean
+(comparing the active `database_url` against a newly-named
+`DEFAULT_DATABASE_URL` constant, kept in one place so the two can't
+drift). `frontend/tests/global-setup.ts` (a real Playwright
+`globalSetup` hook) queries it before any test runs and throws —
+aborting the entire suite, zero tests executed — whenever the backend
+reports the shared default save. This is deliberately not an
+`afterEach` cleanup promise: the original incident proved cleanup
+doesn't run after a crash, so the only reliable fix is never letting
+the mutation start.
+
+**Classification resolved to a single answer.** Every existing spec
+file already documents itself as exercising the real running app with
+the sim clock ticking in real time — none of it is meaningfully
+read-only, so the fix protects the shared default save uniformly for
+the whole suite rather than trying to maintain a per-file read-only/
+mutating classification a future spec file could silently violate.
+
+**Verification.** `shouldAbort()`, the pure decision function, has 4
+dedicated unit tests (`tests/testIsolationGuard.spec.ts`). Live,
+end-to-end proof: running `npx playwright test` against the real dev
+save aborted immediately with a clear, actionable error before any test
+executed — the real burn-in evidence (3 decisions, 100 opportunity
+rejections, 24 drift events, Emergency Stop inactive, $100,000 cash, 0
+trades/positions) was confirmed byte-identical before and after the
+attempt; the same command against an isolated `DATABASE_URL` ran
+normally to completion. Full backend suite/mypy/ruff and frontend
+tsc/lint/build all clean.

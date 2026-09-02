@@ -9,9 +9,17 @@ def _split_csv(value: str) -> list[str]:
     return [origin.strip() for origin in value.split(",") if origin.strip()]
 
 
+# CEO directive "Paper Burn-in Test-Isolation Hardening" — named so
+# app/routers/health.py's is_default_dev_save check and Settings.database_url's
+# own default below can never silently drift apart (one hardcoded string
+# repeated in two places was exactly the kind of thing that would make a
+# future refactor quietly break the safety check this constant exists for).
+DEFAULT_DATABASE_URL = "sqlite:///./data/tradetown.db"
+
+
 @dataclass(frozen=True)
 class Settings:
-    database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", "sqlite:///./data/tradetown.db"))
+    database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL))
     cors_origins: list[str] = field(
         default_factory=lambda: _split_csv(
             os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:4173")
