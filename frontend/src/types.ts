@@ -2911,6 +2911,101 @@ export interface RiskDecision {
   rejectionReason: string | null;
 }
 
+// CEO directive "...then Paper-Trade Journal + Drift Detection +
+// Strategy Health State Machine." Mirrors backend/app/schemas.py's
+// PaperTradeJournalEntry family exactly.
+export interface PaperTradeJournalNote {
+  id: string;
+  createdAt: string;
+  text: string;
+}
+
+export interface PaperTradeJournalEntry {
+  id: string;
+  createdAt: string;
+  tradeId: string;
+  decisionId: string | null;
+  proposalId: string | null;
+  riskDecisionId: string | null;
+  strategyId: string | null;
+  strategyCompiledDefinitionId: string | null;
+  strategyCompiledDefinitionVersion: number | null;
+  resolvedBy: "ceo" | "auto" | "delegated" | null;
+  symbol: string;
+  side: "buy" | "sell";
+  quantity: number;
+  entryPrice: number;
+  exitPrice: number;
+  stopPrice: number | null;
+  targetPrice: number | null;
+  pnl: number;
+  pnlPct: number;
+  maePct: number;
+  mfePct: number;
+  durationMinutes: number;
+  openedAt: string;
+  closedAt: string;
+  decisionMarketRegime: MarketIntelligenceRegime | null;
+  decisionSession: TradingSession | null;
+  dataProvenance: "real" | "synthetic" | "simulated" | "user_provided" | "unavailable";
+  ceoNotes: PaperTradeJournalNote[];
+}
+
+// Drift Detection Engine — mirrors backend/app/schemas.py's DriftEvent
+// family. "behavior"/"data" categories are deliberately NOT modeled —
+// no real signal for either exists in this codebase (see the backend
+// module's own disclosed gap).
+export type DriftCategory = "performance" | "execution" | "risk" | "regime";
+export type DriftSeverity = "insufficient_evidence" | "normal" | "watch" | "critical";
+
+export interface DriftEvent {
+  id: string;
+  createdAt: string;
+  simDay: number;
+  strategyId: string;
+  strategyName: string;
+  category: DriftCategory;
+  severity: DriftSeverity;
+  previousSeverity: DriftSeverity | null;
+  metric: string;
+  baselineValue: number | null;
+  observedValue: number | null;
+  sampleSize: number;
+  evidence: string[];
+  regimeChanged: boolean;
+  detail: string;
+}
+
+// Strategy Health State Machine — mirrors backend/app/schemas.py's
+// StrategyHealthState family. Explicitly NOT a fourth, competing health
+// scorer — see the backend module's own disclosed reconciliation
+// against StrategyHealthAssessment/compute_strategy_degradation/
+// compute_trading_mode_health.
+export type StrategyHealthLifecycleState = "healthy" | "watch" | "degraded" | "critical" | "suspended" | "recovering";
+
+export interface StrategyHealthTransition {
+  id: string;
+  createdAt: string;
+  simDay: number;
+  strategyId: string;
+  previousState: StrategyHealthLifecycleState | null;
+  newState: StrategyHealthLifecycleState;
+  trigger: string;
+  evidence: string[];
+  driftEventIds: string[];
+  riskScalingFactor: number;
+}
+
+export interface StrategyHealthState {
+  strategyId: string;
+  state: StrategyHealthLifecycleState;
+  sinceSimDay: number;
+  updatedAt: string;
+  riskScalingFactor: number;
+  recoveryTradeCount: number;
+  transitions: StrategyHealthTransition[];
+}
+
 // Design Bible Chapter 67 (TTOS) Part 3 — the real Global Emergency Stop.
 export interface EmergencyStopState {
   active: boolean;
@@ -4339,6 +4434,12 @@ export interface CeoDecisionRecord {
    * selected strategy has no such evidence, or the decision predates
    * this field. */
   regimeStrategyWarning: string | null;
+  /** CEO directive "...then...Strategy Health State Machine," Phase 10
+   * — the same real, non-blocking, disclosed pattern as
+   * regimeStrategyWarning above, for the selected Strategy's own
+   * persisted health state. Null whenever the strategy was HEALTHY, no
+   * strategy was selected, or the decision predates this field. */
+  strategyHealthWarning: string | null;
 }
 
 // CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome

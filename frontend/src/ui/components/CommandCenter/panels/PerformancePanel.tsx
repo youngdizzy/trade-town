@@ -3,6 +3,8 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
 import { EventBus } from "@/game/systems/EventBus";
 import type {
+  DriftEvent,
+  PaperTradeJournalEntry,
   RegimePerformanceRead,
   RegimePerformanceSummary,
   SessionPerformanceRead,
@@ -12,6 +14,7 @@ import type {
   StrategyCapitalAllocationSummary,
   StrategyDegradationRead,
   StrategyDegradationSummary,
+  StrategyHealthState,
   StrategyPerformanceRead,
   StrategyPerformanceSummary,
   StrategySessionPerformanceSummary,
@@ -103,6 +106,23 @@ export function PerformancePanel() {
   const [degradation, setDegradation] = useState<StrategyDegradationSummary | null>(null);
   useEffect(() => {
     api.getStrategyDegradation().then(setDegradation).catch(() => undefined);
+  }, []);
+
+  // CEO directive "...then Paper-Trade Journal + Drift Detection +
+  // Strategy Health State Machine." Real, persisted reads — never
+  // computed-fresh like the two above (see backend/app/routers/
+  // trades.py's own new endpoints).
+  const [paperTradeJournal, setPaperTradeJournal] = useState<PaperTradeJournalEntry[] | null>(null);
+  useEffect(() => {
+    api.getPaperTradeJournal(20).then(setPaperTradeJournal).catch(() => undefined);
+  }, []);
+  const [driftEvents, setDriftEvents] = useState<DriftEvent[] | null>(null);
+  useEffect(() => {
+    api.getDriftEvents({ limit: 20 }).then(setDriftEvents).catch(() => undefined);
+  }, []);
+  const [strategyHealthStates, setStrategyHealthStates] = useState<StrategyHealthState[] | null>(null);
+  useEffect(() => {
+    api.getStrategyHealthStates().then(setStrategyHealthStates).catch(() => undefined);
   }, []);
 
   const netPositive = financials.netPnl >= 0;
@@ -227,6 +247,10 @@ export function PerformancePanel() {
       <StrategyCapitalAllocationSection summary={capitalAllocation} />
 
       <StrategyDegradationSection summary={degradation} />
+
+      <StrategyHealthStateSection states={strategyHealthStates} driftEvents={driftEvents} strategies={strategies} />
+
+      <PaperTradeJournalSection entries={paperTradeJournal} />
 
       <TradeAttributionSection summary={tradeAttribution} />
 
@@ -701,5 +725,122 @@ function TradeAttributionRow({ record }: { record: TradeAttributionRecord }) {
         ))}
       </div>
     </div>
+  );
+}
+
+const HEALTH_TONE = {
+  healthy: "green",
+  recovering: "cyan",
+  watch: "amber",
+  degraded: "amber",
+  critical: "red",
+  suspended: "red",
+} as const;
+
+const DRIFT_SEVERITY_TONE = {
+  insufficient_evidence: "neutral",
+  normal: "green",
+  watch: "amber",
+  critical: "red",
+} as const;
+
+/** CEO directive "...then Paper-Trade Journal + Drift Detection +
+ * Strategy Health State Machine" — the real, persisted, evidence-gated
+ * health state per strategy (never a fourth, competing health scorer —
+ * see backend/app/strategy_health.py's own module docstring for the
+ * full disclosed reconciliation against Strategy Degradation Watch
+ * above and the backtest-only Strategy Health Assessments in the
+ * Strategy Lab). A strategy with no entry has never had a real drift
+ * signal fire — shown as HEALTHY by construction, not omitted. */
+function StrategyHealthStateSection({ states, driftEvents, strategies }: { states: StrategyHealthState[] | null; driftEvents: DriftEvent[] | null; strategies: Strategy[] }) {
+  const nonHealthy = states?.filter((s) => s.state !== "healthy") ?? [];
+  const nameFor = (strategyId: string) => strategies.find((s) => s.id === strategyId)?.name ?? strategyId;
+  return (
+    <Glass className="p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Strategy Health State Machine — live-trade evidence, never a single win</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">{nonHealthy.length} non-healthy of {states?.length ?? 0} tracked</span>
+      </div>
+      {states === null ? (
+        <EmptyState>Loading…</EmptyState>
+      ) : nonHealthy.length === 0 ? (
+        <EmptyState>Every strategy with a tracked health state is HEALTHY.</EmptyState>
+      ) : (
+        <div className="space-y-1.5">
+          {nonHealthy.map((s) => (
+            <div key={s.strategyId} className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-cmdmono text-cmd-cyan">{nameFor(s.strategyId)}</span>
+                <StatusPill tone={HEALTH_TONE[s.state]}>{s.state.toUpperCase()}</StatusPill>
+                <span className="text-cmd-textDim">risk scaling {s.riskScalingFactor.toFixed(2)}x</span>
+                {s.state === "recovering" && <span className="text-cmd-textDim">{s.recoveryTradeCount} real trade(s) into probation</span>}
+              </div>
+              {s.transitions.length > 0 && <div className="mt-1 text-cmd-textDim">{s.transitions.at(-1)?.trigger}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {driftEvents !== null && driftEvents.length > 0 && (
+        <div className="mt-2 border-t border-cmd-border/50 pt-2">
+          <div className="mb-1 text-[9px] uppercase tracking-wide text-cmd-textDim">Recent Drift Events (Scaling Transparency)</div>
+          <div className="space-y-1">
+            {[...driftEvents].reverse().slice(0, 8).map((e) => (
+              <div key={e.id} className="flex flex-wrap items-center gap-2 text-[9px]">
+                <span className="font-cmdmono text-cmd-text">{e.strategyName}</span>
+                <span className="text-cmd-textDim uppercase">{e.category}</span>
+                <StatusPill tone={DRIFT_SEVERITY_TONE[e.severity]}>{e.severity.replace(/_/g, " ").toUpperCase()}</StatusPill>
+                {e.previousSeverity && <span className="text-cmd-textDim">from {e.previousSeverity}</span>}
+                {e.category === "regime" && e.regimeChanged && <StatusPill tone="cyan">REGIME CHANGED</StatusPill>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Glass>
+  );
+}
+
+/** CEO directive "...then Paper-Trade Journal..." — one real, permanent
+ * record per closed trade, joining PaperTrade/CeoDecisionRecord/
+ * RiskDecision's own already-real fields rather than duplicating them
+ * (see backend/app/schemas.py's PaperTradeJournalEntry docstring). */
+function PaperTradeJournalSection({ entries }: { entries: PaperTradeJournalEntry[] | null }) {
+  return (
+    <Glass className="p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Paper Trade Journal — Provenance &amp; Scaling Transparency</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">Most recent {entries?.length ?? 0}</span>
+      </div>
+      {entries === null ? (
+        <EmptyState>Loading…</EmptyState>
+      ) : entries.length === 0 ? (
+        <EmptyState>No trade has closed yet.</EmptyState>
+      ) : (
+        <div className="space-y-1">
+          {[...entries].reverse().map((e) => (
+            <div key={e.id} className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-cmdmono text-cmd-cyan">{e.symbol}</span>
+                <span className={e.pnl >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatMoney(e.pnl)}</span>
+                <span className="text-cmd-textDim">{formatPct(e.pnlPct)}</span>
+                {e.stopPrice !== null && <span className="text-cmd-textDim">SL {e.stopPrice.toFixed(2)}</span>}
+                {e.targetPrice !== null && <span className="text-cmd-textDim">TP {e.targetPrice.toFixed(2)}</span>}
+                <span className="text-cmd-textDim">MAE {e.maePct.toFixed(1)}% / MFE {e.mfePct.toFixed(1)}%</span>
+                {e.decisionMarketRegime && <span className="text-cmd-textDim">{e.decisionMarketRegime.replace(/_/g, " ")}</span>}
+              </div>
+              {e.ceoNotes.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {e.ceoNotes.map((n) => (
+                    <div key={n.id} className="text-cmd-textDim">
+                      &quot;{n.text}&quot;
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Glass>
   );
 }

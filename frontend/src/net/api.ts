@@ -124,6 +124,8 @@ import type {
   SessionRangeRead,
   SessionRegimeEvidenceSummary,
   PortfolioMonteCarloResult,
+  DriftEvent,
+  PaperTradeJournalEntry,
   RecoveryFactorRead,
   RestrictionScope,
   RiskContract,
@@ -132,6 +134,7 @@ import type {
   RiskDecision,
   RiskLimits,
   SimilarTradesSummary,
+  StrategyHealthState,
   TradingRestriction,
   StrategyCapitalAllocationSummary,
   StrategyDegradationSummary,
@@ -387,6 +390,19 @@ export const api = {
   // Realism," Phase 6 — normal variation vs. a real, evidence-backed
   // degradation warning. Read-only, computed fresh per request.
   getStrategyDegradation: () => request<StrategyDegradationSummary>("/trades/strategy-degradation"),
+  // CEO directive "...then Paper-Trade Journal + Drift Detection +
+  // Strategy Health State Machine." Journal/Drift/Health read+write
+  // paths — see backend/app/routers/trades.py's own new endpoints.
+  getPaperTradeJournal: (limit = 50) => request<PaperTradeJournalEntry[]>(`/trades/journal?limit=${encodeURIComponent(limit)}`),
+  addPaperTradeJournalNote: (entryId: string, text: string) =>
+    request<PaperTradeJournalEntry>(`/trades/journal/${encodeURIComponent(entryId)}/notes`, { method: "POST", body: JSON.stringify({ text }) }),
+  getDriftEvents: (opts?: { strategyId?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.strategyId) params.set("strategy_id", opts.strategyId);
+    params.set("limit", String(opts?.limit ?? 50));
+    return request<DriftEvent[]>(`/trades/drift-events?${params.toString()}`);
+  },
+  getStrategyHealthStates: () => request<StrategyHealthState[]>("/trades/strategy-health"),
   // CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why
   // isn't this strategy trading live?" per strategy, diagnostic only.
   // Read-only, computed fresh per request.
