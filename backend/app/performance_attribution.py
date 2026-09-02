@@ -76,12 +76,18 @@ from datetime import datetime, timezone
 from statistics import pstdev
 from typing import Any
 
+from app.analytics import compute_recovery_factor, max_drawdown_pct, max_drawdown_usd, real_peak_equity
 from app.portfolio_intelligence import pearson_correlation
+from app.risk_engine import portfolio_equity
 from app.schemas import (
     DecisionVaultEntry,
+    EvidenceCheckpoint,
+    EvidenceCheckpointRead,
     FailureClassification,
     MarketIntelligenceRegime,
+    PaperPortfolio,
     PaperTrade,
+    PaperTradingEvidenceReport,
     RegimePerformanceRead,
     RegimePerformanceSummary,
     SessionPerformanceRead,
@@ -110,6 +116,7 @@ from app.schemas import (
     TradingSession,
 )
 from app.strategy_lab import HEALTH_RECENT_WINDOW
+from app.trading_modes import compute_consecutive_losses, compute_consecutive_wins
 
 # CEO directive "Live Trade → Strategy Provenance," Phase 5 — a disclosed,
 # arbitrary judgment threshold (same convention as MIN_SYMBOL_SAMPLE_FOR_
@@ -803,3 +810,145 @@ def compute_strategy_degradation(
         )
 
     return StrategyDegradationSummary(reads=reads, recentWindowSize=HEALTH_RECENT_WINDOW, minSampleForVerdict=MIN_SYMBOL_SAMPLE_FOR_VERDICT, updatedAt=_now_iso())
+
+
+# ---------------------------------------------------------------------------
+# CEO directive "Paper Trading Performance & Evidence Reporting 1.0" — see
+# PaperTradingEvidenceReport's own module-docstring citation in
+# app/schemas.py for the full Phase 0 recon. Both functions below are pure
+# composition: every number already exists on PaperTrade/DecisionVaultEntry/
+# PaperPortfolio or in an already-existing, unmodified function imported
+# above — nothing here recomputes P&L, drawdown, or R.
+# ---------------------------------------------------------------------------
+
+# Phase 5 (Sample-Size Honesty) — the directive's own disclosed, arbitrary
+# checkpoint tiers. Chosen, not derived from any statistical test — the
+# same honesty convention MIN_SYMBOL_SAMPLE_FOR_VERDICT above already uses.
+_EVIDENCE_CHECKPOINTS: list[tuple[int, EvidenceCheckpoint, str, str]] = [
+    (25, "insufficient", "Insufficient sample", "Not enough closed trades to establish strategy profitability — treat every metric here as a snapshot, not a conclusion."),
+    (100, "early_behavioral", "Early behavioral evidence", "Enough to observe how the system actually behaves, not enough to judge whether it has a real edge."),
+    (250, "initial", "Initial performance evidence", "A larger sample than early testing, still too small to treat any single metric as a settled conclusion."),
+    (500, "preliminary", "Preliminary evidence", "Meaningful enough to inform judgment, not yet enough to certify performance."),
+    (1000, "developing", "Developing evidence", "Stronger than a small sample, but not automatically statistically sufficient — regime coverage, cost stability, and trade independence all still matter."),
+]
+
+
+def classify_evidence_checkpoint(trade_count: int) -> EvidenceCheckpointRead:
+    """Phase 5 — never a guarantee of statistical validity at any tier,
+    including the largest. `trade_count` below the first tier's own
+    threshold falls into that tier (e.g. 3 trades -> "insufficient",
+    since 3 < 25); at or above every threshold falls into the final,
+    largest tier."""
+    for threshold, checkpoint, label, caveat in _EVIDENCE_CHECKPOINTS:
+        if trade_count < threshold:
+            return EvidenceCheckpointRead(checkpoint=checkpoint, tradeCount=trade_count, label=label, caveat=caveat)
+    return EvidenceCheckpointRead(
+        checkpoint="larger_sample",
+        tradeCount=trade_count,
+        label="Larger evidence base",
+        caveat="A larger evidence base than any smaller checkpoint, but still not a guarantee of statistical validity — subject to trade independence, regime coverage, real transaction costs, and stability over time.",
+    )
+
+
+def compute_paper_trading_evidence_report(portfolio: PaperPortfolio, decision_vault: list[DecisionVaultEntry]) -> PaperTradingEvidenceReport:
+    """The one canonical all-time paper-trading performance summary — see
+    this function's own schema docstring (app/schemas.py) for the full
+    reuse rationale. `decision_vault` supplies the only genuinely new
+    read this function needed (`DecisionVaultEntry.r_multiple`, already
+    real and already computed once per closed trade by
+    app/decision_vault.py's own `_r_multiple()` — never recomputed here)."""
+    trades = portfolio.trade_history
+    current_equity = portfolio_equity(portfolio)
+    starting_balance = portfolio.starting_balance
+    # Phase 1 — realized (real, direct sum of closed PaperTrade.pnl) and
+    # unrealized (real, already-maintained PaperPosition.unrealizedPnl)
+    # are computed independently, never derived from `current_equity -
+    # starting_balance` (which would silently depend on cash_balance
+    # bookkeeping staying in sync with trade_history rather than
+    # reading the real per-trade/per-position numbers directly).
+    realized_pnl_usd = round(sum(t.pnl for t in trades), 2)
+    unrealized_pnl_usd = round(sum(p.unrealized_pnl for p in portfolio.positions), 2)
+    net_pnl_usd = round(realized_pnl_usd + unrealized_pnl_usd, 2)
+    net_pnl_pct = round(net_pnl_usd / starting_balance * 100, 2) if starting_balance else 0.0
+
+    # Phase 3 — WIN/LOSS/BREAKEVEN as three real, disclosed buckets (never
+    # the two-bucket win/"loss-or-breakeven" split _group_metrics() above
+    # uses internally for its own expectancy/profit-factor math — that
+    # split stays unchanged there since existing callers already depend on
+    # it; this report additionally reports breakeven as its own count,
+    # never silently folded into "loss").
+    win_count = sum(1 for t in trades if t.pnl > 0)
+    loss_count = sum(1 for t in trades if t.pnl < 0)
+    breakeven_count = sum(1 for t in trades if t.pnl == 0)
+    trade_count = len(trades)
+    win_rate_pct = round(win_count / trade_count * 100, 1) if trade_count else 0.0
+
+    group = _group_metrics(trades) if trades else None
+    avg_win_usd = round(sum(t.pnl for t in trades if t.pnl > 0) / win_count, 2) if win_count else None
+    losing_or_breakeven = [t.pnl for t in trades if t.pnl <= 0]
+    avg_loss_usd = round(sum(losing_or_breakeven) / len(losing_or_breakeven), 2) if losing_or_breakeven else None
+    largest_win_usd = max((t.pnl for t in trades if t.pnl > 0), default=None)
+    largest_loss_usd = min((t.pnl for t in trades if t.pnl < 0), default=None)
+
+    vault_by_trade_id = _vault_entries_by_trade_id(decision_vault)
+    raw_r_multiples = (vault_by_trade_id[t.id].r_multiple for t in trades if t.id in vault_by_trade_id)
+    r_multiples = [r for r in raw_r_multiples if r is not None]
+    avg_r_multiple = round(sum(r_multiples) / len(r_multiples), 3) if r_multiples else None
+
+    drawdown_pct = max_drawdown_pct(trades, starting_balance, current_equity=current_equity)
+    drawdown_usd = max_drawdown_usd(trades, starting_balance, current_equity=current_equity)
+    peak_equity = real_peak_equity(trades, starting_balance, current_equity=current_equity)
+    recovery = compute_recovery_factor(portfolio, current_equity=current_equity)
+
+    total_fees_usd = round(sum(t.transaction_cost_usd for t in trades), 2)
+    avg_entry_slippage_bps = round(sum(t.entry_slippage_bps for t in trades) / trade_count, 2) if trade_count else None
+    avg_exit_slippage_bps = round(sum(t.exit_slippage_bps for t in trades) / trade_count, 2) if trade_count else None
+    avg_holding_minutes = round(sum(t.duration_minutes for t in trades) / trade_count, 1) if trade_count else 0.0
+
+    open_exposure_usd = round(sum(p.quantity * p.current_price for p in portfolio.positions), 2)
+    open_exposure_pct = round(open_exposure_usd / current_equity * 100, 2) if current_equity else 0.0
+
+    limitations = [
+        "Execution is simulated paper trading against synthetic market data — never live trading, never real money.",
+        "Entry/exit slippage of exactly 0.0 bps may mean genuinely zero real slippage, or that no real MarketIntelligenceState was available at fill time — this codebase cannot distinguish the two after the fact from the trade record alone.",
+        "Average R-multiple only includes trades that had a real ATR-based stop price at open — a trade opened before Hard Risk Gates 2.0, or one with no real ATR evidence at open time, is honestly excluded, never assigned a fabricated R.",
+        "This report is all-time and unfiltered by date range, symbol, or strategy — see the existing per-symbol/session/regime/strategy breakdowns (app/performance_attribution.py) for those axes.",
+    ]
+
+    return PaperTradingEvidenceReport(
+        generatedAt=_now_iso(),
+        startingBalance=round(starting_balance, 2),
+        currentEquity=round(current_equity, 2),
+        realizedPnlUsd=realized_pnl_usd,
+        unrealizedPnlUsd=unrealized_pnl_usd,
+        netPnlUsd=net_pnl_usd,
+        netPnlPct=net_pnl_pct,
+        tradeCount=trade_count,
+        winCount=win_count,
+        lossCount=loss_count,
+        breakevenCount=breakeven_count,
+        winRatePct=win_rate_pct,
+        avgWinUsd=avg_win_usd,
+        avgLossUsd=avg_loss_usd,
+        largestWinUsd=round(largest_win_usd, 2) if largest_win_usd is not None else None,
+        largestLossUsd=round(largest_loss_usd, 2) if largest_loss_usd is not None else None,
+        expectancyPct=group["expectancyPct"] if group else None,
+        profitFactor=group["profitFactor"] if group else None,
+        avgRMultiple=avg_r_multiple,
+        rMultipleTradeCount=len(r_multiples),
+        maxDrawdownPct=round(drawdown_pct, 2),
+        maxDrawdownUsd=round(drawdown_usd, 2),
+        peakEquity=round(peak_equity, 2),
+        recoveryFactor=recovery.recovery_factor,
+        currentWinStreak=compute_consecutive_wins(trades),
+        currentLossStreak=compute_consecutive_losses(trades),
+        totalFeesUsd=total_fees_usd,
+        avgEntrySlippageBps=avg_entry_slippage_bps,
+        avgExitSlippageBps=avg_exit_slippage_bps,
+        avgHoldingMinutes=avg_holding_minutes,
+        openPositions=len(portfolio.positions),
+        openExposureUsd=open_exposure_usd,
+        openExposurePctOfEquity=open_exposure_pct,
+        evidence=classify_evidence_checkpoint(trade_count),
+        limitations=limitations,
+    )

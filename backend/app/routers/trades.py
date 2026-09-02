@@ -15,6 +15,7 @@ from app.exit_efficiency import compute_exit_efficiency
 from app.opportunity_feed import compute_opportunity_feed
 from app.watchlist_eligibility import compute_watchlist_eligibility
 from app.performance_attribution import (
+    compute_paper_trading_evidence_report,
     compute_regime_performance,
     compute_session_performance,
     compute_strategy_capital_allocation_evidence,
@@ -33,6 +34,7 @@ from app.schemas import (
     ExitEfficiencySummary,
     OpportunityFeed,
     PaperTradeJournalEntry,
+    PaperTradingEvidenceReport,
     RegimePerformanceSummary,
     SessionPerformanceSummary,
     StrategyCapitalAllocationSummary,
@@ -77,6 +79,23 @@ async def ack_notification(payload: AckNotificationRequest) -> AckNotificationRe
     viewed_ids = await game_state.ack_trade_notification(payload.trade_id)
     persist_modules(await game_state.snapshot())
     return AckNotificationResponse(viewedTradeNotificationIds=viewed_ids)
+
+
+@router.get("/evidence-report", response_model=PaperTradingEvidenceReport)
+async def get_paper_trading_evidence_report() -> PaperTradingEvidenceReport:
+    """CEO directive "Paper Trading Performance & Evidence Reporting 1.0"
+    — the one canonical all-time paper-trading performance summary (see
+    app/performance_attribution.py's compute_paper_trading_evidence_report()
+    and app/schemas.py's PaperTradingEvidenceReport for the full reuse
+    rationale — every number here already existed elsewhere; this
+    endpoint only assembles and honestly frames them, with an explicit
+    PAPER/simulated-execution provenance and a Phase-5 sample-size
+    evidence checkpoint that is never a guarantee of statistical
+    validity). Same real, deterministic-from-current-state read every
+    other on-demand performance endpoint in this file already uses — no
+    new GameSaveState field, computed fresh per request."""
+    state = await game_state.snapshot()
+    return compute_paper_trading_evidence_report(state.paper_portfolio, state.decision_vault)
 
 
 @router.get("/exit-efficiency", response_model=ExitEfficiencySummary)

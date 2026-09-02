@@ -20021,3 +20021,116 @@ a scoped milestone building real (not fabricated) performance reporting
 on top of the trade history this pipeline already produces, reusing
 `app/performance_attribution.py`'s existing real computations rather
 than inventing new ones.
+
+## CEO directive "TradeTown — Paper Trading Performance & Evidence Reporting 1.0"
+
+Explicitly recommended by the prior Readiness Audit + Burn-in 1.0
+milestone. Its own mission statement: "The objective is NOT to make
+TradeTown look profitable. The objective is to answer: Based on the
+trades that actually occurred, what does the evidence currently say?"
+
+### Phase 0 — an unusually mature pre-existing surface
+
+Direct code tracing found this codebase already has most of what this
+directive asks for, built across many prior directives:
+
+- `app/performance_attribution.py`'s `_group_metrics()` — the ONE
+  canonical win/loss/expectancy/profit-factor/MAE/MFE engine every
+  symbol/session/regime/strategy breakdown already shares.
+  `profit_factor` is already `None` (never a fabricated Infinity) when
+  gross loss is exactly zero — Phase 2's own explicit requirement,
+  already satisfied before this directive existed.
+- `app/analytics.py` — real, disclosed Sharpe/Sortino (risk-free rate
+  assumed 0, per-trade not annualized, both honestly documented),
+  `compute_recovery_factor()` (a real Calmar-style ratio, `None` — not a
+  fabricated infinity — when the account has never drawn down),
+  `max_drawdown_usd`/`max_drawdown_pct`/`real_peak_equity` (a shared
+  peak-to-trough walk multiple callers already reuse),
+  `compute_performance_snapshot()` (real period-filtered — daily/
+  weekly/monthly/all-time — win rate/drawdown/Sharpe/Sortino/holding
+  time/confidence-accuracy, using TradeTown's own sim-clock as its
+  canonical "timezone," periodically persisted into
+  `state.performance_snapshots`).
+- `app/trading_modes.py`'s `compute_consecutive_wins()`/
+  `compute_consecutive_losses()` — real current-streak counters.
+- `app/decision_vault.py`'s `_r_multiple()` — a real
+  `pnl_per_share / risk_per_share` computation from `PaperTrade.stop_price`
+  (the real ATR-based stop, Hard Risk Gates 2.0), `None` — never
+  fabricated — for any trade with no real stop, already carried on
+  every `DecisionVaultEntry.r_multiple`.
+- `app/trade_pipeline_health.py`'s `TradePipelineHealthSnapshot` — the
+  real proposals→decisions→executions→rejections funnel this
+  directive's own Phase 12 asks for (`GET /api/trades/pipeline-health`),
+  already built, already rendered in `TradePipelineHealthCard.tsx`
+  (used in `RiskPanel.tsx`/`LiveDeskPanel.tsx`).
+- `frontend/.../PerformancePanel.tsx` — already a genuinely
+  comprehensive report: period-filtered P&L (today/week/month/prev
+  month/all-time), realized vs. unrealized P&L shown separately,
+  drawdown, win rate, profit factor, starting→ending balance, weekly
+  breakdown, month-over-month comparison, symbol/session/regime/
+  strategy/strategy×session breakdowns each with their own honest
+  `evidenceState`, strategy capital allocation (evidence, never a
+  ranking), strategy degradation watch, Strategy Health State Machine +
+  drift events, the Paper Trade Journal, and Trade Attribution — with
+  zero fabricated numbers anywhere in it already, confirmed by reading
+  the full file.
+
+### What was genuinely missing
+
+Confirmed by grep (zero matches): one canonical ALL-TIME summary record
+composing the scattered real numbers above into a single evidence-graded
+read, with an explicit sample-size checkpoint and explicit PAPER/
+simulated-execution provenance. Every individual number already existed;
+only the ONE assembling read was missing.
+
+### What was built (backend)
+
+- **`app/performance_attribution.py::compute_paper_trading_evidence_report()`**
+  — pure composition. Reuses `_group_metrics()` for expectancy/profit-
+  factor, `compute_recovery_factor()`/`max_drawdown_usd`/`max_drawdown_pct`/
+  `real_peak_equity()` for the equity/drawdown reads, `compute_consecutive_wins`/
+  `compute_consecutive_losses` for streaks, and `DecisionVaultEntry.r_multiple`
+  (joined by `trade_id`, never recomputed) for average R. Realized P&L
+  (a real, direct sum of closed `PaperTrade.pnl`) and unrealized P&L (a
+  real sum of open `PaperPosition.unrealizedPnl`) are DELIBERATELY
+  separate fields per Phase 1's own data-contract requirement — never
+  derived from `current_equity - starting_balance`, which would
+  silently depend on `cash_balance` bookkeeping staying in sync rather
+  than reading the real per-trade/per-position numbers directly (this
+  distinction was caught by a failing test during this pass — see
+  Testing below).
+- **`classify_evidence_checkpoint()`** — the directive's own disclosed,
+  arbitrary Phase 5 tiers (insufficient <25, early_behavioral <100,
+  initial <250, preliminary <500, developing <1000, larger_sample
+  1000+), each with a caveat that explicitly denies statistical
+  certainty, including at the largest tier.
+- **`GET /api/trades/evidence-report`** — new endpoint,
+  `app/routers/trades.py`, following that file's own established
+  convention (every other performance read already lives there).
+  Returns `PaperTradingEvidenceReport`: explicit `mode: "paper"`,
+  `executionProvenance: "simulated"`, `marketDataProvenance: "synthetic"`,
+  and a `limitations` list disclosing exactly what the report cannot
+  distinguish after the fact (e.g. 0.0bps slippage meaning "genuinely
+  zero" vs. "not modeled at fill time").
+
+### Testing
+
+23 new tests in `tests/test_performance_attribution.py`, including one
+that pins the exact real result this directive's own text quotes
+verbatim — 3 closed trades, 0 wins, 3 losses, -$33.84 realized P&L,
+`evidence.checkpoint == "insufficient"` — proving this report shows
+that number exactly, never rounded into anything more flattering. Full
+suite/mypy/ruff results in this milestone's own forensic report.
+
+### Explicitly not built this pass (backend)
+
+Date-range/strategy/symbol filtering on the new endpoint (the existing
+per-symbol/session/regime/strategy breakdown endpoints already cover
+those axes independently; composing them into one filtered mega-
+endpoint was judged unnecessary duplication — named as a candidate
+future refinement); an export/snapshot system (Phase 19 explicitly
+discourages one unless necessary — the report is already reproducible:
+same input, same output); a composite "Performance Score" (explicitly
+forbidden by Phase 20 — every metric stays a separate, transparent
+field). Frontend work (Phases 16-18, 23) follows in a separate commit
+per this repo's own backend-first discipline.

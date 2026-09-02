@@ -7,6 +7,78 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Paper Trading Performance & Evidence
+  Reporting 1.0" (backend).** Phase 0 found this codebase's existing
+  performance surface unusually mature already: `app/
+  performance_attribution.py`'s `_group_metrics()` (the one canonical
+  win/loss/expectancy/profit-factor/MAE/MFE engine every symbol/session/
+  regime/strategy breakdown already shares, `profitFactor` already
+  `None`-safe on zero gross loss), `app/analytics.py`'s real Calmar-style
+  `compute_recovery_factor()`/drawdown/peak-equity functions, `app/
+  trading_modes.py`'s consecutive win/loss streak counters, `app/
+  decision_vault.py`'s real per-trade R-multiple (`pnl_per_share /
+  risk_per_share`, already carried on every `DecisionVaultEntry`), and
+  `app/trade_pipeline_health.py`'s real proposals→decisions→executions
+  funnel (already built, already rendered in `TradePipelineHealthCard.tsx`)
+  — none of these were rebuilt. The one genuinely missing piece: no
+  single canonical ALL-TIME summary composed them into one evidence-
+  graded report.
+  - **`app/performance_attribution.py` gained
+    `compute_paper_trading_evidence_report()`** — pure composition, zero
+    new P&L/drawdown/R computation. Realized P&L (real sum of closed
+    `PaperTrade.pnl`) and unrealized P&L (real sum of open
+    `PaperPosition.unrealizedPnl`) are DELIBERATELY separate fields,
+    never conflated into one number (per the directive's own Phase 1
+    data-contract requirement) — `netPnlUsd` is shown only as their sum,
+    after both are independently visible. Win/loss/breakeven are three
+    real, disclosed buckets (`pnl > 0` / `< 0` / `== 0`) — distinct from
+    `_group_metrics()`'s own internal two-bucket win/"loss-or-breakeven"
+    split, which stays unchanged since existing callers already depend
+    on it.
+  - **`classify_evidence_checkpoint()`** — the directive's own Phase 5
+    sample-size-honesty tiers (insufficient <25, early_behavioral <100,
+    initial <250, preliminary <500, developing <1000, larger_sample
+    1000+), each with an explicit caveat that is never a guarantee of
+    statistical validity, not even at the largest tier. Chosen, not
+    derived from any statistical test — the same disclosed-arbitrary-
+    threshold convention this module's own `MIN_SYMBOL_SAMPLE_FOR_VERDICT`
+    already uses.
+  - **New endpoint:** `GET /api/trades/evidence-report`
+    (`app/routers/trades.py`, following that file's own established
+    convention), returning `PaperTradingEvidenceReport` — explicit
+    `mode: "paper"`, `executionProvenance: "simulated"`,
+    `marketDataProvenance: "synthetic"`, and a `limitations` list
+    disclosing exactly what this report cannot distinguish (e.g. 0.0bps
+    slippage meaning "genuinely zero" vs. "not modeled at fill time" —
+    the trade record cannot tell the two apart after the fact).
+  - **The exact real observed result this directive's own text quotes
+    verbatim is pinned as a regression test:** 3 closed trades, 0 wins,
+    3 losses, -$33.84 realized P&L, `evidence.checkpoint ==
+    "insufficient"` — proving this report reports that number exactly,
+    never rounds it into anything more flattering.
+  - **No score manipulation** (Phase 20's own hard rule) — every metric
+    is a separate, transparent field; no composite "Performance Score."
+  - **Testing.** 23 new tests (`tests/test_performance_attribution.py`)
+    covering: zero trades, one win, one loss, mixed, breakeven counted
+    separately, all-losses, all-wins profit-factor-is-None, R-multiple
+    only averaging trades with a real matched stop/vault entry, total
+    fees, average holding time, consecutive streaks (reusing the real
+    `trading_modes` functions), open exposure from real positions,
+    determinism (same input → same output, excluding the timestamp),
+    and every evidence-checkpoint boundary. Full suite/mypy/ruff results
+    in this milestone's own forensic report.
+  - **Not attempted, disclosed explicitly (backend-first — frontend is
+    a separate, following commit per this repo's own commit
+    discipline):** date-range/strategy/symbol filtering on the new
+    endpoint (the existing per-symbol/session/regime/strategy breakdown
+    endpoints already cover those axes independently — composing them
+    into one filtered mega-endpoint was judged unnecessary duplication,
+    named as a candidate future refinement, not built); an export/
+    snapshot system (Phase 19 explicitly discourages this unless
+    necessary — the report is already reproducible from the API,
+    same input → same output); a new composite performance score
+    (explicitly forbidden by Phase 20).
+
 - **CEO directive "Controlled Paper Trading Readiness Audit + Burn-in
   1.0."** A scoped readiness/burn-in audit of the existing trading
   lifecycle, root-causing the "decisions-count anomaly" the prior Risk

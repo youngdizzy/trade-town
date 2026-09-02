@@ -14526,5 +14526,138 @@ class TradeLifecycleRecord(CamelModel):
     institutional_memory: list["InstitutionalMemoryEntry"] = Field(default_factory=list, alias="institutionalMemory")
 
 
+# CEO directive "TradeTown — Paper Trading Performance & Evidence
+# Reporting 1.0."
+#
+# PHASE 0 FORENSIC RECON, SUMMARIZED. This directive's own instruction
+# was "trace all existing performance-related infrastructure... REUSE
+# THEM. Do not create a duplicate performance engine." That trace found
+# an unusually mature, already-real performance surface: app/
+# performance_attribution.py's `_group_metrics()` (the ONE canonical
+# win/loss/expectancy/profit-factor/MAE/MFE computation every symbol/
+# session/regime/strategy breakdown already shares — profit_factor
+# already returns `None`, never a fabricated Infinity, when gross loss
+# is zero); app/analytics.py's `compute_recovery_factor()`/
+# `max_drawdown_usd()`/`max_drawdown_pct()`/`real_peak_equity()` (a real
+# Calmar-style ratio and peak-to-trough walk, already used elsewhere);
+# app/trading_modes.py's `compute_consecutive_wins()`/
+# `compute_consecutive_losses()`; app/decision_vault.py's `_r_multiple()`
+# (real `pnl_per_share / risk_per_share` from PaperTrade's own
+# `stop_price`, `None`, never fabricated, when no real stop existed),
+# already carried on every `DecisionVaultEntry.r_multiple`; app/
+# trade_pipeline_health.py's `TradePipelineHealthSnapshot` (the real
+# proposals-vs-decisions-vs-executions funnel this directive's own Phase
+# 12 asks for, already built and already rendered in
+# TradePipelineHealthCard.tsx); and frontend/.../PerformancePanel.tsx
+# itself — already a genuinely comprehensive report (period P&L,
+# realized/unrealized, drawdown, win rate, profit factor, symbol/
+# session/regime/strategy/strategy-session breakdowns each with their
+# own real `evidenceState`, capital allocation evidence, degradation
+# watch, strategy health/drift, the paper trade journal, and trade
+# attribution) with zero fabricated numbers anywhere in it already.
+#
+# WHAT WAS GENUINELY MISSING, confirmed by grep (zero matches): one
+# canonical ALL-TIME summary record composing the scattered pieces above
+# into a single evidence-graded read (explicit PAPER/simulated-execution
+# provenance, an explicit sample-size evidence checkpoint per this
+# directive's own Phase 5 tiers, consecutive streaks, largest win/loss
+# in dollars, total fees, average R, average slippage/holding time, open
+# exposure) — every one of those NUMBERS already existed on `PaperTrade`/
+# `DecisionVaultEntry`/`PaperPortfolio` or in the functions above; only
+# the ONE assembling read that turns them into a single honest report
+# was missing. This module adds exactly that — no new P&L, drawdown, or
+# R computation, only composition and honest evidence framing.
+EvidenceCheckpoint = Literal[
+    "insufficient",
+    "early_behavioral",
+    "initial",
+    "preliminary",
+    "developing",
+    "larger_sample",
+]
+
+
+class EvidenceCheckpointRead(CamelModel):
+    """CEO directive "Paper Trading Performance & Evidence Reporting
+    1.0," Phase 5 — Sample-Size Honesty. These are EVIDENCE CHECKPOINTS,
+    never guarantees of statistical validity — `caveat` says so
+    explicitly at every tier, including the largest. Thresholds (25/100/
+    250/500/1000) are the directive's own disclosed, arbitrary tiers —
+    not derived from any statistical test, the same "chosen, not
+    derived" honesty convention `MIN_SYMBOL_SAMPLE_FOR_VERDICT` and every
+    sibling threshold in app/performance_attribution.py already use."""
+
+    checkpoint: EvidenceCheckpoint
+    trade_count: int = Field(alias="tradeCount")
+    label: str
+    caveat: str
+
+
+class PaperTradingEvidenceReport(CamelModel):
+    """CEO directive "Paper Trading Performance & Evidence Reporting
+    1.0" — the one canonical all-time paper-trading performance summary.
+    Every field is either a direct read of `PaperPortfolio`/`PaperTrade`,
+    or the output of an already-existing, unmodified function (see this
+    class's own module-docstring citation above) — this schema computes
+    nothing new by existing, it only names and assembles real values.
+    `None` fields are honest "not computable from real data," never a
+    fabricated placeholder — see each field's own paired module for the
+    exact condition that produces `None` (e.g. `avgRMultiple` is `None`
+    when zero closed trades ever had a real stop price to measure risk
+    against, `profitFactor` is `None` when gross loss is exactly zero)."""
+
+    generated_at: str = Field(alias="generatedAt")
+    mode: Literal["paper"] = "paper"
+    # Reuses app/schemas.py's own existing DataCategory vocabulary
+    # (PaperTradeJournalEntry.data_provenance already established
+    # "simulated" for paper execution) — never a second provenance
+    # taxonomy for the same real distinction.
+    execution_provenance: DataCategory = "simulated"
+    market_data_provenance: DataCategory = "synthetic"
+    starting_balance: float = Field(alias="startingBalance")
+    current_equity: float = Field(alias="currentEquity")
+    # Phase 1 (Performance Data Contract) — realized and unrealized P&L
+    # are DELIBERATELY separate fields, never mixed into one misleading
+    # number. realizedPnlUsd is the real, direct sum of every closed
+    # PaperTrade.pnl (the same sum _group_metrics()'s own totalPnl
+    # already computes); unrealizedPnlUsd is the real sum of every open
+    # PaperPosition.unrealizedPnl (already maintained by
+    # app/portfolio.py's mark_to_market(), never recomputed here).
+    # netPnlUsd is their sum, shown as one headline number ONLY after
+    # both real components are independently visible above it.
+    realized_pnl_usd: float = Field(alias="realizedPnlUsd")
+    unrealized_pnl_usd: float = Field(alias="unrealizedPnlUsd")
+    net_pnl_usd: float = Field(alias="netPnlUsd")
+    net_pnl_pct: float = Field(alias="netPnlPct")
+    trade_count: int = Field(alias="tradeCount")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    breakeven_count: int = Field(alias="breakevenCount")
+    win_rate_pct: float = Field(alias="winRatePct")
+    avg_win_usd: float | None = Field(default=None, alias="avgWinUsd")
+    avg_loss_usd: float | None = Field(default=None, alias="avgLossUsd")
+    largest_win_usd: float | None = Field(default=None, alias="largestWinUsd")
+    largest_loss_usd: float | None = Field(default=None, alias="largestLossUsd")
+    expectancy_pct: float | None = Field(default=None, alias="expectancyPct")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    avg_r_multiple: float | None = Field(default=None, alias="avgRMultiple")
+    r_multiple_trade_count: int = Field(alias="rMultipleTradeCount")
+    max_drawdown_pct: float = Field(alias="maxDrawdownPct")
+    max_drawdown_usd: float = Field(alias="maxDrawdownUsd")
+    peak_equity: float = Field(alias="peakEquity")
+    recovery_factor: float | None = Field(default=None, alias="recoveryFactor")
+    current_win_streak: int = Field(alias="currentWinStreak")
+    current_loss_streak: int = Field(alias="currentLossStreak")
+    total_fees_usd: float = Field(alias="totalFeesUsd")
+    avg_entry_slippage_bps: float | None = Field(default=None, alias="avgEntrySlippageBps")
+    avg_exit_slippage_bps: float | None = Field(default=None, alias="avgExitSlippageBps")
+    avg_holding_minutes: float = Field(alias="avgHoldingMinutes")
+    open_positions: int = Field(alias="openPositions")
+    open_exposure_usd: float = Field(alias="openExposureUsd")
+    open_exposure_pct_of_equity: float = Field(alias="openExposurePctOfEquity")
+    evidence: EvidenceCheckpointRead
+    limitations: list[str] = Field(default_factory=list)
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"

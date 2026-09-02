@@ -15,6 +15,8 @@ from app.performance_attribution import (
     REPEATED_INVALIDATION_THRESHOLD,
     ROBUSTNESS_UNAVAILABLE_NOTE,
     WIN_RATE_DIVERGENCE_THRESHOLD_PCT,
+    classify_evidence_checkpoint,
+    compute_paper_trading_evidence_report,
     compute_regime_performance,
     compute_session_performance,
     compute_strategy_capital_allocation_evidence,
@@ -26,7 +28,8 @@ from app.performance_attribution import (
     compute_strategy_session_performance,
     compute_symbol_performance,
 )
-from app.schemas import DecisionVaultEntry, FailureClassification, LiquidityRead, PaperTrade, Strategy, StrategyExposureRead, StrategyHealthAssessment, StrategyRegimePerformanceSummary, StrategySessionPerformanceSummary
+from app.portfolio import default_portfolio
+from app.schemas import DecisionVaultEntry, FailureClassification, LiquidityRead, PaperPortfolio, PaperPosition, PaperTrade, Strategy, StrategyExposureRead, StrategyHealthAssessment, StrategyRegimePerformanceSummary, StrategySessionPerformanceSummary
 from app.strategy_lab import HEALTH_RECENT_WINDOW
 
 
@@ -42,6 +45,9 @@ def _trade(
     closed_sim_minutes: int = 30,
     entry_slippage_bps: float = 0.0,
     exit_slippage_bps: float = 0.0,
+    duration_minutes: int = 30,
+    stop_price: float | None = None,
+    transaction_cost_usd: float = 0.0,
 ) -> PaperTrade:
     return PaperTrade(
         id=trade_id,
@@ -52,7 +58,7 @@ def _trade(
         exitPrice=100.0 + pnl,
         pnl=pnl,
         pnlPct=pnl_pct,
-        durationMinutes=30,
+        durationMinutes=duration_minutes,
         confidence=80.0,
         reason="test",
         marketConditions="test",
@@ -66,6 +72,8 @@ def _trade(
         mfePct=mfe_pct,
         entrySlippageBps=entry_slippage_bps,
         exitSlippageBps=exit_slippage_bps,
+        stopPrice=stop_price,
+        transactionCostUsd=transaction_cost_usd,
     )
 
 
@@ -195,7 +203,7 @@ class TestComputeSymbolPerformance:
         assert read.worst_trade_pnl_pct == -3.0
 
 
-def _vault_entry(*, trade_id: str, session: str = "new_york", market_regime: str = "sideways_range", strategy_id: str | None = None) -> DecisionVaultEntry:
+def _vault_entry(*, trade_id: str, session: str = "new_york", market_regime: str = "sideways_range", strategy_id: str | None = None, r_multiple: float | None = None) -> DecisionVaultEntry:
     return DecisionVaultEntry(
         id=f"vault-{trade_id}",
         tradeId=trade_id,
@@ -222,7 +230,7 @@ def _vault_entry(*, trade_id: str, session: str = "new_york", market_regime: str
         pnl=10.0,
         pnlPct=1.0,
         holdDurationMinutes=60,
-        rMultiple=None,
+        rMultiple=r_multiple,
         caseStudyId=None,
         caseStudyCategory=None,
         executiveNotes=None,
@@ -1008,3 +1016,200 @@ class TestComputeStrategyDegradation:
         summary = compute_strategy_degradation([strategy], trades, vault, failures)
         read = summary.reads[0]
         assert read.recent_invalidation_count == 0
+
+
+def _portfolio_with_trades(trades: list[PaperTrade], *, positions: list[PaperPosition] | None = None) -> PaperPortfolio:
+    base = default_portfolio()
+    return base.model_copy(update={"trade_history": trades, "positions": positions or []})
+
+
+class TestClassifyEvidenceCheckpoint:
+    """CEO directive "Paper Trading Performance & Evidence Reporting
+    1.0," Phase 5 — Sample-Size Honesty. Exact boundary behavior at
+    every one of the directive's own disclosed tiers."""
+
+    def test_below_25_is_insufficient(self) -> None:
+        assert classify_evidence_checkpoint(0).checkpoint == "insufficient"
+        assert classify_evidence_checkpoint(3).checkpoint == "insufficient"
+        assert classify_evidence_checkpoint(24).checkpoint == "insufficient"
+
+    def test_25_to_99_is_early_behavioral(self) -> None:
+        assert classify_evidence_checkpoint(25).checkpoint == "early_behavioral"
+        assert classify_evidence_checkpoint(99).checkpoint == "early_behavioral"
+
+    def test_100_to_249_is_initial(self) -> None:
+        assert classify_evidence_checkpoint(100).checkpoint == "initial"
+        assert classify_evidence_checkpoint(249).checkpoint == "initial"
+
+    def test_250_to_499_is_preliminary(self) -> None:
+        assert classify_evidence_checkpoint(250).checkpoint == "preliminary"
+        assert classify_evidence_checkpoint(499).checkpoint == "preliminary"
+
+    def test_500_to_999_is_developing(self) -> None:
+        assert classify_evidence_checkpoint(500).checkpoint == "developing"
+        assert classify_evidence_checkpoint(999).checkpoint == "developing"
+
+    def test_1000_and_above_is_larger_sample(self) -> None:
+        assert classify_evidence_checkpoint(1000).checkpoint == "larger_sample"
+        assert classify_evidence_checkpoint(50_000).checkpoint == "larger_sample"
+
+    def test_every_tier_caveat_disclaims_statistical_certainty(self) -> None:
+        # Phase 5's own hard rule: never imply a sample proves anything,
+        # not even at the largest tier.
+        for count in (0, 25, 100, 250, 500, 1000):
+            read = classify_evidence_checkpoint(count)
+            assert "not" in read.caveat.lower() or "never" in read.caveat.lower() or "still" in read.caveat.lower()
+
+
+class TestComputePaperTradingEvidenceReport:
+    """CEO directive "Paper Trading Performance & Evidence Reporting
+    1.0" — proves the one canonical report correctly composes the
+    already-existing, unmodified functions it reuses, never recomputing
+    P&L/drawdown/R itself."""
+
+    def test_zero_trades_produces_an_honest_empty_report_no_crash(self) -> None:
+        report = compute_paper_trading_evidence_report(default_portfolio(), [])
+        assert report.trade_count == 0
+        assert report.win_count == 0
+        assert report.loss_count == 0
+        assert report.breakeven_count == 0
+        assert report.win_rate_pct == 0.0
+        assert report.avg_win_usd is None
+        assert report.avg_loss_usd is None
+        assert report.profit_factor is None
+        assert report.avg_r_multiple is None
+        assert report.evidence.checkpoint == "insufficient"
+        assert report.mode == "paper"
+        assert report.execution_provenance == "simulated"
+
+    def test_one_winning_trade(self) -> None:
+        portfolio = _portfolio_with_trades([_trade(trade_id="a", pnl=100.0, pnl_pct=1.0)])
+        report = compute_paper_trading_evidence_report(portfolio, [])
+        assert report.trade_count == 1
+        assert report.win_count == 1
+        assert report.loss_count == 0
+        assert report.largest_win_usd == 100.0
+        assert report.largest_loss_usd is None
+        assert report.realized_pnl_usd == 100.0
+        assert report.net_pnl_usd == 100.0
+
+    def test_one_losing_trade(self) -> None:
+        portfolio = _portfolio_with_trades([_trade(trade_id="a", pnl=-50.0, pnl_pct=-0.5)])
+        report = compute_paper_trading_evidence_report(portfolio, [])
+        assert report.win_count == 0
+        assert report.loss_count == 1
+        assert report.largest_loss_usd == -50.0
+        assert report.largest_win_usd is None
+        assert report.realized_pnl_usd == -50.0
+        assert report.net_pnl_usd == -50.0
+
+    def test_breakeven_trade_counted_separately_never_folded_into_loss(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=10.0, pnl_pct=1.0),
+            _trade(trade_id="b", pnl=0.0, pnl_pct=0.0),
+            _trade(trade_id="c", pnl=-10.0, pnl_pct=-1.0),
+        ]
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades(trades), [])
+        assert report.win_count == 1
+        assert report.loss_count == 1
+        assert report.breakeven_count == 1
+        assert report.trade_count == 3
+
+    def test_the_exact_reported_paper_trading_scenario_from_the_burn_in(self) -> None:
+        # CEO directive "Controlled Paper Trading Readiness Audit +
+        # Burn-in 1.0" — the real observed result this milestone's own
+        # directive quotes verbatim: 3 closed trades, 0 wins, 3 losses,
+        # -$33.84 realized P&L. This report must show exactly that, not
+        # round it into anything more flattering.
+        trades = [
+            _trade(trade_id="a", pnl=-10.0, pnl_pct=-0.1),
+            _trade(trade_id="b", pnl=-12.0, pnl_pct=-0.12),
+            _trade(trade_id="c", pnl=-11.84, pnl_pct=-0.1184),
+        ]
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades(trades), [])
+        assert report.trade_count == 3
+        assert report.win_count == 0
+        assert report.loss_count == 3
+        assert round(sum(t.pnl for t in trades), 2) == -33.84
+        assert report.realized_pnl_usd == -33.84
+        assert report.net_pnl_usd == -33.84
+        assert report.evidence.checkpoint == "insufficient"
+        assert "not enough" in report.evidence.caveat.lower() or "insufficient" in report.evidence.caveat.lower() or "not" in report.evidence.caveat.lower()
+
+    def test_all_wins_profit_factor_is_none_not_infinity(self) -> None:
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0), _trade(trade_id="b", pnl=20.0, pnl_pct=2.0), _trade(trade_id="c", pnl=5.0, pnl_pct=0.5)]
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades(trades), [])
+        assert report.loss_count == 0
+        assert report.profit_factor is None
+
+    def test_all_losses(self) -> None:
+        trades = [_trade(trade_id="a", pnl=-10.0, pnl_pct=-1.0), _trade(trade_id="b", pnl=-20.0, pnl_pct=-2.0)]
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades(trades), [])
+        assert report.win_count == 0
+        assert report.loss_count == 2
+        assert report.win_rate_pct == 0.0
+
+    def test_r_multiple_only_averages_trades_with_a_real_matched_vault_entry(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=20.0, pnl_pct=2.0, stop_price=95.0),
+            _trade(trade_id="b", pnl=-10.0, pnl_pct=-1.0),  # no stop_price -- no real R
+        ]
+        vault = [_vault_entry(trade_id="a", r_multiple=2.5), _vault_entry(trade_id="b", r_multiple=None)]
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades(trades), vault)
+        assert report.avg_r_multiple == 2.5
+        assert report.r_multiple_trade_count == 1
+
+    def test_r_multiple_is_none_when_no_trade_has_one(self) -> None:
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)]
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades(trades), [])
+        assert report.avg_r_multiple is None
+        assert report.r_multiple_trade_count == 0
+
+    def test_total_fees_sums_real_transaction_costs(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=10.0, pnl_pct=1.0, transaction_cost_usd=1.5),
+            _trade(trade_id="b", pnl=-5.0, pnl_pct=-0.5, transaction_cost_usd=2.0),
+        ]
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades(trades), [])
+        assert report.total_fees_usd == 3.5
+
+    def test_avg_holding_minutes_is_a_real_average(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=10.0, pnl_pct=1.0, duration_minutes=20),
+            _trade(trade_id="b", pnl=-5.0, pnl_pct=-0.5, duration_minutes=40),
+        ]
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades(trades), [])
+        assert report.avg_holding_minutes == 30.0
+
+    def test_consecutive_streaks_reuse_the_real_trading_modes_functions(self) -> None:
+        # Most recent trade last -- two losses in a row at the end.
+        trades = [
+            _trade(trade_id="a", pnl=10.0, pnl_pct=1.0),
+            _trade(trade_id="b", pnl=-5.0, pnl_pct=-0.5),
+            _trade(trade_id="c", pnl=-3.0, pnl_pct=-0.3),
+        ]
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades(trades), [])
+        assert report.current_loss_streak == 2
+        assert report.current_win_streak == 0
+
+    def test_open_exposure_reflects_real_open_positions(self) -> None:
+        position = PaperPosition(
+            id="pos-1", symbol="AAPL", side="buy", quantity=10.0, entryPrice=100.0, currentPrice=110.0,
+            unrealizedPnl=100.0, unrealizedPnlPct=10.0, openedBy="scout", confidence=80.0, openedAt="2024-01-01T00:00:00+00:00",
+        )
+        report = compute_paper_trading_evidence_report(_portfolio_with_trades([], positions=[position]), [])
+        assert report.open_positions == 1
+        assert report.open_exposure_usd == 1100.0
+
+    def test_limitations_disclose_simulated_execution(self) -> None:
+        report = compute_paper_trading_evidence_report(default_portfolio(), [])
+        assert any("simulated" in note.lower() for note in report.limitations)
+        assert any("live" in note.lower() or "real money" in note.lower() for note in report.limitations)
+
+    def test_report_is_deterministic_same_input_same_output(self) -> None:
+        # Phase 19 -- no nondeterministic performance reporting.
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0), _trade(trade_id="b", pnl=-5.0, pnl_pct=-0.5)]
+        portfolio = _portfolio_with_trades(trades)
+        report1 = compute_paper_trading_evidence_report(portfolio, [])
+        report2 = compute_paper_trading_evidence_report(portfolio, [])
+        assert report1.model_dump(exclude={"generated_at"}) == report2.model_dump(exclude={"generated_at"})
