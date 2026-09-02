@@ -2906,6 +2906,51 @@ reliably reconstruct a past historical stop level after the fact. See
 `app/trade_attribution.py`'s `evaluate_strategy_compliance()` for the
 full real methodology.
 
+### `GET /api/trades/{trade_id}/lifecycle`
+
+CEO directive "TradeTown — Canonical Trade Lifecycle 1.0" —
+`app/trade_lifecycle.py`'s `build_trade_lifecycle_record()`, exposed
+read-only. One real trade's full lifecycle in a single response.
+`trade_id` accepts any real id already on hand for this trade: an open
+`PaperPosition.id`, a closed `PaperTrade.id`, a `PaperTradeJournalEntry.id`
+(or its own `tradeId`), a `CeoDecisionRecord.id` (or its own
+`proposalId`), or the originating `TradeProposal.id` itself — all
+resolve to the same record via `resolve_trade_root_id()`'s real
+field-equality lookups (never by parsing an id's string prefix). 404
+only when `trade_id` matches no real trade at all.
+
+Returns a `TradeLifecycleRecord`:
+
+- `tradeRootId` — the originating `TradeProposal.id` every other id in
+  this trade's history derives from.
+- `symbol`, `status` (`"pending"` — decided not yet made;
+  `"rejected"` — Gatekeeper vetoed, no position/trade ever existed;
+  `"open"`; `"closed"`).
+- `stages: TradeLifecycleStage[]` — twelve stages (`signal`, `decision`,
+  `strategyIdentity`, `riskReview`, `orderSubmitted`, `fill`,
+  `positionOpen`, `positionActive`, `exit`, `closed`,
+  `outcomeRecorded`, `tradeFinalized`), each `{ stage, label, available,
+  occurredAt, refId, note }`. `available: false` marks exactly the
+  parts of this pipeline that have no distinct real object for a given
+  idealized stage (e.g. no order-intent object separate from the
+  position for the CEO's own buy/sell path, no trailing stop, no
+  durable signal→proposal id) — `note` always explains why in plain
+  language, never a fabricated timestamp.
+- Direct references to the real underlying records, `null` whenever
+  that record doesn't exist for this trade: `proposal`, `decision`
+  (`TradeDecision`), `ceoDecision` (`CeoDecisionRecord`),
+  `riskDecision`, `position`, `trade`, `linkedOrders` (the real
+  protective stop/target `PaperOrder`s, resolved even for a closed
+  trade via the trade's own `position_id` convention), `journalEntry`,
+  `prediction`, `failure`, `institutionalMemory[]`.
+
+This endpoint computes nothing new — every field is a direct read of an
+object that already exists elsewhere in `GameSaveState`. See
+`docs/Architecture.md`'s own section on this directive for the full
+Phase 0 forensic-recon rationale, including which parts of the
+directive's own idealized nine-stage vocabulary this pipeline honestly
+does not have as distinct real objects.
+
 ### `GET /api/trades/performance-by-strategy-session`
 
 CEO directive "Live Trade → Strategy Provenance," Phase 6 — the one

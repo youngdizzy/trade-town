@@ -7,6 +7,112 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Canonical Trade Lifecycle 1.0 / Main
+  Equities Pipeline / Foundation for Trade Intelligence Loop."** The
+  directive's own instruction was explicit: "STOP. Do not code
+  immediately... trace an actual trade end-to-end... create a lifecycle
+  map before implementation." Four parallel Phase 0 research passes
+  traced the real main-equities pipeline (not app/memecoin_sniper.py,
+  which this directive explicitly scoped out) end-to-end: signal →
+  decision → strategy identity → risk review → order → fill → position →
+  exit → outcome → institutional memory. The single biggest finding: the
+  "canonical trade identity" this directive asks for is **already real**
+  — every record one trade produces derives its id deterministically
+  from one root `TradeProposal.id` (`decision_id = f"decision-{proposal.id}"`,
+  `position_id = f"pos-{proposal.id}"`, `trade.id = f"trade-{position_id}"`,
+  `RiskDecision.id = f"riskdecision-{decision.id}"`,
+  `PaperTradeJournalEntry.id = f"journal-{trade.id}"`) — see
+  app/executive.py's `resolve_proposal()`. The one genuine, bounded gap:
+  nothing assembled that identity spine into a single read for a trade
+  still OPEN (only `PaperTradeJournalEntry`, built the prior directive,
+  did this — and only at CLOSE). This pass closes exactly that gap, and
+  nothing else.
+  - **`app/trade_lifecycle.py` (new, pure, read-only).**
+    `resolve_trade_root_id()` accepts any real id a caller already has
+    for one trade (an open position id, a closed trade id, a journal
+    entry id, a CeoDecisionRecord id, or the originating proposal id
+    itself) and resolves it to that root proposal id via real field-
+    equality lookups — never by parsing an id's string prefix.
+    `build_trade_lifecycle_record()` then assembles a
+    `TradeLifecycleRecord`: the real `TradeProposal`/`TradeDecision`/
+    `CeoDecisionRecord`/`RiskDecision`/`PaperPosition`/`PaperTrade`/
+    linked protective `PaperOrder`s/`PaperTradeJournalEntry`/
+    `PredictionRecord`/`FailureClassification`/`InstitutionalMemoryEntry`
+    objects for that one trade, all direct references — this module
+    computes no new P&L, risk, or journal math, and creates no new
+    persisted record.
+  - **The honesty boundary, disclosed on every stage, not assumed
+    away.** `TradeLifecycleStage.available=False` (with a real `note`,
+    never a fabricated timestamp) for exactly the parts of the
+    directive's idealized nine-stage vocabulary this pipeline doesn't
+    really have as distinct objects: no durable id links a
+    `TradeProposal` back to the `ResearchItem` that produced it (SIGNAL
+    is real — six `AnalystVote`s plus `app/confidence.py` — but only
+    traceable via summary text, not a stable id); ORDER_INTENT/
+    ORDER_SUBMITTED/FILL are not distinct from DECISION/POSITION_OPEN
+    for the CEO's own buy/sell path (`resolve_proposal()` calls
+    `open_position()` directly — a `PaperOrder` is real only for the two
+    protective exit legs and a separate, dormant manual-order path in
+    app/broker.py); no partial exits exist anywhere; no trailing stop
+    exists in the main pipeline (present only in the unrelated Sniper
+    subsystem). Also disclosed as real but **advisory/post-hoc only**,
+    not a pre-order enforcement gate: `RiskContract` dynamic scaling
+    (app/risk_contract.py's `evaluate_risk_contract_scaling` runs AFTER
+    `resolve_proposal()` already opened the position) and
+    app/portfolio_risk.py's pretrade/marginal risk reads (wired only
+    into the CEO Trade Approval UI, never into `resolve_proposal`'s own
+    sizing/gatekeeper path) — real, enforced pre-order checks are
+    app/gatekeeper.py's `evaluate_gatekeeper()` and
+    app/position_sizing.py's `build_position_sizing()`.
+  - **New read-only endpoint:** `GET /api/trades/{trade_id}/lifecycle`
+    in app/routers/trades.py, following that file's own established
+    "extend before build" convention. 404 only when `trade_id` matches
+    no real trade at all.
+  - **Not attempted, disclosed explicitly:** any change to trading
+    behavior (wiring RiskContract's real-but-unused scaling into
+    pre-order sizing would be a genuine improvement, but changes risk
+    sizing and deserves its own scoped directive, not a side effect of
+    a lifecycle-mapping milestone — named here as a candidate future
+    task, not silently done); a frontend Trade Lifecycle panel
+    (backend-first per this repo's own commit discipline — a natural,
+    small follow-up, not started this pass); any part of "Trade
+    Intelligence Loop 1.0" or "Paper Trading Validation & Burn-in 1.0"
+    (both were bundled into the same directive message; both are
+    genuinely separate, multi-session-scale initiatives — see this
+    entry's own "Next milestone" note below).
+  - **Testing.** 10 new unit tests in tests/test_trade_lifecycle.py
+    covering: id resolution from any of a position/trade/decision/
+    journal/proposal id; an open position traced end-to-end with live
+    protective orders; a closed trade joined against journal/prediction/
+    institutional-memory records, including the case where the
+    `PaperPosition` object is gone but its linked orders still resolve
+    via the trade's own real `position_id` convention; a Gatekeeper-
+    rejected decision (no position/trade ever existed) still fully
+    traced; the honest "no strategy selected" and "no institutional-
+    memory promotion" cases rendered as disclosed gaps, never
+    fabricated; a still-pending proposal with no decision yet. Full
+    backend suite green; mypy/ruff clean. Live-verified against the
+    real running dev server (route registration, 404 path) — a full
+    200-with-real-trade-data response was not observed this session
+    because the currently loaded save has no closed/open main-equities
+    trade yet (only Memecoin Sniper activity has occurred); the
+    assembly logic itself is proven by the unit suite above, built with
+    the same schema-accurate fixture conventions as this codebase's own
+    existing PaperTradeJournalEntry tests.
+  - **Next milestone.** This directive's own Trade Intelligence Loop
+    readiness assessment: **PARTIALLY READY.** The identity/observability
+    foundation (this pass) and the evidence-gated promotion path
+    (institutional_memory.py, already real) are in place. Not ready:
+    there is still no real enforcement link from RiskContract's dynamic
+    scaling into pre-order sizing, and Strategy Intelligence pattern
+    detection/mutation was explicitly out of scope for both this pass
+    and the directive itself. Recommended next bounded increment: a
+    small frontend Trade Lifecycle panel surfacing this endpoint inside
+    the existing Command Center/Journal UI (pure UI work, zero new
+    backend surface) — before either of the two much larger bundled
+    directives ("Trade Intelligence Loop 1.0," "Paper Trading Validation
+    & Burn-in 1.0") are attempted.
+
 - **CEO directive "TradeTown — Memecoin Sniper Terminal 2.1, Close the
   Remaining Disclosed Gaps."** Closes the five gaps the prior increment's
   own forensic report explicitly named as deferred: a fabricated

@@ -19496,3 +19496,195 @@ Attempting the full directive in one pass would mean touching a dozen
 subsystems shallowly, which is exactly the kind of unintegrated
 scaffolding this codebase's own no-placeholder-systems discipline
 forbids.
+
+## CEO directive "TradeTown — Canonical Trade Lifecycle 1.0 / Main Equities Pipeline / Foundation for Trade Intelligence Loop"
+
+This is the next-milestone recommendation from the Terminal 2.1 forensic
+report above, now actually built. The directive's own governing
+instruction: "STOP. Do not code immediately... trace an actual trade
+end-to-end... create a lifecycle map before implementation."
+
+### Phase 0 — the real map (four parallel research passes)
+
+Traced the **main equities pipeline only** (not `app/memecoin_sniper.py`,
+explicitly out of scope for this directive) end-to-end: signal generation
+→ decision → strategy identity → risk review → order → fill → position →
+exit → outcome → institutional memory. Full findings, condensed:
+
+- **Signal.** `app/research.py`'s `ResearchItem` — the module's own
+  docstring is explicit that confidence "climbs a random amount each
+  tick... it is not derived from any real analysis." Feeds
+  `app/executive.py`'s `generate_proposal()`, which produces the six real
+  `AnalystVote`s and calls `app/confidence.py`'s `compute_confidence()`.
+  No durable id links a `TradeProposal` back to the `ResearchItem` that
+  produced it — the rotation pool is not append-only and `TradeProposal`
+  carries no `research_item_id` field.
+- **Decision.** `app/state.py`'s `submit_ceo_decision()` →
+  `app/executive.py`'s `resolve_proposal()`, real and fully wired,
+  producing a `TradeDecision` + `CeoDecisionRecord`.
+- **Strategy identity.** Real, and richer than expected:
+  `CeoDecisionRecord.strategy_id`/`strategy_compiled_definition_id`/
+  `strategy_compiled_definition_version` already snapshot the exact,
+  immutable `CompiledStrategyDefinition` version current the instant the
+  CEO picked a strategy — versioned via `app/strategy_registry.py`'s
+  `register_strategy_version()` (next version = `len(existing)+1`, never
+  caller-supplied, never fabricated). `None` for the honest majority of
+  decisions where the CEO didn't attribute a strategy.
+- **Risk review.** Real, enforced, pre-order: `app/gatekeeper.py`'s
+  `evaluate_gatekeeper()` (15 checks, `all()`-gated, must pass before
+  `open_position()` is ever called) and `app/position_sizing.py`'s
+  `build_position_sizing()` (real caps, including a correlation-
+  concentration cap sourced from `app/portfolio_risk.py`). Real but
+  **advisory/post-hoc only**: `app/risk_contract.py`'s dynamic scaling
+  (`evaluate_risk_contract_scaling` runs in `state.py` AFTER
+  `resolve_proposal()` already opened the position — it names which
+  `RiskContract` "governed" the trade on the resulting `RiskDecision`
+  audit record, it does not gate the trade) and `app/portfolio_risk.py`'s
+  pretrade/marginal risk reads (wired only into the CEO Trade Approval
+  UI's `routers/risk.py`, never into `resolve_proposal`'s own path —
+  `state.py` never imports `app.portfolio_risk` at all).
+  `app/override_governance.py` grades decisions after the fact; it is
+  not a pre-trade gate.
+- **Order / Fill / Position.** No real order-intent object exists
+  separate from the position for the CEO's own buy/sell path —
+  `resolve_proposal()` calls `app/portfolio.py`'s `open_position()`
+  directly, applying real slippage (`app/execution_quality.py`) inline.
+  A real `PaperOrder` object exists only for the two protective exit
+  legs (`stop_loss`/`take_profit`, `linked_position_id`-tagged, evaluated
+  every tick in `app/broker.py`'s `tick_broker()`) and for a separate,
+  currently-dormant manual-order path also in `app/broker.py`. No
+  partial fills or trailing stop exist anywhere in this pipeline (a real
+  trailing stop exists only in the unrelated Sniper subsystem).
+- **Exit / Closed.** Three real close paths, all funneling through
+  `app/portfolio.py`'s `close_position()`: a filled stop/target
+  `PaperOrder`, `app/paper_trading.py`'s hold-duration close, and CEO
+  manual/day-end flatten. `app/exit_efficiency.py` is a pure, read-only,
+  post-hoc analytics function — it never participates in the exit
+  decision.
+- **Outcome / Finalization.** `app/journal.py` (annotates the `PaperTrade`
+  itself) and `app/paper_trade_journal.py` (a separate, joined
+  `PaperTradeJournalEntry` — **not** a duplicate, confirmed: the entry
+  already carries `trade_id`/`decision_id`/`proposal_id`/
+  `risk_decision_id`/`strategy_id`/`strategy_compiled_definition_id`/
+  `strategy_compiled_definition_version`, but is only ever built at
+  CLOSE). `app/prediction_tracking.py` and `app/failure_review.py`
+  produce real, decision_id-keyed records. `app/institutional_memory.py`
+  has a real, evidence-gated `should_promote_*`/`promote_*` pair per
+  source — no evidence-free path into permanent company knowledge.
+
+**The single biggest finding:** the "canonical trade identity" this
+directive asks for as new work is **already real**. Every record one
+trade produces derives its id deterministically from one root
+`TradeProposal.id` — `decision_id = f"decision-{proposal.id}"`,
+`position_id = f"pos-{proposal.id}"`, `trade.id = f"trade-{position_id}"`,
+`RiskDecision.id = f"riskdecision-{decision.id}"`,
+`PaperTradeJournalEntry.id = f"journal-{trade.id}"` — never a fresh
+random id that would sever the chain (see `app/executive.py`'s
+`resolve_proposal()`). The one genuine, bounded gap: nothing assembled
+that spine into a single read for a trade still OPEN.
+
+### What was built
+
+- **`app/trade_lifecycle.py` (new, pure, read-only).**
+  `resolve_trade_root_id(state, trade_key)` resolves any real id a
+  caller has on hand (position id, closed trade id, journal entry id,
+  CeoDecisionRecord id, or the proposal id itself) to the root proposal
+  id via real field-equality lookups against `GameSaveState`'s own
+  lists — never by parsing an id's string prefix, so this module doesn't
+  depend on that convention staying stable. `build_trade_lifecycle_record()`
+  assembles a `TradeLifecycleRecord`: direct references to the real
+  `TradeProposal`/`TradeDecision`/`CeoDecisionRecord`/`RiskDecision`/
+  `PaperPosition`/`PaperTrade`/linked protective `PaperOrder`s/
+  `PaperTradeJournalEntry`/`PredictionRecord`/`FailureClassification`/
+  `InstitutionalMemoryEntry` for that one trade. Computes no new P&L,
+  risk, or journal math; creates no new persisted record.
+- **`TradeLifecycleStage`/`TradeLifecycleRecord`** (new schemas). Twelve
+  named stages (`signal`, `decision`, `strategy_identity`,
+  `risk_review`, `order_submitted`, `fill`, `position_open`,
+  `position_active`, `exit`, `closed`, `outcome_recorded`,
+  `trade_finalized`) — deliberately not the directive's own literal
+  fourteen-state vocabulary, since several of those states
+  (ORDER_INTENT/ORDER_SUBMITTED/FILL as distinct from DECISION/
+  POSITION_OPEN; PARTIAL_FILL; PARTIAL_EXIT) have no distinct real
+  object in this pipeline to represent them. Each stage carries
+  `available: bool` and a `note: str` that states plainly why a stage
+  isn't real when it isn't — never a fabricated timestamp or synthetic
+  status standing in for a step that didn't really happen as its own
+  object.
+- **`GET /api/trades/{trade_id}/lifecycle`** — new endpoint in
+  `app/routers/trades.py`, following that file's own established
+  "extend before build" convention (it already hosts every other
+  cross-cutting trade read: exit-efficiency, attribution, pipeline
+  health, the journal). 404 only when `trade_id` matches no real trade.
+
+### Testing and verification
+
+10 new unit tests in `tests/test_trade_lifecycle.py`: id resolution from
+any of a position/trade/decision/journal/proposal id; an open position
+traced end-to-end with its real live protective orders and MAE/MFE
+watermark; a closed trade joined against journal/prediction/
+institutional-memory records, including the case where the
+`PaperPosition` itself is gone but its linked orders still resolve via
+the trade's own real `position_id` convention; a Gatekeeper-rejected
+decision (no position/trade ever existed) still fully traced with an
+honest rejection reason; the "no strategy selected" and "no
+institutional-memory promotion" cases rendered as disclosed gaps, never
+fabricated; a still-pending proposal with no decision yet, traced as
+`status: "pending"`. Full backend suite green (`python -m pytest -q`);
+`python -m mypy app/` and `python -m ruff check app/ tests/` both clean.
+
+Live-verified against the real running dev server: route registration
+confirmed (`/api/trades/{trade_id}/lifecycle` present in the FastAPI
+route table), and the 404 path confirmed against a real HTTP response
+(`{"detail":"No real trade found for id 'nope'."}`). A full 200-with-
+real-trade-data response was **not** observed live this session — the
+currently loaded save (day 18) has no open or closed main-equities trade
+yet, only Memecoin Sniper activity, and no proposal appeared during a
+45-second live poll while the dev server ran. This is disclosed rather
+than papered over: the assembly logic itself is proven by the unit
+suite above, built with the same schema-accurate fixture conventions
+(field-for-field matching real construction sites in `app/executive.py`/
+`app/portfolio.py`/`app/state.py`) already established by this
+codebase's own `tests/test_paper_trade_journal.py`.
+
+### Explicitly not attempted this pass
+
+- **No change to trading behavior.** Wiring `RiskContract`'s real,
+  computed-but-unused dynamic scaling into `resolve_proposal`'s own
+  pre-order sizing would be a genuine improvement this audit surfaced,
+  but it changes real risk sizing/trade behavior — that deserves its
+  own scoped directive with its own testing, not a silent side effect
+  of a lifecycle-mapping/observability milestone. Named here as a
+  candidate future task, not done.
+- **No frontend surface.** Backend-first per this repo's own commit
+  discipline (CLAUDE.md). A small Trade Lifecycle panel inside the
+  existing Command Center/Journal UI is a natural, low-risk follow-up
+  (pure UI, zero new backend surface) — not started this pass.
+- **Neither of the two much larger directives bundled into the same CEO
+  message.** "Trade Intelligence Loop 1.0" (signal→decision→execution→
+  outcome→analysis→learning→improvement, spanning strategy compiler,
+  research factory, adversarial research, portfolio intelligence,
+  institutional memory, Academy) and "Paper Trading Validation & Burn-in
+  1.0" (a full certification/burn-in environment: look-ahead-bias
+  regression tests, session states, statistical confidence framing,
+  certification gates, anti-p-hacking discipline) are each genuinely
+  separate, multi-session-scale initiatives. Neither was started.
+
+### Trade Intelligence Loop readiness assessment
+
+**PARTIALLY READY.** In place: the identity/observability foundation
+this pass built, plus the evidence-gated institutional-memory promotion
+path (`app/institutional_memory.py`, already real and unchanged by this
+pass). Not ready: no real enforcement link from `RiskContract`'s dynamic
+scaling into pre-order sizing (still advisory-only); no Strategy
+Intelligence pattern-detection/mutation exists yet (explicitly out of
+scope for both this pass and the parent directive itself); no
+`TradeEvent`-typed bus exists — trade state is an append-only
+`PaperTrade` log, which is sufficient for this pass's read-only
+assembly but would need its own design decision before any real-time
+"loop" could subscribe to trade-lifecycle transitions.
+
+**Recommended next bounded increment:** a small frontend Trade
+Lifecycle panel surfacing this endpoint inside the existing Command
+Center/Journal UI — before either of the two much larger bundled
+directives are attempted.

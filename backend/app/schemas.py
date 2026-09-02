@@ -14405,5 +14405,126 @@ class ResearchDiscoveryCycleRecord(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# CEO directive "TradeTown — Canonical Trade Lifecycle 1.0 / Main
+# Equities Pipeline / Foundation for Trade Intelligence Loop."
+#
+# PHASE 0 FORENSIC RECON, SUMMARIZED. This directive's own instruction
+# was "trace an actual trade end-to-end before writing code." That trace
+# (four parallel research passes over app/research.py, app/executive.py,
+# app/state.py, app/portfolio.py, app/broker.py, app/gatekeeper.py,
+# app/risk_contract.py, app/portfolio_risk.py, app/journal.py,
+# app/paper_trade_journal.py, app/prediction_tracking.py,
+# app/failure_review.py, app/strategy_health.py, app/strategy_drift.py,
+# app/institutional_memory.py) found the connective tissue this
+# directive asks for ALREADY REAL and already wired: every record one
+# real trade ever produces derives its id deterministically from the
+# same root `TradeProposal.id` (see app/executive.py's resolve_proposal:
+# `decision_id = f"decision-{proposal.id}"`, `position_id =
+# f"pos-{proposal.id}"`, `trade.id = f"trade-{position_id}"`,
+# `RiskDecision.id = f"riskdecision-{decision.id}"`, `PaperTradeJournalEntry.id
+# = f"journal-{trade.id}"`) — never a fresh random id that would sever
+# the chain. `PaperTradeJournalEntry` (built the prior directive) already
+# carries the joined `trade_id`/`decision_id`/`proposal_id`/
+# `risk_decision_id`/`strategy_id`/`strategy_compiled_definition_id`/
+# `strategy_compiled_definition_version` this directive calls "canonical
+# trade identity" — but only from the moment a trade CLOSES. Nothing
+# in this codebase assembled that same identity spine for a trade still
+# OPEN, or presented every stage of one trade's real life in a single
+# read. That is the one genuine, bounded gap this module closes: a pure,
+# read-only ASSEMBLY layer, not a new engine, not a new persisted
+# record, not a duplicate P&L/risk/journal computation — every field on
+# `TradeLifecycleRecord` below is a direct reference to (never a
+# recomputation of) an object that already lives elsewhere in
+# `GameSaveState`.
+#
+# HONESTY BOUNDARY (Phase 0's own non-negotiable: never fabricate a
+# stage this codebase doesn't really have). The directive's own idealized
+# nine-stage vocabulary (SIGNAL -> DECISION -> RISK_REVIEW -> ORDER_INTENT
+# -> ORDER_SUBMITTED -> ORDER_ACCEPTED/REJECTED -> FILLED -> POSITION_OPEN
+# -> POSITION_ACTIVE -> EXIT_INTENT -> EXIT_ORDER -> CLOSED ->
+# OUTCOME_RECORDED -> TRADE_FINALIZED) does not all exist as distinct
+# real objects in the main equities pipeline. Confirmed real, distinct,
+# and enforced: DECISION (CeoDecisionRecord + TradeDecision), the
+# Gatekeeper's ORDER_ACCEPTED/REJECTED verdict (app/gatekeeper.py, real
+# pre-order enforcement), POSITION_OPEN/POSITION_ACTIVE (PaperPosition),
+# the exit-leg PaperOrder objects (real "stop_loss"/"take_profit" orders,
+# evaluated every tick in app/broker.py), CLOSED (PaperTrade),
+# OUTCOME_RECORDED (PaperTradeJournalEntry + PredictionRecord +
+# FailureClassification). Confirmed real but ADVISORY/POST-HOC ONLY, not
+# an enforcement gate before the order: RiskContract dynamic scaling
+# (app/risk_contract.py's evaluate_risk_contract_scaling runs AFTER
+# resolve_proposal already opened the position — see
+# app/state.py:submit_ceo_decision) and app/portfolio_risk.py's
+# pretrade/marginal risk reads (real, but wired only into the CEO Trade
+# Approval UI, never into resolve_proposal's own sizing/gatekeeper path).
+# Confirmed NOT a distinct real stage for the primary CEO buy/sell path:
+# ORDER_INTENT/ORDER_SUBMITTED/FILL as objects separate from
+# DECISION/POSITION_OPEN — app/executive.py's resolve_proposal() calls
+# app/portfolio.py's open_position() directly; a `PaperOrder` is real
+# only for the two protective exit legs and for the separate, dormant
+# manual-order path in app/broker.py. Confirmed absent entirely from the
+# main pipeline (present only in the unrelated app/memecoin_sniper.py
+# subsystem): a trailing stop. Confirmed absent: a durable id linking a
+# `TradeProposal` back to the specific `ResearchItem` that produced it
+# (research.py's rotation pool is not append-only, and `TradeProposal`
+# carries no `research_item_id` field) — SIGNAL is real (the six
+# `AnalystVote`s + app/confidence.py's `compute_confidence()`), but only
+# traceable via `research_summary`/`category` text, not a stable id.
+# `TradeLifecycleStage.available=False` marks every one of these honestly
+# rather than inventing a timestamp or synthetic status for a step that
+# never really happened as its own object.
+TradeLifecycleStageId = Literal[
+    "signal",
+    "decision",
+    "strategy_identity",
+    "risk_review",
+    "order_submitted",
+    "fill",
+    "position_open",
+    "position_active",
+    "exit",
+    "closed",
+    "outcome_recorded",
+    "trade_finalized",
+]
+
+
+class TradeLifecycleStage(CamelModel):
+    stage: TradeLifecycleStageId
+    label: str
+    available: bool
+    occurred_at: str | None = Field(default=None, alias="occurredAt")
+    ref_id: str | None = Field(default=None, alias="refId")
+    note: str
+
+
+class TradeLifecycleRecord(CamelModel):
+    """One real trade's full lifecycle, assembled by resolving the real
+    deterministic identity spine described above from a single root id
+    (`trade_root_id`, always the originating `TradeProposal.id` —
+    accepted as a lookup key alongside the derived `position_id`/
+    `trade_id`/`decision_id`, see app/trade_lifecycle.py's
+    resolve_trade_root_id()). Every nested object below is the SAME
+    object already living in GameSaveState, never a copy or a
+    recomputation — this record's only original content is `stages`,
+    the honest stage-by-stage mapping."""
+
+    trade_root_id: str = Field(alias="tradeRootId")
+    symbol: str
+    status: Literal["pending", "rejected", "open", "closed"]
+    stages: list[TradeLifecycleStage]
+    proposal: "TradeProposal | None" = None
+    decision: "TradeDecision | None" = None
+    ceo_decision: "CeoDecisionRecord | None" = Field(default=None, alias="ceoDecision")
+    risk_decision: "RiskDecision | None" = Field(default=None, alias="riskDecision")
+    position: "PaperPosition | None" = None
+    trade: "PaperTrade | None" = None
+    linked_orders: list["PaperOrder"] = Field(default_factory=list, alias="linkedOrders")
+    journal_entry: "PaperTradeJournalEntry | None" = Field(default=None, alias="journalEntry")
+    prediction: "PredictionRecord | None" = None
+    failure: "FailureClassification | None" = None
+    institutional_memory: list["InstitutionalMemoryEntry"] = Field(default_factory=list, alias="institutionalMemory")
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"

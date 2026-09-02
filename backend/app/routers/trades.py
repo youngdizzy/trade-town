@@ -46,6 +46,7 @@ from app.schemas import (
     StrategyTradingDiagnosticSummary,
     SymbolPerformanceSummary,
     TradeAttributionSummary,
+    TradeLifecycleRecord,
     TradePipelineHealthSnapshot,
     TradeStrategyRuleSnapshot,
     UnattributedTradeMonitor,
@@ -53,6 +54,7 @@ from app.schemas import (
 )
 from app.state import game_state
 from app.trade_attribution import compute_trade_attribution_history, compute_unattributed_trade_monitor, resolve_trade_strategy_rule_snapshot
+from app.trade_lifecycle import build_trade_lifecycle_record
 from app.trade_pipeline_health import compute_strategy_trading_diagnostics, compute_trade_pipeline_health
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
@@ -157,6 +159,25 @@ async def get_trade_strategy_rule_snapshot(trade_id: str) -> TradeStrategyRuleSn
     if snapshot is None:
         raise HTTPException(status_code=404, detail=f"No real closed trade with id {trade_id!r}.")
     return snapshot
+
+
+@router.get("/{trade_id}/lifecycle", response_model=TradeLifecycleRecord)
+async def get_trade_lifecycle(trade_id: str) -> TradeLifecycleRecord:
+    """CEO directive "Canonical Trade Lifecycle 1.0" — one real trade's
+    full lifecycle in a single read (see app/trade_lifecycle.py's module
+    docstring for the full Phase 0 forensic-recon rationale). `trade_id`
+    accepts any real id already on hand for this trade — an open
+    PaperPosition id, a closed PaperTrade id, a journal entry id, a
+    CeoDecisionRecord id, or the originating TradeProposal id — all
+    resolve to the same record. Every nested object is a direct
+    reference to something that already exists elsewhere in
+    GameSaveState; this endpoint computes nothing new. 404 only when
+    `trade_id` matches no real trade at all."""
+    state = await game_state.snapshot()
+    record = build_trade_lifecycle_record(state, trade_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"No real trade found for id {trade_id!r}.")
+    return record
 
 
 @router.get("/performance-by-session", response_model=SessionPerformanceSummary)
