@@ -2547,6 +2547,79 @@ in dollars, both measured against today's real live equity (see
 a fabricated infinity — when the account has never drawn down),
 `summary`, `computedAt`.
 
+### `GET/POST /api/risk-contracts/*`
+
+CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+Scaling" — a separate `risk_contracts_router` (same file,
+`app/routers/risk.py`) for the new versioned `RiskContract` entity; see
+`docs/Architecture.md`'s matching section for the full lifecycle and
+scaling methodology. Every write endpoint is a thin pass-through to the
+matching `app/state.py::GameState` method, returning `400` on any real
+validation/lifecycle error (never a partial write).
+
+- **`GET /active`** — the contract currently governing trading. Lazily
+  derives and PERSISTS a real v1 contract from the CEO's own already-
+  configured `RiskLimits` on the very first call against a save that has
+  none yet (Phase 12 fail-closed guarantee) — never a fabricated
+  configuration, and idempotent (a second call returns the same v1
+  unchanged). Returns a `RiskContract`.
+- **`GET /history`** — `{ "contracts": RiskContract[] }`, every version
+  this company has ever had, oldest first, nothing ever removed.
+- **`GET /decisions?limit=50`** — `{ "decisions": RiskDecision[] }`, the
+  most recent real per-trade-decision Scaling Transparency audit records
+  (see below), newest last. `limit` is `1..200`, default `50`.
+- **`GET /{contractId}/{version}`** — one real historical snapshot by
+  its exact `(id, version)` pair (a `RiskDecision`'s own
+  `scaling.riskContractId`/`riskContractVersion` fields resolve here).
+  `404` if that exact pair was never real.
+- **`POST /draft`** — body `{ "limits": RiskLimits, "scalingPolicy"?:
+  RiskContractScalingPolicy, "reason": string, "createdBy"?: string }`.
+  Creates a real new `draft` version (`version = ` current history
+  length `+ 1`, never a caller-supplied number) — never itself active.
+  `400` if `reason` is blank.
+- **`POST /{contractId}/validate`** — runs real structural + policy
+  validation (`app/risk_contract.py::validate_risk_contract()`) against
+  a real `draft`. On a pass, persists the transition to `validated` and
+  returns the `RiskContractValidationResult` (`valid: true`, `issues:
+  []`). On a real failure, the draft is left untouched and every real,
+  disclosed `RiskContractValidationIssue` (`field`/`category`
+  [`structural`|`policy`]/`message`) is returned inside a `400`.
+- **`POST /{contractId}/activate`** — the one real ACTIVE-producing
+  step. `400` unless the target is already `validated`. Supersedes
+  whatever contract is currently `active` in the SAME atomic update —
+  never a moment with two simultaneously-active contracts, and the
+  superseded version's own historical fields are never rewritten.
+  Returns the newly-active `RiskContract`.
+- **`POST /{contractId}/archive`** — real terminal transition, reachable
+  from any non-`active` status. `400` if the target is currently
+  `active` (activate a replacement first). Returns `{ "contracts":
+  RiskContract[] }`, the full updated history.
+
+**`RiskContract`** fields: `id`, `version`, `status`
+(`draft`|`validated`|`active`|`superseded`|`archived`), `createdAt`,
+`activatedAt`/`supersededAt`/`archivedAt` (each `null` until that real
+transition happens), `createdBy`, `reason`, `limits` (a full `RiskLimits`
+snapshot — never re-declared under new field names), `scalingPolicy` (a
+`RiskContractScalingPolicy`: `drawdownScalingEnabled`, `drawdownBands`,
+`losingStreakScalingEnabled`, `losingStreakBands` — each band `{
+threshold, factor, label }`, downward-only as severity increases, `factor
+∈ [0.0, 1.0]`, enforced by `validate`), `previousVersionId` (the contract
+this one would supersede, if any), `detail`.
+
+**`RiskDecision`** fields (Scaling Transparency — one per real CEO
+buy/sell decision, `app/state.py::submit_ceo_decision()` only; see
+`docs/Architecture.md` for the disclosed scope boundary): `id`,
+`createdAt`, `proposalId`, `decisionId`, `symbol`, `scaling` (a
+`RiskContractScalingRead`: `riskContractId`/`riskContractVersion`,
+`drawdownPct`/`drawdownBandLabel`/`drawdownFactor`,
+`consecutiveLosses`/`losingStreakBandLabel`/`losingStreakFactor`,
+`combinedFactor`, `baseRiskPerTradePct`/`approvedRiskPerTradePct`,
+`baseMaxPositionPct`/`approvedMaxPositionPct`, `killSwitchTriggered`, a
+human-readable `detail` string spelling out the whole worked
+computation), `requestedQuantity`, `approvedQuantity` (the real filled
+`PaperPosition.quantity`, `0` if the trade never executed), `rejected`,
+`rejectionReason` (`null` unless `rejected`).
+
 ### `POST /api/goals/create` / `POST /api/goals/cancel`
 
 Design Bible Chapter 64 — the CEO's Goal write path (`app/goals.py`).

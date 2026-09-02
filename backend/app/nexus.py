@@ -33,7 +33,7 @@ from app.academy import (
 from app.academy_research import MAX_ACADEMY_LIBRARY, default_academy_projects, tick_academy_projects
 from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
-from app.analytics import compute_performance_snapshot, confidence_accuracy, period_profit_dollars, record_snapshot
+from app.analytics import compute_performance_snapshot, confidence_accuracy, max_drawdown_pct, period_profit_dollars, record_snapshot
 from app.behavioral_risk import compute_behavioral_check
 from app.black_box import archive_project, default_black_box_state, generate_project_challenge, record_review as record_breakthrough_review, tick_black_box_daily
 from app.broker import execution_provider
@@ -142,7 +142,8 @@ from app.portfolio_intelligence import compute_portfolio_intelligence, count_cor
 from app.position_sizing import build_position_sizing
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
-from app.risk_engine import compute_daily_objective_status, compute_risk_budget_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
+from app.risk_engine import compute_daily_objective_status, compute_risk_budget_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, portfolio_equity, recommended_quantity
+from app.risk_contract import apply_risk_contract_scaling, evaluate_risk_contract_scaling, get_active_risk_contract
 from app.sandbox import apply_review_decision, cap_strategy_reports, cap_strategy_reviews, generate_strategy_report, maybe_advance_after_research, maybe_advance_after_result
 from app.strategy_lab import (
     cap_strategy_health_assessments,
@@ -1594,6 +1595,36 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     losing_streak, trading_mode_state = compute_losing_streak(trading_mode_state, paper_portfolio.trade_history)
     if losing_streak.pause_active:
         block_new_proposals = True
+
+    # CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+    # Scaling," Phase 3/4 — composes into the SAME real narrowing chain
+    # as Company Priority/Circuit-Breaker/Travel-Mode above (never a
+    # fourth, independent tightening mechanic, never a second gate).
+    # Reads the SAME real app/analytics.py::max_drawdown_pct() figure
+    # Sentinel/Guardian/the Gatekeeper's failure-boundary check already
+    # use, and the SAME real compute_losing_streak() count just above —
+    # never a second drawdown or streak computation. `active_risk_
+    # contract` is guaranteed non-None by app/state.py's own
+    # `_advance_once()` (which derives one before ever calling this
+    # function) for every real tick; the defensive `is not None` guard
+    # below only matters for a direct unit-test call to `tick()` that
+    # skips that guarantee — never crashes, simply skips this one real
+    # narrowing step, matching every other optional-evidence cap's own
+    # fail-open convention in this codebase (app/position_sizing.py).
+    active_risk_contract = get_active_risk_contract(state.risk_contracts)
+    risk_contract_scaling = None
+    if active_risk_contract is not None:
+        live_drawdown_pct = max_drawdown_pct(paper_portfolio.trade_history, paper_portfolio.starting_balance, current_equity=portfolio_equity(paper_portfolio))
+        risk_contract_scaling = evaluate_risk_contract_scaling(
+            contract=active_risk_contract,
+            drawdown_pct=live_drawdown_pct,
+            consecutive_losses=losing_streak.consecutive_losses,
+            base_risk_per_trade_pct=effective_risk_limits.risk_per_trade_pct,
+            base_max_position_pct=effective_risk_limits.max_position_pct,
+        )
+        effective_risk_limits = apply_risk_contract_scaling(effective_risk_limits, scaling=risk_contract_scaling)
+        if risk_contract_scaling.kill_switch_triggered:
+            block_new_proposals = True
 
     # Behavioral Circuit Breaker (app/behavioral_risk.py) — the ambient,
     # tick-level dashboard read (no specific candidate proposal to

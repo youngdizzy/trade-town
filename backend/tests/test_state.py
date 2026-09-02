@@ -726,6 +726,72 @@ class TestSubmitCeoDecisionEmergencyStopGuard:
         assert saved.trade_proposals == []
 
 
+class TestSubmitCeoDecisionRiskDecisionAuditTrail:
+    """CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+    Scaling," Phase 4/5 — the real, persisted RiskDecision audit record
+    scoped to this manual CEO decision path (see app/state.py's own
+    comment at the construction site for why: a real, pre-existing
+    asymmetry means app/nexus.py's auto-resolution call site does not
+    yet consume Risk Contract scaling, so this pass scoped the audit
+    trail to the highest-value, cleanest integration point instead)."""
+
+    def _state_with_pending_proposal(self) -> GameState:
+        state = GameState()
+        state.data = state.data.model_copy(update={"trade_proposals": [_pending_proposal()]})
+        return state
+
+    def test_a_real_buy_records_one_risk_decision_naming_the_active_contract(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert len(saved.risk_decisions) == 1
+        record = saved.risk_decisions[0]
+        assert record.proposal_id == "proposal-1"
+        assert record.decision_id == saved.decisions[-1].id
+        assert record.symbol == "NEXA"
+        active_contract = [c for c in saved.risk_contracts if c.status == "active"][0]
+        assert record.scaling.risk_contract_id == active_contract.id
+        assert record.scaling.risk_contract_version == active_contract.version
+
+    def test_a_wait_never_records_a_risk_decision(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "wait"))
+        assert error is None
+        assert saved.risk_decisions == []
+
+    def test_first_ever_buy_lazily_derives_a_real_v1_contract_from_configured_limits(self) -> None:
+        state = self._state_with_pending_proposal()
+        assert state.data.risk_contracts == []
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert len(saved.risk_contracts) == 1
+        contract = saved.risk_contracts[0]
+        assert contract.status == "active"
+        assert contract.version == 1
+        # A real 1:1 snapshot of the CEO's own already-configured
+        # RiskLimits — never a fabricated number.
+        assert contract.limits.risk_per_trade_pct == state.data.risk_limits.risk_per_trade_pct
+
+    def test_a_real_buy_reflects_the_actual_filled_quantity_as_approved(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        record = saved.risk_decisions[0]
+        filled_position = next(p for p in saved.paper_portfolio.positions if p.id == "pos-proposal-1")
+        assert record.approved_quantity == filled_position.quantity
+        assert record.rejected is False
+        assert record.rejection_reason is None
+
+    def test_risk_decisions_list_is_permanent_never_mutated_by_a_second_decision(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, _ = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        first_record = saved.risk_decisions[0]
+        state.data = saved.model_copy(update={"trade_proposals": [_pending_proposal()]})
+        saved2, error = asyncio.run(state.submit_ceo_decision("proposal-1", "wait"))
+        assert error is None
+        assert saved2.risk_decisions == [first_record]
+
+
 class TestSubmitCeoDecisionStrategyProvenance:
     """CEO directive "Live Trade -> Strategy Provenance" — the one real,
     non-fabricated way this codebase can link a live trade back to a

@@ -26,6 +26,7 @@ from typing import Callable, Literal
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.academy import compute_academy_state, default_agent_knowledge
 from app.agents import AGENT_PROFILES, all_agent_ids
+from app.analytics import max_drawdown_pct
 from app.behavioral_risk import default_behavioral_circuit_breaker
 from app.black_box import archive_project, default_black_box_state, mark_breakthrough_viewed
 from app.config import settings
@@ -82,6 +83,7 @@ from app.trading_modes import (
     acknowledge_losing_streak,
     change_trading_mode,
     circuit_breaker_confidence_bonus,
+    compute_consecutive_losses,
     default_daily_circuit_breaker,
     default_losing_streak,
     default_trading_mode_state,
@@ -103,7 +105,7 @@ from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
 from app.portfolio import default_portfolio, sim_minutes
 from app.portfolio_intelligence import compute_portfolio_intelligence
 from app.research import RESEARCHER_IDS, default_research
-from app.risk_engine import compute_daily_objective_status, compute_risk_budget_status, default_risk_limits
+from app.risk_engine import compute_daily_objective_status, compute_risk_budget_status, default_risk_limits, portfolio_equity
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.sandbox import retire_strategy as retire_strategy_stage
 from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_rule_violation, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry, record_trading_restriction_event
@@ -151,6 +153,11 @@ from app.schemas import (
     PlayerVsAiPrompt,
     PlayerVsAiState,
     ResearchCategory,
+    RiskContract,
+    RiskContractScalingPolicy,
+    RiskContractValidationResult,
+    RiskDecision,
+    RiskLimits,
     SavingsRuleType,
     SettingsState,
     SignalCalibrationState,
@@ -182,6 +189,15 @@ from app.research_discovery import run_research_discovery_cycle
 from app.strategy_families import SUPPORTED_FAMILIES
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 from app.strategy_compiler import strategy_definition_slug
+from app.risk_contract import (
+    activate_risk_contract as _activate_risk_contract,
+    archive_risk_contract as _archive_risk_contract,
+    create_draft_risk_contract as _create_draft_risk_contract,
+    evaluate_risk_contract_scaling,
+    get_active_risk_contract,
+    mark_validated as _mark_validated_risk_contract,
+    validate_risk_contract,
+)
 from app.strategy_registry import default_researchable_strategies, register_researchable_strategy, register_strategy_version
 from app.foundational_mentors import (
     add_custom_lesson as add_custom_academy_lesson_entry,
@@ -247,6 +263,9 @@ MAX_BLACK_BOX_NOTES = 20
 # predicate can never spin the loop forever.
 MAX_FAST_FORWARD_HOURS = 72
 MAX_FAST_FORWARD_TICKS = 10_000
+# Risk Contract Phase 4/5 — same cap magnitude as MAX_DECISIONS/
+# MAX_CEO_DECISIONS (the two other permanent per-decision audit lists).
+MAX_RISK_DECISIONS = 200
 
 
 def _now_iso() -> str:
@@ -937,6 +956,134 @@ class GameState:
                 return self.data, "Company Health tier thresholds must stay in strictly descending order: Excellent > Good > Stable > Needs Attention."
             self.data = self.data.model_copy(update={"risk_limits": new_limits})
             return self.data, None
+
+    @staticmethod
+    def _derive_active_risk_contract(state: GameSaveState) -> tuple[GameSaveState, RiskContract]:
+        """CEO directive "TradeTown — Persisted Risk Contract + Dynamic
+        Risk Scaling," Phase 12 (fail-closed without breaking every
+        pre-existing save) — the synchronous derivation core shared by
+        `ensure_active_risk_contract()` below (acquires its own lock,
+        for external/API callers) and `_advance_once()` (already
+        running under `self.lock` — must never acquire it a second
+        time, `asyncio.Lock` is not reentrant). Idempotent: returns
+        `state` unchanged plus the existing active contract when one
+        already exists; otherwise derives and persists a real v1
+        `RiskContract` from the CEO's own actual, already-configured
+        `risk_limits` — never a fabricated configuration."""
+        existing = get_active_risk_contract(state.risk_contracts)
+        if existing is not None:
+            return state, existing
+        now = _now_iso()
+        contract_id = f"risk-contract-{uuid.uuid4().hex[:12]}"
+        draft = _create_draft_risk_contract(
+            history=state.risk_contracts,
+            contract_id=contract_id,
+            limits=state.risk_limits,
+            created_by="system",
+            reason="Auto-derived from the CEO's existing risk configuration — the first Risk Contract this company ever had.",
+            created_at=now,
+            detail="Auto-created v1 — a real 1:1 snapshot of the already-configured RiskLimits, never fabricated numbers.",
+        )
+        validated = _mark_validated_risk_contract(draft, now_iso=now)
+        active, updated_history = _activate_risk_contract([*state.risk_contracts, validated], contract_id, now_iso=now)
+        return state.model_copy(update={"risk_contracts": updated_history}), active
+
+    async def ensure_active_risk_contract(self) -> RiskContract:
+        """Lazily derives and persists a real v1 `RiskContract` the
+        first time one is needed — see `_derive_active_risk_contract()`
+        above for the real derivation rule. Idempotent: a second call
+        when an active contract already exists returns it unchanged,
+        never creates a second version. Safe to call from read paths
+        (GET endpoints) — the fast path (an active contract already
+        exists) never touches the lock."""
+        existing = get_active_risk_contract(self.data.risk_contracts)
+        if existing is not None:
+            return existing
+        async with self.lock:
+            self.data, active = self._derive_active_risk_contract(self.data)
+            return active
+
+    async def create_draft_risk_contract(
+        self, *, limits: RiskLimits, scaling_policy: RiskContractScalingPolicy | None, reason: str, created_by: str
+    ) -> tuple[GameSaveState, RiskContract | None, str | None]:
+        """Phase 1/2 — a real new DRAFT version, based on the CEO's own
+        supplied `limits`/`scaling_policy` (never a caller-supplied
+        version number — see `next_version_number()`). Never itself
+        becomes ACTIVE — a draft must be separately validated then
+        activated (see the two methods below), matching the directive's
+        own explicit `DRAFT -> VALIDATED -> ACTIVE` lifecycle."""
+        if not reason.strip():
+            return self.data, None, "A reason is required when drafting a new risk contract."
+        async with self.lock:
+            contract_id = f"risk-contract-{uuid.uuid4().hex[:12]}"
+            draft = _create_draft_risk_contract(
+                history=self.data.risk_contracts,
+                contract_id=contract_id,
+                limits=limits,
+                created_by=created_by,
+                reason=reason,
+                created_at=_now_iso(),
+                scaling_policy=scaling_policy,
+            )
+            self.data = self.data.model_copy(update={"risk_contracts": [*self.data.risk_contracts, draft]})
+            return self.data, draft, None
+
+    async def validate_draft_risk_contract(self, contract_id: str) -> tuple[GameSaveState, RiskContractValidationResult | None, str | None]:
+        """Phase 2 — runs real structural + policy validation
+        (`app/risk_contract.py::validate_risk_contract()`). On a real
+        pass, persists the transition to `validated` (the only status
+        `activate_risk_contract()` below will accept). On a real
+        failure, the draft is left untouched (still `draft`) and every
+        real issue is returned — never a silent partial validation."""
+        async with self.lock:
+            target = next((c for c in self.data.risk_contracts if c.id == contract_id), None)
+            if target is None:
+                return self.data, None, f"No risk contract with id {contract_id!r} exists."
+            if target.status != "draft":
+                return self.data, None, f"Risk contract {contract_id} is not a draft (status={target.status!r}) — only a draft can be (re-)validated."
+            result = validate_risk_contract(target)
+            if not result.valid:
+                return self.data, result, f"Risk contract {contract_id} failed validation: {'; '.join(i.message for i in result.issues)}"
+            validated = _mark_validated_risk_contract(target, now_iso=_now_iso())
+            updated_history = [validated if c.id == contract_id else c for c in self.data.risk_contracts]
+            self.data = self.data.model_copy(update={"risk_contracts": updated_history})
+            return self.data, result, None
+
+    async def activate_risk_contract(self, contract_id: str) -> tuple[GameSaveState, RiskContract | None, str | None]:
+        """Phase 1 — the one real ACTIVE-producing step. Requires the
+        named contract to already be `validated`. Supersedes whatever
+        contract is currently active in the SAME real, atomic update —
+        never a moment with two simultaneously-active contracts, and no
+        historical trade/decision that already referenced the previous
+        version's `id`/`version` is ever rewritten."""
+        async with self.lock:
+            try:
+                active, updated_history = _activate_risk_contract(self.data.risk_contracts, contract_id, now_iso=_now_iso())
+            except ValueError as exc:
+                return self.data, None, str(exc)
+            self.data = self.data.model_copy(update={"risk_contracts": updated_history})
+            return self.data, active, None
+
+    async def archive_risk_contract(self, contract_id: str) -> tuple[GameSaveState, str | None]:
+        """Real, disclosed terminal transition — reachable from any
+        non-active state (an active contract must be superseded by
+        activating its replacement first)."""
+        async with self.lock:
+            try:
+                updated_history = _archive_risk_contract(self.data.risk_contracts, contract_id, now_iso=_now_iso())
+            except ValueError as exc:
+                return self.data, str(exc)
+            self.data = self.data.model_copy(update={"risk_contracts": updated_history})
+            return self.data, None
+
+    async def record_risk_decision(self, decision: RiskDecision) -> GameSaveState:
+        """Phase 4/5 — appends one real, permanent audit record (see
+        `RiskDecision`'s own schema docstring). Never mutates or
+        deletes an existing entry — this is historical evidence, same
+        discipline as `decisions`/`ceo_decisions`."""
+        async with self.lock:
+            self.data = self.data.model_copy(update={"risk_decisions": [*self.data.risk_decisions, decision]})
+            return self.data
 
     async def update_sniper_engine_config(
         self,
@@ -2293,6 +2440,66 @@ class GameState:
                 if strategy_id in regime_match.avoided_strategy_ids:
                     ceo_record = ceo_record.model_copy(update={"regime_strategy_warning": regime_match.detail})
 
+            # CEO directive "TradeTown — Persisted Risk Contract + Dynamic
+            # Risk Scaling," Phase 4/5 — a real, persisted RiskDecision
+            # audit record naming exactly which RiskContract version
+            # governed this CEO decision's sizing/gatekeeper read. Scoped
+            # to this manual decision path only (this pass's own forensic
+            # recon found a real, pre-existing asymmetry — app/nexus.py's
+            # auto-resolution call site passes the raw, pre-scaling
+            # risk_limits into resolve_proposal, not effective_risk_limits
+            # — deliberately left untouched by this bounded pass rather
+            # than risk a larger, harder-to-verify signature change) —
+            # the highest-value, most directly CEO-attributable "why was
+            # my trade sized this way" record. Only recorded for a real
+            # buy/sell — a "wait" never reaches sizing/the Gatekeeper, so
+            # there is no real risk decision to audit. Uses the SAME real
+            # drawdown/losing-streak figures that governed this decision
+            # (self.data.paper_portfolio, the exact snapshot already
+            # passed into resolve_proposal() above) — never a second,
+            # independently-computed drawdown/streak count.
+            risk_decisions = list(self.data.risk_decisions)
+            if choice in ("buy", "sell"):
+                self.data, active_risk_contract = self._derive_active_risk_contract(self.data)
+                pre_decision_portfolio = self.data.paper_portfolio
+                live_drawdown_pct = max_drawdown_pct(
+                    pre_decision_portfolio.trade_history,
+                    pre_decision_portfolio.starting_balance,
+                    current_equity=portfolio_equity(pre_decision_portfolio),
+                )
+                consecutive_losses = compute_consecutive_losses(pre_decision_portfolio.trade_history)
+                scaling = evaluate_risk_contract_scaling(
+                    contract=active_risk_contract,
+                    drawdown_pct=live_drawdown_pct,
+                    consecutive_losses=consecutive_losses,
+                )
+                filled_position = next((p for p in portfolio.positions if p.id == f"pos-{proposal.id}"), None)
+                approved_quantity = filled_position.quantity if filled_position is not None else 0.0
+                rejected = decision.order_id is None
+                rejection_reason: str | None = None
+                if rejected:
+                    verdict = decision.gatekeeper_verdict
+                    if verdict is not None and not verdict.approved:
+                        rejection_reason = "; ".join(f"{c.label}: {c.detail}" for c in verdict.checks if not c.passed)
+                    else:
+                        rejection_reason = "Position sized to zero — insufficient portfolio capacity/budget for this trade."
+                risk_decisions.append(
+                    RiskDecision(
+                        id=f"riskdecision-{decision.id}",
+                        createdAt=_now_iso(),
+                        proposalId=proposal.id,
+                        decisionId=decision.id,
+                        symbol=proposal.symbol,
+                        scaling=scaling,
+                        requestedQuantity=proposal.quantity,
+                        approvedQuantity=approved_quantity,
+                        rejected=rejected,
+                        rejectionReason=rejection_reason,
+                    )
+                )
+                if len(risk_decisions) > MAX_RISK_DECISIONS:
+                    del risk_decisions[: len(risk_decisions) - MAX_RISK_DECISIONS]
+
             memory = list(self.data.memory)
             record_ceo_decision(memory, decision)
 
@@ -2361,6 +2568,7 @@ class GameState:
                     "ceo_decisions": ceo_decisions,
                     "prediction_records": prediction_records,
                     "gatekeeper_rejections": gatekeeper_rejections,
+                    "risk_decisions": risk_decisions,
                     "memory": memory,
                     "executive_meeting_log": meeting_log,
                     # Design Bible Chapter 73.5 — real CEO activity, resets
@@ -2494,6 +2702,15 @@ class GameState:
         total_minutes %= 24 * 60
         hour, minute = divmod(total_minutes, 60)
         new_time = TimeState(day=day, hour=hour, minute=minute)
+        # CEO directive "TradeTown — Persisted Risk Contract + Dynamic
+        # Risk Scaling," Phase 12 — guarantee a real active RiskContract
+        # exists before nexus.tick() ever runs, so its own dynamic
+        # scaling step (app/risk_contract.py) always has one to read.
+        # Already running under self.lock (see this method's own
+        # docstring) — calls the sync derivation core directly rather
+        # than the async ensure_active_risk_contract() wrapper, which
+        # would deadlock trying to acquire the same non-reentrant lock.
+        self.data, _active_risk_contract = self._derive_active_risk_contract(self.data)
         self.data = nexus.tick(self.data, new_time, minutes)
 
     # CEO directive "Features 31-35: Compliance, Governance & Continuous

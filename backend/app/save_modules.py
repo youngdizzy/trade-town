@@ -73,6 +73,14 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "treasury",
         "risk_limits",
         "risk_warnings",
+        # CEO directive "TradeTown — Persisted Risk Contract + Dynamic
+        # Risk Scaling" — the real, append-only, versioned Risk Contract
+        # history (see app/risk_contract.py). Grouped with risk_limits
+        # above: real, CEO/system-mutated state, never recomputed from
+        # scratch. risk_decisions (the permanent, per-trade audit trail)
+        # lives in the trade_history archive module below instead,
+        # alongside decisions/ceo_decisions.
+        "risk_contracts",
         "emergency_stop",
         "trading_restrictions",
         "viewed_trade_notification_ids",
@@ -211,6 +219,13 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # ever-growing, never-recomputed — same category as decisions/
         # trade_proposals above.
         "sniper_trade_history",
+        # CEO directive "TradeTown — Persisted Risk Contract + Dynamic
+        # Risk Scaling" — the real, permanent, append-only audit trail
+        # naming exactly which RiskContract version governed each real
+        # sizing/gatekeeper decision (see app/schemas.py's RiskDecision
+        # docstring). Same real category as decisions/ceo_decisions
+        # above.
+        "risk_decisions",
     ),
     "knowledge_archive": (
         "case_studies",

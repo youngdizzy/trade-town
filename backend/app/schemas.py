@@ -2316,6 +2316,191 @@ class RiskLimits(CamelModel):
     company_health_needs_attention_threshold: float = Field(default=30.0, alias="companyHealthNeedsAttentionThreshold")
 
 
+# CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+# Scaling" — Phase 1. `RiskLimits` above is this codebase's one real,
+# live-enforced risk boundary, but it is a single, unversioned, mutable
+# object: `state.py::update_risk_limits()` always mutates it in place,
+# with no history, no draft/active/superseded lifecycle, and no way for
+# a persisted trade/decision record to name "which configuration was
+# actually in force at that moment." Confirmed nowhere else in this
+# codebase (a repo-wide search for "risk_contract"/"RiskContract" found
+# nothing) before this pass — a genuine, previously-disclosed gap (see
+# docs/Architecture.md's Paper-Trading Readiness Gate entry, which named
+# this exact milestone and queued it).
+#
+# `RiskContract` does NOT re-declare `RiskLimits`' ~29 fields under new
+# names — that would be exactly the "duplicate risk calculation" this
+# directive's own Phase 0 forbids. It WRAPS a real `RiskLimits` snapshot
+# (the `limits` field below) with the one thing `RiskLimits` itself can
+# never honestly provide: a versioned, immutable-once-active lifecycle.
+# The versioning shape is a direct, deliberate copy of this codebase's
+# own already-proven precedent for exactly this problem —
+# `app/strategy_registry.py::register_strategy_version()` — append-only
+# history, `version = len(existing) + 1` (never a caller-supplied
+# number), immutable historical snapshots. See `app/risk_contract.py`
+# for the real lifecycle functions.
+RiskContractStatus = Literal["draft", "validated", "active", "superseded", "archived"]
+
+
+class RiskContractScalingBand(CamelModel):
+    """One real, disclosed threshold->factor step in a dynamic scaling
+    ladder — e.g. "at 4% drawdown, reduce approved risk to 75% of the
+    contract ceiling." `factor` is always in [0.0, 1.0]; a ladder is
+    walked band-by-band and the MOST severe band whose threshold has
+    been crossed wins (see `app/risk_contract.py::classify_scaling_band()`
+    for the exact real selection rule) — never averaged, never
+    interpolated."""
+
+    threshold: float
+    factor: float
+    label: str
+
+
+class RiskContractScalingPolicy(CamelModel):
+    """CEO directive Phase 3 (Dynamic Risk Scaling) — the two real,
+    genuinely-missing pieces this pass's own forensic recon confirmed:
+    never a duplicate of `app/position_sizing.py`'s own already-real,
+    already-live volatility/regime/session/correlation narrowing caps
+    (deliberately NOT re-implemented here — see `app/risk_contract.py`'s
+    own module docstring), and never a fabricated "strategy health
+    factor" ahead of the real Strategy Health State Machine this
+    directive's own second half explicitly queues as separate, later
+    work.
+
+    Both ladders are a direct, disclosed generalization of
+    `app/memecoin_sniper.py::update_risk_state_after_trade()`'s own
+    real, already-proven, deterministic, DOWNWARD-ONLY `size_multiplier`
+    pattern (previously isolated to that one subsystem) into the main
+    equities risk pipeline — "never increase size to recover losses"
+    stays exactly as true here as it already was there."""
+
+    drawdown_scaling_enabled: bool = Field(default=True, alias="drawdownScalingEnabled")
+    # Real, disclosed bands — CEO-editable via validated contract
+    # revisions, defaults chosen as a reasonable, disclosed convention
+    # (the same honesty idiom every other per-module threshold in this
+    # codebase already uses), NOT derived from any backtest or
+    # regulatory requirement. Applied against the SAME real
+    # `app/analytics.py::max_drawdown_pct()` figure every other real
+    # drawdown gate in this codebase already reads (Sentinel, Guardian,
+    # the Gatekeeper's failure-boundary check) — never a second
+    # drawdown computation.
+    drawdown_bands: list[RiskContractScalingBand] = Field(
+        default_factory=lambda: [
+            RiskContractScalingBand(threshold=4.0, factor=0.75, label="moderate_drawdown"),
+            RiskContractScalingBand(threshold=8.0, factor=0.5, label="severe_drawdown"),
+            RiskContractScalingBand(threshold=12.0, factor=0.0, label="drawdown_kill_switch"),
+        ],
+        alias="drawdownBands",
+    )
+    losing_streak_scaling_enabled: bool = Field(default=True, alias="losingStreakScalingEnabled")
+    # Same real, disclosed-band idiom, keyed on
+    # `app/trading_modes.py`'s own already-real
+    # `compute_consecutive_losses()` count — never a second losing-
+    # streak counter.
+    losing_streak_bands: list[RiskContractScalingBand] = Field(
+        default_factory=lambda: [
+            RiskContractScalingBand(threshold=3.0, factor=0.75, label="moderate_losing_streak"),
+            RiskContractScalingBand(threshold=5.0, factor=0.5, label="severe_losing_streak"),
+        ],
+        alias="losingStreakBands",
+    )
+
+
+class RiskContract(CamelModel):
+    """The authoritative, persisted, versioned specification of how much
+    risk TradeTown is allowed to take — see `app/risk_contract.py` for
+    the real lifecycle functions (create/validate/activate/supersede)
+    and this schema's own module-level comment above for why `limits`
+    wraps the existing `RiskLimits` type rather than re-declaring it.
+
+    Lifecycle (never `ACTIVE -> direct mutation` — a change always
+    creates a new version): DRAFT -> VALIDATED -> ACTIVE -> SUPERSEDED,
+    with ARCHIVED reachable from any non-ACTIVE state. Exactly one
+    contract may be ACTIVE at a time — activating a new version
+    supersedes the previous one in the SAME real, atomic step (see
+    `activate_risk_contract()`). Historical trades/decisions keep
+    referencing their own contract `id`/`version` forever — activating
+    a new version never rewrites history."""
+
+    id: str
+    version: int
+    status: RiskContractStatus
+    created_at: str = Field(alias="createdAt")
+    activated_at: str | None = Field(default=None, alias="activatedAt")
+    superseded_at: str | None = Field(default=None, alias="supersededAt")
+    archived_at: str | None = Field(default=None, alias="archivedAt")
+    created_by: str = Field(alias="createdBy")
+    reason: str
+    limits: RiskLimits
+    scaling_policy: RiskContractScalingPolicy = Field(default_factory=RiskContractScalingPolicy, alias="scalingPolicy")
+    previous_version_id: str | None = Field(default=None, alias="previousVersionId")
+    detail: str
+
+
+# Phase 2 — structural validation (malformed data) is a distinct,
+# separate real category from policy validation (a structurally valid
+# but risk-unwise configuration) — see
+# `app/risk_contract.py::validate_risk_contract()`'s own docstring for
+# the exact rule set and why the two are never merged into one
+# undifferentiated error list.
+class RiskContractValidationIssue(CamelModel):
+    field: str
+    category: Literal["structural", "policy"]
+    message: str
+
+
+class RiskContractValidationResult(CamelModel):
+    valid: bool
+    issues: list[RiskContractValidationIssue] = Field(default_factory=list)
+
+
+# "Scaling Transparency" section of the directive — one real, disclosed,
+# itemized explanation of one real dynamic-risk-scaling evaluation, in
+# the exact worked-example shape the directive itself asks for
+# ("Requested 0.75% risk. Contract ceiling 0.75%. Drawdown factor
+# 0.75. ... Final approved risk 0.45%."). Never an opaque "AI decided to
+# reduce risk."
+class RiskContractScalingRead(CamelModel):
+    risk_contract_id: str = Field(alias="riskContractId")
+    risk_contract_version: int = Field(alias="riskContractVersion")
+    drawdown_pct: float = Field(alias="drawdownPct")
+    drawdown_band_label: str | None = Field(default=None, alias="drawdownBandLabel")
+    drawdown_factor: float = Field(alias="drawdownFactor")
+    consecutive_losses: int = Field(alias="consecutiveLosses")
+    losing_streak_band_label: str | None = Field(default=None, alias="losingStreakBandLabel")
+    losing_streak_factor: float = Field(alias="losingStreakFactor")
+    combined_factor: float = Field(alias="combinedFactor")
+    base_risk_per_trade_pct: float = Field(alias="baseRiskPerTradePct")
+    approved_risk_per_trade_pct: float = Field(alias="approvedRiskPerTradePct")
+    base_max_position_pct: float = Field(alias="baseMaxPositionPct")
+    approved_max_position_pct: float = Field(alias="approvedMaxPositionPct")
+    kill_switch_triggered: bool = Field(alias="killSwitchTriggered")
+    detail: str
+
+
+# Phase 4/5 (Position Sizing Gate / Scaling Transparency) — a real,
+# persisted, per-trade-decision audit record naming exactly which
+# `RiskContract` version governed a real sizing/gatekeeper decision —
+# the concrete linkage gap this pass's own forensic recon found
+# (`PositionSizingResult`/`GatekeeperVerdict` already record requested-
+# vs-approved size and pass/fail reasons, but neither references a Risk
+# Contract version, since no such concept existed before this pass).
+# Never a second, competing risk decision — this WRAPS the SAME real
+# `scaling` read above plus the identifiers needed to trace back to the
+# real `TradeProposal`/`TradeDecision` this decision belongs to.
+class RiskDecision(CamelModel):
+    id: str
+    created_at: str = Field(alias="createdAt")
+    proposal_id: str | None = Field(default=None, alias="proposalId")
+    decision_id: str | None = Field(default=None, alias="decisionId")
+    symbol: str
+    scaling: RiskContractScalingRead
+    requested_quantity: float = Field(alias="requestedQuantity")
+    approved_quantity: float = Field(alias="approvedQuantity")
+    rejected: bool
+    rejection_reason: str | None = Field(default=None, alias="rejectionReason")
+
+
 # CEO directive "Professional Quant Firm Phase 41-45" — Critical Task #0's
 # No-Trade Reason Taxonomy. Every value below is grounded in one real,
 # already-existing rejection point this codebase's own real trade-flow
@@ -12498,6 +12683,17 @@ class GameSaveState(CamelModel):
     )
     risk_limits: RiskLimits = Field(default_factory=RiskLimits, alias="riskLimits")
     risk_warnings: list[RiskWarning] = Field(default_factory=list, alias="riskWarnings")
+    # CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+    # Scaling" — the real, append-only, single-lineage version history
+    # (never a caller-supplied version number — see
+    # `app/risk_contract.py::activate_risk_contract()`). Empty on an
+    # older save (no contract has ever been created yet); the active
+    # contract is derived on demand from the CEO's own real, already-
+    # configured `risk_limits` above the first time one is needed —
+    # never a fabricated/guessed configuration — and persisted back
+    # here from that point forward (see
+    # `app/state.py::ensure_active_risk_contract()`).
+    risk_contracts: list[RiskContract] = Field(default_factory=list, alias="riskContracts")
     # Design Bible Chapter 67 (TTOS) Part 3.
     emergency_stop: EmergencyStopState = Field(default_factory=EmergencyStopState, alias="emergencyStop")
     # CEO directive "Layered Kill Switches" — see TradingRestriction's own
@@ -12522,6 +12718,14 @@ class GameSaveState(CamelModel):
     sniper_lessons: list[SniperLesson] = Field(default_factory=list, alias="sniperLessons")
     sniper_risk_state: SniperRiskState = Field(default_factory=SniperRiskState, alias="sniperRiskState")
     sniper_engine_config: SniperEngineConfig = Field(default_factory=SniperEngineConfig, alias="sniperEngineConfig")
+    # CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+    # Scaling" — the real, permanent, append-only audit trail naming
+    # exactly which `RiskContract` version governed each real sizing/
+    # gatekeeper decision (Phase 4/5). Lives alongside `decisions`/
+    # `ceoDecisions` in the same `trade_history` archive module (see
+    # `app/save_modules.py`) — same real, ever-growing, never-
+    # recomputed category, never a second decision log.
+    risk_decisions: list[RiskDecision] = Field(default_factory=list, alias="riskDecisions")
     decisions: list[TradeDecision] = Field(default_factory=list)
     agent_energy: AgentEnergy = Field(alias="agentEnergy")
     signal_calibration: SignalCalibrationState = Field(

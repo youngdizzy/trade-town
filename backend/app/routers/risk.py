@@ -13,6 +13,7 @@ from app.persistence import persist_modules
 from app.portfolio_intelligence import compute_portfolio_intelligence
 from app.portfolio_monte_carlo import compute_portfolio_monte_carlo
 from app.portfolio_risk import compute_portfolio_risk_snapshot, evaluate_marginal_portfolio_risk, evaluate_pretrade_risk_decision
+from app.risk_contract import get_risk_contract_version
 from app.risk_engine import daily_realized_pnl_pct, portfolio_equity, project_loss_after_n_losses
 from app.schemas import (
     PortfolioMarginalRiskDecision,
@@ -21,6 +22,10 @@ from app.schemas import (
     PretradeRiskDecision,
     ProjectedLossPath,
     RecoveryFactorRead,
+    RiskContract,
+    RiskContractScalingPolicy,
+    RiskContractValidationResult,
+    RiskDecision,
     RiskLimits,
     TierAllocationLimits,
 )
@@ -206,3 +211,108 @@ async def portfolio_monte_carlo() -> PortfolioMonteCarloResult | None:
 async def recovery_factor() -> RecoveryFactorRead:
     state = await game_state.snapshot()
     return compute_recovery_factor(state.paper_portfolio, current_equity=portfolio_equity(state.paper_portfolio))
+
+
+# CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+# Scaling" — a separate router (same file — same risk domain, same
+# game_state POST-writes-via-game_state/GET-reads-computed-fresh
+# convention as everything above) rather than overloading the
+# RiskLimits-shaped `/api/risk-limits` prefix above with a distinct,
+# versioned entity. See app/risk_contract.py's module docstring for the
+# full DRAFT -> VALIDATED -> ACTIVE -> SUPERSEDED/ARCHIVED lifecycle this
+# thinly wraps — every real rule (immutable-once-active, at most one
+# ACTIVE contract, no draft skips validation) is enforced in
+# app/state.py/app/risk_contract.py; this router adds no policy of its
+# own.
+risk_contracts_router = APIRouter(prefix="/api/risk-contracts", tags=["risk-contracts"])
+
+
+class CreateDraftRiskContractRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    limits: RiskLimits
+    scaling_policy: RiskContractScalingPolicy | None = Field(default=None, alias="scalingPolicy")
+    reason: str
+    created_by: str = Field(default="ceo", alias="createdBy")
+
+
+class RiskContractHistoryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    contracts: list[RiskContract]
+
+
+class RiskDecisionsResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    decisions: list[RiskDecision]
+
+
+@risk_contracts_router.get("/active", response_model=RiskContract)
+async def active_risk_contract() -> RiskContract:
+    """Lazily derives and persists a real v1 contract from the CEO's own
+    already-configured RiskLimits the first time one is needed (Phase 12
+    fail-closed guarantee) — see app/state.py::ensure_active_risk_contract()."""
+    return await game_state.ensure_active_risk_contract()
+
+
+@risk_contracts_router.get("/history", response_model=RiskContractHistoryResponse)
+async def risk_contract_history() -> RiskContractHistoryResponse:
+    state = await game_state.snapshot()
+    return RiskContractHistoryResponse(contracts=state.risk_contracts)
+
+
+@risk_contracts_router.get("/decisions", response_model=RiskDecisionsResponse)
+async def risk_decisions_history(limit: int = Query(default=50, ge=1, le=200)) -> RiskDecisionsResponse:
+    state = await game_state.snapshot()
+    return RiskDecisionsResponse(decisions=state.risk_decisions[-limit:])
+
+
+@risk_contracts_router.get("/{contract_id}/{version}", response_model=RiskContract)
+async def risk_contract_version(contract_id: str, version: int) -> RiskContract:
+    state = await game_state.snapshot()
+    contract = get_risk_contract_version(state.risk_contracts, contract_id, version)
+    if contract is None:
+        raise HTTPException(status_code=404, detail=f"No risk contract {contract_id!r} version {version}.")
+    return contract
+
+
+@risk_contracts_router.post("/draft", response_model=RiskContract)
+async def create_draft_risk_contract(payload: CreateDraftRiskContractRequest) -> RiskContract:
+    state, draft, error = await game_state.create_draft_risk_contract(
+        limits=payload.limits,
+        scaling_policy=payload.scaling_policy,
+        reason=payload.reason,
+        created_by=payload.created_by,
+    )
+    if error is not None or draft is None:
+        raise HTTPException(status_code=400, detail=error or "Failed to create draft risk contract.")
+    persist_modules(state)
+    return draft
+
+
+@risk_contracts_router.post("/{contract_id}/validate", response_model=RiskContractValidationResult)
+async def validate_draft_risk_contract(contract_id: str) -> RiskContractValidationResult:
+    state, result, error = await game_state.validate_draft_risk_contract(contract_id)
+    if error is not None or result is None:
+        raise HTTPException(status_code=400, detail=error or "Failed to validate risk contract.")
+    persist_modules(state)
+    return result
+
+
+@risk_contracts_router.post("/{contract_id}/activate", response_model=RiskContract)
+async def activate_risk_contract(contract_id: str) -> RiskContract:
+    state, active, error = await game_state.activate_risk_contract(contract_id)
+    if error is not None or active is None:
+        raise HTTPException(status_code=400, detail=error or "Failed to activate risk contract.")
+    persist_modules(state)
+    return active
+
+
+@risk_contracts_router.post("/{contract_id}/archive", response_model=RiskContractHistoryResponse)
+async def archive_risk_contract(contract_id: str) -> RiskContractHistoryResponse:
+    state, error = await game_state.archive_risk_contract(contract_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return RiskContractHistoryResponse(contracts=state.risk_contracts)

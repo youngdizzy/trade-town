@@ -18466,3 +18466,220 @@ every navigation and interaction step (temporary verification scripts,
 removed after use). `npx tsc --noEmit`, `npm run lint`, `npm run build`
 all clean; full Playwright regression suite run against the live dev
 stack.
+
+## CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk Scaling" (first increment)
+
+First increment of a two-part milestone; Paper-Trade Journal + Drift
+Detection Engine + Strategy Health State Machine (the directive's own
+second half) queued next — disclosed, not started this pass.
+
+**Phase 0 recon.** `app/schemas.py::RiskLimits` is this codebase's one
+real, live-enforced risk boundary, but a single unversioned, mutable
+object (`app/state.py::update_risk_limits()` mutates it in place) with
+no history and no draft/active/superseded lifecycle. `app/gatekeeper.py::
+evaluate_gatekeeper()` remains the one real centralized risk gate (15
+checks, pure `all()`), never duplicated by this pass. `app/position_
+sizing.py` already fully solves volatility/regime/session/correlation-
+based sizing narrowing. `app/analytics.py::max_drawdown_pct()` and
+`app/trading_modes.py::compute_consecutive_losses()` remain the one real
+drawdown figure and losing-streak counter, reused unchanged.
+
+### `app/risk_contract.py` (new)
+
+A persisted, versioned `RiskContract` — WRAPS a real `RiskLimits`
+snapshot as its `limits` field rather than re-declaring its ~29 fields
+under new names (the "duplicate risk calculation" this directive's own
+Phase 0 forbids). The versioning shape is a deliberate, line-for-line
+copy of `app/strategy_registry.py::register_strategy_version()`'s own
+already-proven precedent: append-only history, `version = len(existing)
++ 1` (never a caller-supplied number), immutable historical snapshots.
+
+Lifecycle: `draft -> validated -> active -> superseded`, with `archived`
+reachable from any non-active state. `activate_risk_contract()` is the
+one real ACTIVE-producing step — requires the target to already be
+`validated`, supersedes whatever contract is currently active in the
+SAME atomic update (never a moment with two simultaneously-active
+contracts), and never rewrites a superseded version's own historical
+fields — every trade/decision that already referenced its `id`/`version`
+keeps a valid, immutable reference forever.
+
+`validate_risk_contract()` keeps structural validation (malformed
+thresholds, factors outside `[0.0, 1.0]`, an unordered band ladder)
+explicitly separate from policy validation (structurally valid but
+internally unwise: `max_daily_loss_pct` exceeding `max_drawdown_pct`; a
+drawdown kill-switch threshold beyond the contract's own
+`max_drawdown_pct`) — per the directive's own instruction that the two
+never merge into one undifferentiated error list.
+
+**Dynamic Risk Scaling.** `RiskContractScalingPolicy` holds two real,
+CEO-editable band ladders (drawdown, losing streak) — a direct,
+disclosed generalization of `app/memecoin_sniper.py::update_risk_state_
+after_trade()`'s own real, already-proven, deterministic, DOWNWARD-ONLY
+`size_multiplier` pattern (previously isolated to that one subsystem)
+into the main equities pipeline. `classify_scaling_band()` walks a
+ladder and returns the MOST severe crossed band's factor — never
+averaged, never interpolated. `evaluate_risk_contract_scaling()` composes
+the drawdown and losing-streak factors multiplicatively into one
+`combinedFactor`, itemized in a real `RiskContractScalingRead` (the
+"Scaling Transparency" worked example the directive itself asks for:
+"Requested 0.75% risk. Contract ceiling 0.75%. Drawdown factor 0.75. ...
+Final approved risk 0.45%."); a `combinedFactor` of `0.0` is the real
+kill switch. `apply_risk_contract_scaling()` narrows a `RiskLimits` copy
+by that factor — never widens, and a no-op (returns the same object)
+when nothing was scaled.
+
+**Deliberately NOT re-implemented in this module's own scaling policy**:
+a volatility factor (already solved, independently, by `app/position_
+sizing.py`'s own real ATR/inverse-vol/regime/session caps — folding it
+in here too would be a second, redundant implementation of the same real
+math) and a "strategy health" factor (the real Strategy Health State
+Machine this directive's own second half explicitly queues as separate,
+later work — fabricating a placeholder factor ahead of that real system
+would violate the directive's own "no performance fabrication" rule).
+Both named, disclosed cuts, not silent gaps.
+
+### Wiring — `app/nexus.py` and `app/state.py`
+
+**Tick loop.** `app/nexus.py::tick()` composes Risk Contract scaling into
+the SAME real `effective_risk_limits` narrowing chain Company Priority/
+Circuit-Breaker/Travel-Mode already use (`model_copy(update={...factor
+...})`), immediately after computing `losing_streak` — reads the SAME
+real `max_drawdown_pct()`/`losing_streak.consecutive_losses` figures
+already in scope, never a second computation. A `combinedFactor` of
+`0.0` also blocks new proposal generation for that tick (`block_new_
+proposals = True`), the same real hard-stop pattern every other
+kill-condition in this function already follows. `active_risk_contract`
+is guaranteed non-`None` for every real tick (see below); the defensive
+`is not None` guard only matters for a direct unit-test call to `tick()`
+that skips that guarantee.
+
+**Fail-closed without breaking every existing save.** The directive's
+own Phase 12 requires trading to halt if no active Risk Contract can be
+determined. Taken literally against an empty `risk_contracts` history
+(every save predating this feature), that would instantly halt trading
+for every existing player — resolved honestly, not by fabrication or by
+silently weakening the rule. `app/state.py::_derive_active_risk_
+contract()` (a synchronous `@staticmethod` core — split out specifically
+so `_advance_once()`, which already runs under `self.lock`, can call it
+directly without a second, deadlocking lock acquisition on the
+non-reentrant `asyncio.Lock`) derives and PERSISTS a real v1 contract
+from the CEO's own actual, already-configured `RiskLimits` the first
+time one is needed — never invented numbers. `ensure_active_risk_
+contract()` is the async, lock-acquiring wrapper for external/API
+callers; `_advance_once()` calls the sync core directly before every
+real call to `nexus.tick()`, so from a save's very first post-upgrade
+tick onward, Phase 12's fail-closed guarantee holds unconditionally.
+
+**`RiskDecision` — Scaling Transparency audit trail.** A real, persisted,
+per-trade-decision record (`GameSaveState.risk_decisions`, capped at
+`MAX_RISK_DECISIONS = 200`, same magnitude as `MAX_DECISIONS`/
+`MAX_CEO_DECISIONS`) naming exactly which `RiskContract` version governed
+a real sizing/gatekeeper decision — the concrete linkage gap this pass's
+own recon found (`PositionSizingResult`/`GatekeeperVerdict` already
+record requested-vs-approved size and pass/fail reasons, but neither
+referenced a Risk Contract version, since no such concept existed before
+this pass). Wired into `app/state.py::submit_ceo_decision()`, computed
+as a separate step immediately after the existing `resolve_proposal()`
+call returns, for a real buy/sell only (a "wait" never reaches sizing/
+the Gatekeeper, so there is nothing to audit). `approved_quantity` reads
+the actual filled `PaperPosition.quantity` (0.0 when the trade never
+executed); `rejected`/`rejection_reason` are derived from the real
+`GatekeeperVerdict.checks` when one exists, or a real "sized to zero"
+message when the Gatekeeper was never reached at all.
+
+**Scoped to this one call site, disclosed.** This pass's own recon found
+a real, pre-existing asymmetry: `app/nexus.py`'s auto-resolution call
+site (inside `_apply_operating_mode()`, called from `tick()`) passes the
+RAW `risk_limits` variable into `resolve_proposal()`, not the
+`effective_risk_limits` variable this pass's own dynamic scaling
+tightens — so today, Risk Contract scaling narrows proposal *generation*
+sizing (via `effective_risk_limits`, used earlier in the same tick) but
+does not yet flow into that auto-resolution gatekeeper check. This is
+pre-existing, undocumented-as-a-bug behavior, not something introduced by
+this pass — and deliberately NOT changed here: fixing it would mean
+altering `resolve_proposal()`'s 3-tuple return signature (or its
+`risk_limits` argument) across all three real call sites (`nexus.py`'s
+auto-resolution, `nexus.py`'s proposal-expiry resolution, and
+`state.py`'s CEO-manual path), a larger, harder-to-verify change than
+this bounded pass's own scope. The `RiskDecision` audit trail was
+instead scoped to the CEO's own manual decisions — the highest-value,
+most directly CEO-attributable "why was my trade sized this way" path,
+and the lowest-risk integration surface — with the other two call sites'
+audit coverage left as an honest, disclosed gap for later work.
+
+### API — `app/routers/risk.py`
+
+A new `risk_contracts_router` (prefix `/api/risk-contracts`) in the
+existing `risk.py` file — same domain, same POST-writes-via-game_state/
+GET-reads-computed-fresh convention as every endpoint already in that
+file, rather than a new domain file for one more risk-adjacent concept.
+`GET /active` lazily derives+persists a v1 contract on first call (same
+guarantee as the tick loop); `GET /history`, `GET /decisions?limit=`,
+`GET /{contract_id}/{version}` are read-only. `POST /draft`, `POST /
+{contract_id}/validate`, `POST /{contract_id}/activate`, `POST /
+{contract_id}/archive` are the real write lifecycle, each a thin
+pass-through to the matching `app/state.py::GameState` method with a 400
+on any real validation/lifecycle error.
+
+### Testing
+
+30 new tests in `test_risk_contract.py` (versioning/lifecycle —
+next-version-number rule, draft-never-active, activate-requires-
+validated, atomic supersession, never-rewrites-history, archive-rejects-
+active; structural + policy validation; band classification —
+no-crossing/most-severe-wins/deterministic; scaling evaluation —
+no-condition/single-band/multiplicative-composition/kill-switch/
+disabled-ladder/caller-supplied-base/never-negative; `apply_risk_
+contract_scaling` — no-op-at-factor-one/narrows/never-widens) plus 5 new
+tests in `test_state.py::TestSubmitCeoDecisionRiskDecisionAuditTrail`
+(a real buy records one `RiskDecision` naming the real active contract;
+a wait never records one; the first-ever buy lazily derives a real v1
+contract from the CEO's own configured limits; the record reflects the
+actual filled quantity; the list is permanent/append-only across
+decisions). Full backend suite green (3747 tests), `mypy app/` and
+`python -m ruff check app/ tests/` both clean.
+
+### Frontend (same directive, same session)
+
+A new, read-only `RiskContractCard` in the existing `RiskPanel.tsx` (no
+new tab — the "PORTFOLIO & RISK" primary-nav area convention this
+session's own recon already confirmed for every other risk-adjacent
+card). Shows the live active contract's version/status, its own
+`detail` string, the ceiling `riskPerTradePct`/`maxPositionPct`, both
+scaling ladders (band threshold/label/factor), and the 5 most recent
+real `RiskDecision` records (symbol, requested vs. approved quantity,
+combined factor, FILLED/REJECTED). `frontend/src/types.ts` gained the
+matching `RiskContract`/`RiskContractStatus`/`RiskContractScalingBand`/
+`RiskContractScalingPolicy`/`RiskContractScalingRead`/`RiskDecision`
+family — field-for-field mirrors of the new backend schemas, reusing the
+existing `RiskLimits` interface for the `limits` field rather than
+re-declaring it. `api.ts` gained `getActiveRiskContract`/
+`getRiskContractHistory`/`getRiskDecisions`/`createDraftRiskContract`/
+`validateDraftRiskContract`/`activateRiskContract`/`archiveRiskContract`.
+
+**Deliberately NOT built this pass, disclosed**: no draft/validate/
+activate UI — this pass's card is read-only; the real write lifecycle is
+exercised today only via the new API directly (verified live, see
+below). No live "current scaling read" endpoint — the card shows the
+most recent real per-decision scaling reads instead of a synthetic
+standalone computation, avoiding a second, redundant scaling evaluation
+with no real trade attached to it.
+
+**Live verification.** A direct `TestClient` pass through the full
+`draft -> validate -> activate` lifecycle against the real FastAPI app
+confirmed: a fresh save lazily derives a real active v1 contract on
+first `GET /active`; `POST /{id}/activate` before validation correctly
+returns 400; `POST /{id}/validate` then `POST /{id}/activate` correctly
+supersedes v1 with the new v2 exactly once; `GET /active` reflects v2
+immediately; archiving the now-superseded v1 succeeds. Separately, a
+full interactive Playwright pass through the actual running dev stack
+(Continue → Tab → EXPAND FULL COMMAND CENTER → PORTFOLIO & RISK → RISK)
+rendered the real `RiskContractCard` live — the real active contract
+(by then v2, from the API pass just above, both hitting the same dev
+save), its real scaling ladders (`≥4% dd — moderate drawdown ×0.75`,
+`≥3 losses — moderate losing streak ×0.75`, etc.), and the real "Risk
+Governance" score reacting to the same session's real Gatekeeper
+rejections — zero console errors. `npx tsc --noEmit`, `npm run lint`,
+`npm run build` all clean; `commandCenter.spec.ts` full regression rerun
+against the live dev stack with the new card present, confirming no
+navigation/layout regression in the existing RISK tab.
