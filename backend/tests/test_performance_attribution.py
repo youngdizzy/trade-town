@@ -1082,6 +1082,20 @@ class TestComputePaperTradingEvidenceReport:
         assert report.mode == "paper"
         assert report.execution_provenance == "simulated"
 
+    def test_execution_and_market_data_provenance_serialize_camel_cased_over_the_api(self) -> None:
+        # Regression: these two fields originally had no Field(alias=...),
+        # unlike every sibling field on this schema — they serialized as
+        # snake_case (execution_provenance/market_data_provenance) over
+        # the real API response, breaking the camelCase contract every
+        # other field on PaperTradingEvidenceReport (and the frontend's
+        # PaperTradingEvidenceReport type) already relies on.
+        report = compute_paper_trading_evidence_report(default_portfolio(), [])
+        dumped = report.model_dump(by_alias=True)
+        assert "executionProvenance" in dumped
+        assert "marketDataProvenance" in dumped
+        assert "execution_provenance" not in dumped
+        assert "market_data_provenance" not in dumped
+
     def test_one_winning_trade(self) -> None:
         portfolio = _portfolio_with_trades([_trade(trade_id="a", pnl=100.0, pnl_pct=1.0)])
         report = compute_paper_trading_evidence_report(portfolio, [])

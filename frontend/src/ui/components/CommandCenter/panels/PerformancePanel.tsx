@@ -5,6 +5,7 @@ import { EventBus } from "@/game/systems/EventBus";
 import type {
   DriftEvent,
   PaperTradeJournalEntry,
+  PaperTradingEvidenceReport,
   RegimePerformanceRead,
   RegimePerformanceSummary,
   SessionPerformanceRead,
@@ -27,6 +28,8 @@ import type { FinancialPeriod } from "../lib/financials";
 import { computePeriodFinancials, simMonthNumber } from "../lib/financials";
 import { computeTradeStats, formatMoney, formatPct } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
+import { EquityCurveChart } from "./EquityCurveChart";
+import { TradeLifecycleDrilldown } from "./TradeLifecycleDrilldown";
 
 const PERIODS: FinancialPeriod[] = ["today", "week", "month", "prevMonth", "allTime"];
 
@@ -46,6 +49,22 @@ export function PerformancePanel() {
   const financials = computePeriodFinancials(period, paperPortfolio.tradeHistory, paperPortfolio.startingBalance, time, openUnrealized);
   const prevMonth = computePeriodFinancials("prevMonth", paperPortfolio.tradeHistory, paperPortfolio.startingBalance, time, openUnrealized);
   const allTimeStats = computeTradeStats(paperPortfolio.tradeHistory);
+
+  // CEO directive "TradeTown — Paper Trading Performance & Evidence
+  // Reporting 1.0" — the one canonical all-time summary
+  // (backend/app/performance_attribution.py's
+  // compute_paper_trading_evidence_report()), same on-demand pattern
+  // every other performance read on this panel already uses.
+  const [evidenceReport, setEvidenceReport] = useState<PaperTradingEvidenceReport | null>(null);
+  useEffect(() => {
+    api.getPaperTradingEvidenceReport().then(setEvidenceReport).catch(() => undefined);
+  }, []);
+
+  // Phase 18's trade-level drill-down — reuses the existing Canonical
+  // Trade Lifecycle API (GET /api/trades/{id}/lifecycle), never a second
+  // trade-detail system. Toggled by clicking a row in "Recent Trades"
+  // below.
+  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
 
   // CEO directive "Next Professional Trading Firm Phase," Priority 2 —
   // real, on-demand symbol-level P&L attribution
@@ -135,6 +154,8 @@ export function PerformancePanel() {
 
   return (
     <div className="space-y-3">
+      <PaperTradingEvidenceSection report={evidenceReport} pnls={paperPortfolio.tradeHistory.map((t) => t.pnl)} />
+
       <div className="flex flex-wrap gap-1.5">
         {PERIODS.map((p) => (
           <button
@@ -262,12 +283,16 @@ export function PerformancePanel() {
           <div className="space-y-2">
             {[...paperPortfolio.tradeHistory].reverse().slice(0, 8).map((t) => (
               <div key={t.id} className="border-b border-cmd-border/60 pb-2 last:border-0">
-                <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTradeId(selectedTradeId === t.id ? null : t.id)}
+                  className="flex w-full items-center justify-between text-left hover:opacity-80"
+                >
                   <span className="font-cmdmono text-cmd-cyan">{t.symbol}</span>
                   <span className={t.pnl >= 0 ? "text-cmd-green" : "text-cmd-red"}>
                     {formatMoney(t.pnl)} ({formatPct(t.pnlPct)})
                   </span>
-                </div>
+                </button>
                 {t.transactionCostUsd > 0 && (
                   <div className="mt-0.5 text-[9px] text-cmd-textDim">Transaction cost: {formatMoney(t.transactionCostUsd)} (real, already netted above)</div>
                 )}
@@ -287,12 +312,159 @@ export function PerformancePanel() {
                   </div>
                 )}
                 {(t.lessonsLearned ?? t.coachReview) && <div className="mt-0.5 text-[9px] text-cmd-textDim">{t.lessonsLearned ?? t.coachReview}</div>}
+                {selectedTradeId === t.id && <TradeLifecycleDrilldown tradeId={t.id} onClose={() => setSelectedTradeId(null)} />}
               </div>
             ))}
           </div>
         )}
       </Glass>
     </div>
+  );
+}
+
+const EVIDENCE_BANNER_TONE: Record<string, string> = {
+  insufficient: "border-cmd-red/60 bg-cmd-red/10 text-cmd-red",
+  early_behavioral: "border-cmd-amber/50 bg-cmd-amber/10 text-cmd-amber",
+  initial: "border-cmd-amber/50 bg-cmd-amber/10 text-cmd-amber",
+  preliminary: "border-cmd-cyan/50 bg-cmd-cyan/10 text-cmd-cyan",
+  developing: "border-cmd-cyan/50 bg-cmd-cyan/10 text-cmd-cyan",
+  larger_sample: "border-cmd-green/50 bg-cmd-green/10 text-cmd-green",
+};
+
+/** CEO directive "TradeTown — Paper Trading Performance & Evidence
+ * Reporting 1.0" — the one canonical, all-time, unfiltered evidence
+ * report (backend/app/performance_attribution.py's
+ * compute_paper_trading_evidence_report()). Every figure here is real,
+ * persisted trade/fill/position data — no fabricated metric, no
+ * smoothing, no hidden losing trade, no composite score. The evidence-
+ * checkpoint banner is deliberately the loudest element in this card
+ * (Phase 17's "impossible to miss" requirement): a 3-trade sample gets a
+ * red banner regardless of whether those 3 trades won or lost.
+ */
+function PaperTradingEvidenceSection({ report, pnls }: { report: PaperTradingEvidenceReport | null; pnls: number[] }) {
+  if (report === null) {
+    return (
+      <Glass className="p-3">
+        <TerminalLabel>Paper Trading Evidence Report</TerminalLabel>
+        <EmptyState>Loading…</EmptyState>
+      </Glass>
+    );
+  }
+  const netPositive = report.netPnlUsd >= 0;
+  return (
+    <Glass className={`border p-4 ${netPositive ? "border-cmd-green/40" : "border-cmd-red/40"}`}>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <TerminalLabel>Paper Trading Evidence Report</TerminalLabel>
+          <StatusPill tone="amber">PAPER MODE — SIMULATED EXECUTION</StatusPill>
+        </div>
+        <span className="text-[9px] text-cmd-textDim">All-time, unfiltered · generated {new Date(report.generatedAt).toLocaleString()}</span>
+      </div>
+
+      <div className={`mb-3 rounded-sm border px-2 py-1.5 text-[10px] ${EVIDENCE_BANNER_TONE[report.evidence.checkpoint] ?? EVIDENCE_BANNER_TONE.insufficient}`}>
+        <div className="font-cmdmono uppercase tracking-wide">
+          {report.evidence.label} — {report.evidence.tradeCount} closed trade{report.evidence.tradeCount === 1 ? "" : "s"}
+        </div>
+        <div className="mt-0.5 text-cmd-textDim">{report.evidence.caveat}</div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Glass className="p-2">
+          <TerminalLabel>Realized P&amp;L</TerminalLabel>
+          <div className={`font-cmdmono ${report.realizedPnlUsd >= 0 ? "text-cmd-green" : "text-cmd-red"}`}>{formatMoney(report.realizedPnlUsd)}</div>
+          <div className="mt-0.5 text-[9px] text-cmd-textDim">From closed trades only</div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Unrealized P&amp;L</TerminalLabel>
+          <div className={`font-cmdmono ${report.unrealizedPnlUsd >= 0 ? "text-cmd-green" : "text-cmd-red"}`}>{formatMoney(report.unrealizedPnlUsd)}</div>
+          <div className="mt-0.5 text-[9px] text-cmd-textDim">Open positions, right now</div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Net P&amp;L</TerminalLabel>
+          <div className={`font-cmdmono ${netPositive ? "text-cmd-green" : "text-cmd-red"}`}>
+            {formatMoney(report.netPnlUsd)} ({formatPct(report.netPnlPct)})
+          </div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Trades</TerminalLabel>
+          <div className="font-cmdmono text-cmd-text">{report.tradeCount}</div>
+          <div className="mt-0.5 text-[9px] text-cmd-textDim">
+            {report.winCount}W / {report.lossCount}L / {report.breakevenCount}BE
+          </div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Win Rate</TerminalLabel>
+          <div className="font-cmdmono text-cmd-text">{report.tradeCount ? `${report.winRatePct.toFixed(1)}%` : "N/A"}</div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Expectancy</TerminalLabel>
+          <div
+            className={`font-cmdmono ${
+              report.expectancyPct === null ? "text-cmd-textDim" : report.expectancyPct >= 0 ? "text-cmd-green" : "text-cmd-red"
+            }`}
+          >
+            {report.expectancyPct === null ? "N/A" : formatPct(report.expectancyPct)}
+          </div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Profit Factor</TerminalLabel>
+          <div className="font-cmdmono text-cmd-text">{report.profitFactor === null ? "N/A (no losses yet)" : report.profitFactor.toFixed(2)}</div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Avg R-Multiple</TerminalLabel>
+          <div className="font-cmdmono text-cmd-text">{report.avgRMultiple === null ? "N/A" : `${report.avgRMultiple.toFixed(2)}R`}</div>
+          <div className="mt-0.5 text-[9px] text-cmd-textDim">
+            {report.rMultipleTradeCount} of {report.tradeCount} had a real stop
+          </div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Max Drawdown</TerminalLabel>
+          <div className="font-cmdmono text-cmd-amber">
+            {report.maxDrawdownPct.toFixed(1)}% ({formatMoney(-report.maxDrawdownUsd)})
+          </div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Recovery Factor</TerminalLabel>
+          <div className="font-cmdmono text-cmd-text">{report.recoveryFactor === null ? "N/A (never drawn down)" : report.recoveryFactor.toFixed(2)}</div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Win / Loss Streak</TerminalLabel>
+          <div className="font-cmdmono">
+            <span className="text-cmd-green">{report.currentWinStreak}W</span> / <span className="text-cmd-red">{report.currentLossStreak}L</span>
+          </div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Open Exposure</TerminalLabel>
+          <div className="font-cmdmono text-cmd-text">{formatMoney(report.openExposureUsd)}</div>
+          <div className="mt-0.5 text-[9px] text-cmd-textDim">
+            {report.openPositions} position{report.openPositions === 1 ? "" : "s"} · {report.openExposurePctOfEquity.toFixed(1)}% of equity
+          </div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Fees &amp; Slippage</TerminalLabel>
+          <div className="font-cmdmono text-cmd-text">{formatMoney(report.totalFeesUsd)}</div>
+          <div className="mt-0.5 text-[9px] text-cmd-textDim">
+            {report.avgEntrySlippageBps === null ? "—" : `${report.avgEntrySlippageBps.toFixed(1)}bps in`} /{" "}
+            {report.avgExitSlippageBps === null ? "—" : `${report.avgExitSlippageBps.toFixed(1)}bps out`}
+          </div>
+        </Glass>
+        <Glass className="p-2">
+          <TerminalLabel>Avg Holding Time</TerminalLabel>
+          <div className="font-cmdmono text-cmd-text">{report.avgHoldingMinutes.toFixed(0)} min</div>
+        </Glass>
+      </div>
+
+      <div className="mt-3">
+        <TerminalLabel>Equity Curve — Real Closed Trades Only</TerminalLabel>
+        <EquityCurveChart startingBalance={report.startingBalance} pnls={pnls} />
+      </div>
+
+      <div className="mt-3 space-y-0.5 border-t border-cmd-border/50 pt-2 text-[9px] text-cmd-textDim">
+        {report.limitations.map((l) => (
+          <div key={l}>• {l}</div>
+        ))}
+      </div>
+    </Glass>
   );
 }
 

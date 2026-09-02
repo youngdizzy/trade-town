@@ -155,6 +155,8 @@ import type {
   TrendRegimeBreakdown,
   TrendWeightingMethod,
   TradePipelineHealthSnapshot,
+  TradeLifecycleRecord,
+  PaperTradingEvidenceReport,
   BrierCalibrationSummary,
   AgentBrierCalibration,
   OpportunityFeed,
@@ -352,6 +354,15 @@ export const api = {
   // #0 — diagnostic-only trade-flow funnel telemetry. Read-only,
   // computed fresh per request; never gates or scores anything.
   getPipelineHealth: () => request<TradePipelineHealthSnapshot>("/trades/pipeline-health"),
+  // CEO directive "TradeTown — Canonical Trade Lifecycle 1.0" — one real
+  // trade's full lifecycle in a single read. `tradeId` accepts any real
+  // id already on hand (position id, closed trade id, journal entry id,
+  // CeoDecisionRecord id, or the originating proposal id).
+  getTradeLifecycle: (tradeId: string) => request<TradeLifecycleRecord>(`/trades/${encodeURIComponent(tradeId)}/lifecycle`),
+  // CEO directive "TradeTown — Paper Trading Performance & Evidence
+  // Reporting 1.0" — the one canonical all-time paper-trading
+  // performance summary. Read-only, computed fresh per request.
+  getPaperTradingEvidenceReport: () => request<PaperTradingEvidenceReport>("/trades/evidence-report"),
   // CEO directive "Professional Quant Trading Core," Rule 25/26 — the
   // CEO Opportunity Feed. Read-only, computed fresh per request; never
   // gates or scores anything.

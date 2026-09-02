@@ -67,17 +67,91 @@ development milestones, not semver releases.
     determinism (same input → same output, excluding the timestamp),
     and every evidence-checkpoint boundary. Full suite/mypy/ruff results
     in this milestone's own forensic report.
-  - **Not attempted, disclosed explicitly (backend-first — frontend is
-    a separate, following commit per this repo's own commit
-    discipline):** date-range/strategy/symbol filtering on the new
-    endpoint (the existing per-symbol/session/regime/strategy breakdown
-    endpoints already cover those axes independently — composing them
-    into one filtered mega-endpoint was judged unnecessary duplication,
-    named as a candidate future refinement, not built); an export/
-    snapshot system (Phase 19 explicitly discourages this unless
-    necessary — the report is already reproducible from the API,
-    same input → same output); a new composite performance score
-    (explicitly forbidden by Phase 20).
+  - **Not attempted, disclosed explicitly:** date-range/strategy/symbol
+    filtering on the new endpoint (the existing per-symbol/session/
+    regime/strategy breakdown endpoints already cover those axes
+    independently — composing them into one filtered mega-endpoint was
+    judged unnecessary duplication, named as a candidate future
+    refinement, not built); an export/snapshot system (Phase 19
+    explicitly discourages this unless necessary — the report is already
+    reproducible from the API, same input → same output); a new
+    composite performance score (explicitly forbidden by Phase 20).
+
+- **CEO directive "TradeTown — Paper Trading Performance & Evidence
+  Reporting 1.0" (frontend, following the backend commit above per this
+  repo's own commit discipline).** Surfaces
+  `compute_paper_trading_evidence_report()` in the existing Command
+  Center Performance panel (`PORTFOLIO & RISK` → `PERFORMANCE`) — no new
+  top-level nav, per the directive's own Phase 16 instruction, since this
+  panel is already the Command Center's home for all-time and periodic
+  P&L reporting.
+  - **`PerformancePanel.tsx`** gained a `PaperTradingEvidenceSection` at
+    the top of the panel, above the existing period selector: an
+    unmissable `PAPER MODE — SIMULATED EXECUTION` badge; an evidence-
+    checkpoint banner (red for `insufficient`, amber for
+    `early_behavioral`/`initial`, cyan for `preliminary`/`developing`,
+    green for `larger_sample`) carrying the backend's own real caveat
+    text verbatim, per Phase 17's "impossible to miss" requirement; a
+    tile grid of every metric the backend reports (realized/unrealized/
+    net P&L, trade/win/loss/breakeven counts, win rate, expectancy,
+    profit factor, avg R-multiple with its real denominator disclosed,
+    max drawdown, recovery factor, win/loss streak, open exposure, fees
+    and slippage, avg holding time) — each `null` rendered as `N/A` with
+    its real reason (e.g. "N/A (no losses yet)"), never a fabricated
+    zero; and the backend's own `limitations` list rendered verbatim.
+  - **`EquityCurveChart.tsx`** (new) — a real cumulative-P&L walk over
+    `paperPortfolio.tradeHistory`'s own real chronological order (no
+    interpolation, no fabricated starting capital, no smoothing),
+    canvas-rendered following `CandlestickChart.tsx`'s own
+    devicePixelRatio/`ResizeObserver` convention. Renders an honest
+    "Not enough closed trades yet" placeholder rather than an empty or
+    misleading chart when there are fewer than two equity points.
+  - **`TradeLifecycleDrilldown.tsx`** (new) — wired to the existing
+    `GET /api/trades/{tradeId}/lifecycle` endpoint (built by the
+    Canonical Trade Lifecycle 1.0 milestone, never surfaced in the
+    frontend across two prior milestones until now), per Phase 18's
+    explicit "reuse the existing API, do not build a second trade-detail
+    system." Clicking a row in the existing "Recent Trades" list toggles
+    an inline drill-down showing every real lifecycle stage
+    (available/unavailable, real timestamps only, no fabricated stage).
+  - **Bug found and fixed during frontend wiring:**
+    `PaperTradingEvidenceReport.execution_provenance`/
+    `market_data_provenance` (`backend/app/schemas.py`) were the only two
+    fields on this schema declared without `Field(alias=...)` — every
+    other field on it (and on `TradeLifecycleRecord`, checked for the
+    same mistake and confirmed clean) has one. The real API response
+    was therefore serializing these two keys as snake_case
+    (`execution_provenance`/`market_data_provenance`) instead of the
+    camelCase (`executionProvenance`/`marketDataProvenance`) contract
+    every other field, and the frontend's own `PaperTradingEvidenceReport`
+    TypeScript type, already assumed. Never actually crashed the UI this
+    pass only because the new frontend code happened not to read either
+    field directly (a hardcoded "PAPER MODE" badge was used instead) —
+    but the mismatch was real and would have silently produced
+    `undefined` the first time either field was read. Fixed by adding the
+    missing aliases; pinned with a new backend regression test
+    (`test_execution_and_market_data_provenance_serialize_camel_cased_over_the_api`
+    in `tests/test_performance_attribution.py`) asserting the real
+    `model_dump(by_alias=True)` output has the camelCase keys and not the
+    snake_case ones.
+  - **Verification.** `npx tsc --noEmit`, `npm run lint`, and
+    `npm run build` all clean. Live browser verification against the
+    real running dev stack (Vite + FastAPI, real dev save, not a mock):
+    confirmed the PAPER MODE badge and the `insufficient`-tier red
+    banner render correctly against the live save's real state (0
+    closed trades today), all 14 metric tiles render their honest `N/A`/
+    `$0.00` values with no fabricated number, the equity curve shows its
+    real empty-state message, and zero console/page errors occurred
+    during the whole flow. **Not verified this pass:** the trade-
+    lifecycle drill-down's actual interactive behavior against a real
+    closed trade — the live dev save currently has zero trade history to
+    click through, and Phase 22 forbids seeding a fake trade into the
+    real save just to exercise this UI. The drill-down's own backend
+    endpoint already has full test coverage from the Canonical Trade
+    Lifecycle 1.0 milestone, and this component itself is a direct,
+    logic-free render of that response — but a live human-observed click-
+    through with a real trade is a genuine gap in this milestone's
+    evidence, not silently claimed otherwise.
 
 - **CEO directive "Controlled Paper Trading Readiness Audit + Burn-in
   1.0."** A scoped readiness/burn-in audit of the existing trading

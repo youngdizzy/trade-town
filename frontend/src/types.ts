@@ -8311,6 +8311,107 @@ export interface SniperEngineStatusRead {
   expectancyR: number | null;
 }
 
+// CEO directive "TradeTown — Canonical Trade Lifecycle 1.0" — one real
+// trade's full lifecycle (see backend/app/schemas.py's TradeLifecycleRecord
+// for the full honesty-boundary rationale: `available: false` marks the
+// parts of this pipeline that have no distinct real object for a given
+// idealized stage, never a fabricated timestamp).
+export type TradeLifecycleStageId =
+  | "signal"
+  | "decision"
+  | "strategy_identity"
+  | "risk_review"
+  | "order_submitted"
+  | "fill"
+  | "position_open"
+  | "position_active"
+  | "exit"
+  | "closed"
+  | "outcome_recorded"
+  | "trade_finalized";
+
+export interface TradeLifecycleStage {
+  stage: TradeLifecycleStageId;
+  label: string;
+  available: boolean;
+  occurredAt: string | null;
+  refId: string | null;
+  note: string;
+}
+
+export interface TradeLifecycleRecord {
+  tradeRootId: string;
+  symbol: string;
+  status: "pending" | "rejected" | "open" | "closed";
+  stages: TradeLifecycleStage[];
+  proposal: TradeProposal | null;
+  decision: TradeDecision | null;
+  ceoDecision: CeoDecisionRecord | null;
+  riskDecision: RiskDecision | null;
+  position: PaperPosition | null;
+  trade: PaperTrade | null;
+  linkedOrders: PaperOrder[];
+  journalEntry: PaperTradeJournalEntry | null;
+  prediction: PredictionRecord | null;
+  failure: FailureClassification | null;
+  institutionalMemory: InstitutionalMemoryEntry[];
+}
+
+// CEO directive "TradeTown — Paper Trading Performance & Evidence
+// Reporting 1.0" — the one canonical all-time paper-trading performance
+// summary (see backend/app/schemas.py's PaperTradingEvidenceReport for
+// the full reuse rationale — every number already existed elsewhere;
+// this type only names and assembles them).
+export type EvidenceCheckpoint = "insufficient" | "early_behavioral" | "initial" | "preliminary" | "developing" | "larger_sample";
+
+export interface EvidenceCheckpointRead {
+  checkpoint: EvidenceCheckpoint;
+  tradeCount: number;
+  label: string;
+  caveat: string;
+}
+
+export interface PaperTradingEvidenceReport {
+  generatedAt: string;
+  mode: "paper";
+  executionProvenance: DataCategory;
+  marketDataProvenance: DataCategory;
+  startingBalance: number;
+  currentEquity: number;
+  realizedPnlUsd: number;
+  unrealizedPnlUsd: number;
+  netPnlUsd: number;
+  netPnlPct: number;
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  breakevenCount: number;
+  winRatePct: number;
+  avgWinUsd: number | null;
+  avgLossUsd: number | null;
+  largestWinUsd: number | null;
+  largestLossUsd: number | null;
+  expectancyPct: number | null;
+  profitFactor: number | null;
+  avgRMultiple: number | null;
+  rMultipleTradeCount: number;
+  maxDrawdownPct: number;
+  maxDrawdownUsd: number;
+  peakEquity: number;
+  recoveryFactor: number | null;
+  currentWinStreak: number;
+  currentLossStreak: number;
+  totalFeesUsd: number;
+  avgEntrySlippageBps: number | null;
+  avgExitSlippageBps: number | null;
+  avgHoldingMinutes: number;
+  openPositions: number;
+  openExposureUsd: number;
+  openExposurePctOfEquity: number;
+  evidence: EvidenceCheckpointRead;
+  limitations: string[];
+}
+
 export function isDaytime(time: TimeState): boolean {
   return time.hour >= 6 && time.hour < 20;
 }

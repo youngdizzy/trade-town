@@ -14612,8 +14612,8 @@ class PaperTradingEvidenceReport(CamelModel):
     # (PaperTradeJournalEntry.data_provenance already established
     # "simulated" for paper execution) — never a second provenance
     # taxonomy for the same real distinction.
-    execution_provenance: DataCategory = "simulated"
-    market_data_provenance: DataCategory = "synthetic"
+    execution_provenance: DataCategory = Field(default="simulated", alias="executionProvenance")
+    market_data_provenance: DataCategory = Field(default="synthetic", alias="marketDataProvenance")
     starting_balance: float = Field(alias="startingBalance")
     current_equity: float = Field(alias="currentEquity")
     # Phase 1 (Performance Data Contract) — realized and unrealized P&L

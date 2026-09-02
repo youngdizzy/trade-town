@@ -20134,3 +20134,77 @@ same input, same output); a composite "Performance Score" (explicitly
 forbidden by Phase 20 — every metric stays a separate, transparent
 field). Frontend work (Phases 16-18, 23) follows in a separate commit
 per this repo's own backend-first discipline.
+
+### What was built (frontend, following commit)
+
+- **`PerformancePanel.tsx`** gained a `PaperTradingEvidenceSection`
+  rendered first in the panel, above the existing period selector — per
+  Phase 16, no new top-level nav, since this panel is already the
+  Command Center's home for P&L reporting (`PORTFOLIO & RISK` →
+  `PERFORMANCE`). It renders, in order: an unmissable `PAPER MODE —
+  SIMULATED EXECUTION` badge; an evidence-checkpoint banner (Phase 17's
+  "impossible to miss" requirement — red for `insufficient`, amber for
+  `early_behavioral`/`initial`, cyan for `preliminary`/`developing`,
+  green for `larger_sample`) showing the backend's own real caveat text
+  verbatim; a 14-tile metric grid (realized/unrealized/net P&L, trade/
+  win/loss/breakeven counts, win rate, expectancy, profit factor, avg
+  R-multiple with its real denominator disclosed, max drawdown, recovery
+  factor, win/loss streak, open exposure, fees/slippage, avg holding
+  time) where every `null` renders as `N/A` with its real reason (e.g.
+  "N/A (no losses yet)"), never a fabricated zero; the new equity curve
+  (below); and the backend's own `limitations` list rendered verbatim.
+- **`EquityCurveChart.tsx`** (new) — a real cumulative-P&L walk over
+  `paperPortfolio.tradeHistory`'s own real chronological order (append-
+  only, see `close_position()`); no interpolation, no fabricated
+  starting capital, no smoothing between real trades. Canvas-rendered
+  following `CandlestickChart.tsx`'s own devicePixelRatio/
+  `ResizeObserver` convention; shows an honest "Not enough closed trades
+  yet for an equity curve" placeholder rather than an empty or
+  misleading chart below two real equity points.
+- **`TradeLifecycleDrilldown.tsx`** (new) — reuses the existing
+  `GET /api/trades/{tradeId}/lifecycle` endpoint from the Canonical
+  Trade Lifecycle 1.0 milestone (built two milestones ago, never
+  surfaced in the frontend until now), per Phase 18's explicit "reuse
+  the existing API, do not build a second trade-detail system." Clicking
+  a row in the existing "Recent Trades" list toggles this inline,
+  showing every real lifecycle stage (available/unavailable, real
+  timestamps only, no fabricated stage or note).
+
+### Verification (frontend)
+
+`npx tsc --noEmit`, `npm run lint`, `npm run build` all clean (one real
+`noUncheckedIndexedAccess` bug caught by `tsc -b` in the production
+build path but not plain `tsc --noEmit` — `points.at(-1)` with an
+explicit fallback replaced an unchecked `points[points.length - 1]`
+index in `EquityCurveChart.tsx`).
+
+**A second, more consequential bug was found while wiring the frontend
+against the real API response:** `execution_provenance`/
+`market_data_provenance` on `PaperTradingEvidenceReport`
+(`backend/app/schemas.py`) were the only two fields on that schema
+without `Field(alias=...)` — every sibling field has one — so the real
+`GET /api/trades/evidence-report` response serialized them as
+snake_case, breaking the camelCase contract the frontend's own
+`PaperTradingEvidenceReport` TypeScript type assumed. `TradeLifecycleRecord`
+was checked for the same mistake and confirmed clean. This pass's UI
+never actually read either field (a static "PAPER MODE" badge was used
+instead), so nothing crashed, but the mismatch was real. Fixed with the
+missing aliases plus a new backend regression test asserting
+`model_dump(by_alias=True)` returns the camelCase keys.
+
+Live browser verification (Playwright
+against the real running Vite + FastAPI dev stack, real dev save, not a
+mock): the PAPER MODE badge and the real `insufficient`-tier red banner
+render correctly against the live save's actual state (0 closed trades
+at verification time), all 14 metric tiles render honest `N/A`/`$0.00`
+values with no fabricated number, the equity curve shows its real empty-
+state message, and zero console/page errors occurred through the whole
+flow. **Not verified this pass, disclosed rather than silently
+skipped:** the trade-lifecycle drill-down's actual interactive behavior
+against a real closed trade — the live dev save has zero trade history
+right now to click through, and Phase 22 forbids seeding a fake trade
+into the real save just to exercise this UI. The endpoint itself already
+has full backend test coverage from Canonical Trade Lifecycle 1.0, and
+this component is a direct, logic-free render of that response, but a
+human-observed live click-through remains a genuine open item for the
+next milestone that produces a real closed trade to click.
