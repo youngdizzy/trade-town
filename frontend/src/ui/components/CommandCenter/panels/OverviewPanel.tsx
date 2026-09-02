@@ -87,6 +87,25 @@ export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeD
 
       <FailureBoundaryCard onNavigate={onNavigate} />
 
+      {/* CEO directive "Memecoin Sniper + Professional Trading Terminal,
+          UI Correction" — the Sniper is its own dedicated application
+          surface now, not a Command Center tab (see src/sniper/
+          SniperApp.tsx's own docstring). This is the one real "launch"
+          affordance from within TradeTown, opening it in a new tab so
+          this Command Center session is never interrupted. */}
+      <Glass className="p-3">
+        <TerminalLabel>Memecoin Sniper</TerminalLabel>
+        <div className="mb-2 text-cmd-textDim">Solana memecoin discovery + paper execution — its own specialist terminal, separate from this Command Center.</div>
+        <a
+          href="/sniper"
+          target="_blank"
+          rel="noreferrer"
+          className="block w-full rounded-sm border border-cmd-cyan/50 bg-cmd-cyan/10 py-1.5 text-center text-cmd-cyan hover:bg-cmd-cyan/20"
+        >
+          Launch Memecoin Sniper Terminal ↗
+        </a>
+      </Glass>
+
       <Glass className="p-3">
         <div className="mb-1.5 flex items-center justify-between">
           <TerminalLabel>Market Environment</TerminalLabel>

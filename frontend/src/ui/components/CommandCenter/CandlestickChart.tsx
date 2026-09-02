@@ -70,6 +70,18 @@ export interface ChartOverlays {
   entry?: number;
   /** The open position's live mark price, if one exists for this symbol. */
   currentPrice?: number;
+  /** CEO directive "Memecoin Sniper + Professional Trading Terminal UI
+   * Correction" — a real, currently-active stop-loss price for the
+   * position this chart is focused on. Same prominent dashed-level
+   * treatment as entry/currentPrice (never the fainter analysis-line
+   * style `lines` below uses) since a stop is just as operationally
+   * important as the entry/mark themselves. Renders as `stopLabel` if
+   * given (e.g. "TRAILING SL"), else "SL". */
+  stopPrice?: number;
+  stopLabel?: string;
+  /** Same treatment as stopPrice, for a real take-profit target. */
+  targetPrice?: number;
+  targetLabel?: string;
   lines?: ChartOverlayLine[];
   zones?: ChartOverlayZone[];
   polylines?: ChartOverlayPolyline[];
@@ -134,6 +146,8 @@ export function CandlestickChart({
       const values = candles.flatMap((c) => [c.high, c.low]);
       if (overlays?.entry !== undefined) values.push(overlays.entry);
       if (overlays?.currentPrice !== undefined) values.push(overlays.currentPrice);
+      if (overlays?.stopPrice !== undefined) values.push(overlays.stopPrice);
+      if (overlays?.targetPrice !== undefined) values.push(overlays.targetPrice);
       overlays?.lines?.forEach((l) => values.push(l.price));
       overlays?.zones?.forEach((z) => values.push(z.priceLow, z.priceHigh));
       overlays?.polylines?.forEach((p) => p.points.forEach((pt) => values.push(pt.price)));
@@ -290,6 +304,8 @@ export function CandlestickChart({
       };
       if (overlays?.entry !== undefined) drawLevel(overlays.entry, COLORS.entry, `ENTRY ${overlays.entry.toFixed(2)}`);
       if (overlays?.currentPrice !== undefined) drawLevel(overlays.currentPrice, COLORS.current, `MARK ${overlays.currentPrice.toFixed(2)}`);
+      if (overlays?.stopPrice !== undefined) drawLevel(overlays.stopPrice, COLORS.bear, `${overlays.stopLabel ?? "SL"} ${overlays.stopPrice.toFixed(2)}`);
+      if (overlays?.targetPrice !== undefined) drawLevel(overlays.targetPrice, COLORS.bull, `${overlays.targetLabel ?? "TP"} ${overlays.targetPrice.toFixed(2)}`);
 
       // Analysis overlay lines (support/resistance, Fibonacci) — a
       // finer dash than the real order-price lines above, so a genuine

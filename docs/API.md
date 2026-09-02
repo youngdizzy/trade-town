@@ -4099,7 +4099,14 @@ breakdown, classification, and timing state.
 ### `GET /api/sniper/positions?openOnly=false`
 
 Returns `SniperPosition[]`. `openOnly=true` filters to currently-open
-paper positions only.
+paper positions only. A position's own `symbol` can also be passed to
+`GET /api/market/candles?symbol=...` (see that endpoint elsewhere in
+this doc) to chart it — every tick, `app/nexus.py` registers each open
+position's real `currentPrice` with the market-data provider (via
+`MarketDataProvider.set_live_price_override()`), so the returned candle
+series is correctly scaled to the position's own real, sub-$1 price
+range rather than the provider's generic hash-seeded range for an
+unrecognized symbol.
 
 ### `GET /api/sniper/trades?limit=100`
 

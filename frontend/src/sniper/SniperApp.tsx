@@ -1,16 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
-import type {
-  SniperCandidate,
-  SniperClassification,
-  SniperEngineStatusRead,
-  SniperLead,
-  SniperLesson,
-  SniperPosition,
-  SniperSafetyStatus,
-  SniperTrade,
-} from "@/types";
-import { AnimatedGrid, DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
+import type { SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperLead, SniperLesson, SniperPosition, SniperSafetyStatus, SniperTrade } from "@/types";
+import { AnimatedGrid, DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
+import { SniperTerminal } from "./SniperTerminal";
 
 const POLL_MS = 5_000;
 
@@ -32,10 +24,6 @@ function fmtSol(v: number, digits = 3): string {
   return `${v >= 0 ? "+" : ""}${v.toFixed(digits)} SOL`;
 }
 
-function fmtPct(v: number, digits = 1): string {
-  return `${v >= 0 ? "+" : ""}${v.toFixed(digits)}%`;
-}
-
 function timeAgo(iso: string): string {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
@@ -44,24 +32,36 @@ function timeAgo(iso: string): string {
 }
 
 /**
- * CEO directive "TradeTown — Memecoin Sniper Agent." A single, no-tabs
- * dashboard (Section 32/34/36) reused within the existing Command
- * Center terminal visual language (Glass/StatusPill/AnimatedGrid — the
- * same dark, glow-accented system every other tab already uses) rather
- * than a parallel design system. PAPER-ONLY, SIMULATED DATA, DISCLOSED
- * throughout — every card below either shows a real "SIMULATED" label
- * or reads it directly off the record itself; nothing here ever claims
- * live on-chain evidence. No fake AI confidence score anywhere — the
- * opportunity score is always shown as its own real, itemized 7-axis
- * breakdown, never a bare number alone.
+ * CEO directive "TradeTown — Memecoin Sniper + Professional Trading
+ * Terminal, UI Correction / Visualization Rebuild." Root component of
+ * the Sniper's own DEDICATED application surface (served at `/sniper`,
+ * a completely separate React root from the main TradeTown app — see
+ * `src/main.tsx`'s own docstring for why). This is deliberately NOT a
+ * Command Center tab: no Phaser canvas, no gameStore, no EventBus — the
+ * only shared dependency with the main app is the plain REST client
+ * (`@/net/api`) and this same terminal design-language's UI primitives
+ * (`Glass`/`StatusPill`/`TerminalLabel`/etc.), reused because they're
+ * genuinely the right visual language, not because this is secretly
+ * still the same app.
  *
- * Simplification disclosed: the backend does not persist a dedicated
- * event log (Section 35's "Live Event Feed"), so "RECENT ACTIVITY"
- * below is honestly derived from the real candidates/trades already
- * fetched rather than a fabricated stream — see CHANGELOG.md's own
- * disclosure for this pass's exact scope.
+ * One flat command surface, not a tab maze — the directive's own
+ * explicit instruction ("no tabs inside the Sniper"). PAPER-ONLY,
+ * SIMULATED DATA, disclosed throughout exactly as the previous
+ * (now-retired) MemecoinSniperPanel.tsx already established — every
+ * card either shows a real "SIMULATED" label or reads it directly off
+ * the record. No fake AI confidence anywhere — the opportunity score is
+ * always its own real, itemized breakdown.
+ *
+ * Simplification disclosed: the backend still has no dedicated event
+ * log (a real "Live Event Feed"/trade timeline), so "Recent Activity"
+ * is honestly derived from already-fetched candidates/trades, same
+ * disclosed simplification the previous panel already carried forward.
+ * Wallet management has NO real backend behind it at all (confirmed by
+ * this pass's own recon: no secure credential storage exists anywhere
+ * in this codebase) — the Wallet section below states that honestly
+ * rather than faking an add/remove flow with nothing real underneath.
  */
-export function MemecoinSniperPanel() {
+export function SniperApp() {
   const [status, setStatus] = useState<SniperEngineStatusRead | null>(null);
   const [candidates, setCandidates] = useState<SniperCandidate[]>([]);
   const [positions, setPositions] = useState<SniperPosition[]>([]);
@@ -118,19 +118,6 @@ export function MemecoinSniperPanel() {
     }
   }
 
-  async function closePosition(id: string) {
-    setBusy(true);
-    try {
-      await api.closeSniperPosition(id);
-      refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const openPositions = positions.filter((p) => p.status === "open");
   const opportunities = candidates.filter((c) => c.classification === "qualified" || c.classification === "high_conviction").slice(0, 4);
   const recentActivity = [
     ...candidates.slice(0, 8).map((c) => ({ at: c.discoveredAt, text: `DISCOVERED ${c.symbol} — score ${c.opportunityScore ?? "—"}, ${c.classification.replace(/_/g, " ")}` })),
@@ -140,13 +127,16 @@ export function MemecoinSniperPanel() {
     .slice(0, 10);
 
   return (
-    <div className="relative space-y-3">
-      <AnimatedGrid />
-      <div className="relative space-y-3">
+    <div className="relative min-h-screen w-screen overflow-x-hidden bg-cmd-bg text-[10px] text-cmd-text">
+      <AnimatedGrid className="fixed" />
+      <div className="relative mx-auto max-w-[1600px] space-y-3 p-3">
         {/* Header strip */}
         <Glass className="flex flex-wrap items-center justify-between gap-3 p-3">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cmd-cyan">Memecoin Sniper</div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-[13px] font-semibold uppercase tracking-[0.2em] text-cmd-cyan">Memecoin Sniper</span>
+              <span className="text-[8px] uppercase tracking-wide text-cmd-textDim">Specialist Terminal — not part of the main TradeTown app</span>
+            </div>
             <div className="text-[9px] text-cmd-textDim">Solana memecoin discovery + paper execution — simulated data</div>
           </div>
           <div className="flex flex-wrap items-center gap-4 text-[9px]">
@@ -174,9 +164,7 @@ export function MemecoinSniperPanel() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {status?.risk.killSwitchTriggered && (
-              <StatusPill tone="red">KILL SWITCH: {status.risk.killSwitchReason}</StatusPill>
-            )}
+            {status?.risk.killSwitchTriggered && <StatusPill tone="red">KILL SWITCH: {status.risk.killSwitchReason}</StatusPill>}
             <button
               type="button"
               disabled={busy}
@@ -185,15 +173,15 @@ export function MemecoinSniperPanel() {
             >
               Stop / Kill
             </button>
+            <a href="/" className="rounded-sm border border-cmd-border px-3 py-1.5 text-[9px] uppercase tracking-wide text-cmd-textDim hover:text-cmd-cyan">
+              ← Back to TradeTown
+            </a>
           </div>
         </Glass>
 
-        {error && (
-          <Glass className="border-cmd-red/50 p-2 text-[9px] text-cmd-red">{error}</Glass>
-        )}
+        {error && <Glass className="border-cmd-red/50 p-2 text-[9px] text-cmd-red">{error}</Glass>}
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          {/* Performance */}
           <Glass className="p-3">
             <TerminalLabel>Performance (today)</TerminalLabel>
             <DataRow label="Session P&L" value={status ? fmtSol(status.todayPnlSol) : "—"} valueClassName={status && status.todayPnlSol >= 0 ? "text-cmd-green" : "text-cmd-red"} />
@@ -202,7 +190,6 @@ export function MemecoinSniperPanel() {
             <DataRow label="Expectancy" value={status?.expectancyR !== null && status?.expectancyR !== undefined ? `${status.expectancyR >= 0 ? "+" : ""}${status.expectancyR}R` : "NOT VERIFIED"} />
           </Glass>
 
-          {/* Risk status */}
           <Glass className="p-3">
             <TerminalLabel>Risk status</TerminalLabel>
             <DataRow label="Drawdown" value={`${status?.risk.drawdownPct.toFixed(1) ?? "0.0"}% of max`} />
@@ -216,7 +203,6 @@ export function MemecoinSniperPanel() {
             />
           </Glass>
 
-          {/* Quick controls */}
           <Glass className="p-3">
             <TerminalLabel>Quick controls</TerminalLabel>
             <div className="grid grid-cols-3 gap-1.5">
@@ -238,17 +224,13 @@ export function MemecoinSniperPanel() {
                 Copy {status?.config.copyTradingEnabled ? "ON" : "OFF"}
               </button>
             </div>
-            {status && !status.liveArming.armed && (
-              <p className="mt-2 text-[8px] leading-relaxed text-cmd-textDim">
-                Live trading locked: {status.liveArming.blockingReasons[0]}
-              </p>
-            )}
+            {status && !status.liveArming.armed && <p className="mt-2 text-[8px] leading-relaxed text-cmd-textDim">Live trading locked: {status.liveArming.blockingReasons[0]}</p>}
           </Glass>
         </div>
 
-        {/* Top opportunities */}
+        {/* Discovery */}
         <Glass className="p-3">
-          <TerminalLabel>Top opportunities — evidence-ranked, never a bare score</TerminalLabel>
+          <TerminalLabel>Discovery — evidence-ranked opportunities, never a bare score</TerminalLabel>
           {opportunities.length === 0 ? (
             <EmptyState>No qualified/high-conviction candidates yet this session.</EmptyState>
           ) : (
@@ -267,11 +249,7 @@ export function MemecoinSniperPanel() {
                   <DataRow label="Liquidity" value={`$${c.liquidityUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
                   <DataRow label="Buy pressure" value={`${c.buyPressurePct}%`} />
                   <DataRow label="Safety" value={<StatusPill tone={SAFETY_TONE[c.safetyStatus]}>{c.safetyStatus.replace(/_/g, " ")}</StatusPill>} />
-                  <button
-                    type="button"
-                    onClick={() => setExpandedCandidateId(expandedCandidateId === c.id ? null : c.id)}
-                    className="mt-1.5 w-full rounded-sm border border-cmd-border py-1 text-[8px] uppercase tracking-wide text-cmd-textDim hover:text-cmd-cyan"
-                  >
+                  <button type="button" onClick={() => setExpandedCandidateId(expandedCandidateId === c.id ? null : c.id)} className="mt-1.5 w-full rounded-sm border border-cmd-border py-1 text-[8px] uppercase tracking-wide text-cmd-textDim hover:text-cmd-cyan">
                     {expandedCandidateId === c.id ? "Hide analysis" : "View analysis"}
                   </button>
                   {expandedCandidateId === c.id && (
@@ -295,52 +273,11 @@ export function MemecoinSniperPanel() {
           )}
         </Glass>
 
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          {/* Open positions */}
-          <Glass className="p-3 lg:col-span-2">
-            <TerminalLabel>Open positions ({openPositions.length} / {status?.config.maxOpenPositions ?? "—"})</TerminalLabel>
-            {openPositions.length === 0 ? (
-              <EmptyState>No open paper positions.</EmptyState>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-[9px]">
-                  <thead>
-                    <tr className="text-left text-cmd-textDim">
-                      <th className="pb-1 font-normal">Token</th>
-                      <th className="pb-1 font-normal">Entry</th>
-                      <th className="pb-1 font-normal">Current</th>
-                      <th className="pb-1 font-normal">Size</th>
-                      <th className="pb-1 font-normal">P&L</th>
-                      <th className="pb-1 font-normal">R</th>
-                      <th className="pb-1 font-normal">Hold</th>
-                      <th className="pb-1 font-normal"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {openPositions.map((p) => (
-                      <tr key={p.id} className="border-t border-cmd-border/60">
-                        <td className="py-1 text-cmd-cyan">{p.symbol}</td>
-                        <td className="py-1 tabular-nums text-cmd-textDim">${p.entryPrice.toPrecision(3)}</td>
-                        <td className="py-1 tabular-nums text-cmd-textDim">${p.currentPrice.toPrecision(3)}</td>
-                        <td className="py-1 tabular-nums">{p.sizeSol.toFixed(3)} SOL</td>
-                        <td className={`py-1 tabular-nums ${p.pnlSol >= 0 ? "text-cmd-green" : "text-cmd-red"}`}>{fmtPct(p.pnlPct)}</td>
-                        <td className={`py-1 tabular-nums ${(p.rMultiple ?? 0) >= 0 ? "text-cmd-green" : "text-cmd-red"}`}>{p.rMultiple !== null ? `${p.rMultiple >= 0 ? "+" : ""}${p.rMultiple.toFixed(2)}R` : "—"}</td>
-                        <td className="py-1 tabular-nums text-cmd-textDim">{Math.round(p.holdTimeSeconds)}s</td>
-                        <td className="py-1">
-                          <button type="button" disabled={busy} onClick={() => void closePosition(p.id)} className="rounded-sm border border-cmd-border px-1.5 py-0.5 text-[8px] uppercase text-cmd-textDim hover:border-cmd-red/50 hover:text-cmd-red disabled:opacity-50">
-                            Manage
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Glass>
+        {/* Professional trading terminal — the directive's own headline correction */}
+        <SniperTerminal positions={positions} candidates={candidates} />
 
-          {/* Recent activity (derived, real data — see module docstring) */}
-          <Glass className="p-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <Glass className="p-3 lg:col-span-2">
             <TerminalLabel>Recent activity</TerminalLabel>
             {recentActivity.length === 0 ? (
               <EmptyState>No activity yet.</EmptyState>
@@ -354,10 +291,18 @@ export function MemecoinSniperPanel() {
               </div>
             )}
           </Glass>
+
+          {/* Wallet management — no real backend exists; disclosed honestly rather than faked. */}
+          <Glass className="p-3">
+            <TerminalLabel>Wallet management</TerminalLabel>
+            <EmptyState>
+              Not available — this environment has no secure credential storage for a real signing key (see the backend's own evaluate_live_arming() gate). Building an add/remove/select UI with nothing
+              real underneath it would be exactly the kind of fabrication this directive forbids. Live trading stays locked until that storage genuinely exists.
+            </EmptyState>
+          </Glass>
         </div>
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {/* Smart money */}
           <Glass className="p-3">
             <TerminalLabel>Smart money activity (simulated)</TerminalLabel>
             {leads.length === 0 ? (
@@ -365,17 +310,12 @@ export function MemecoinSniperPanel() {
             ) : (
               <div className="space-y-1">
                 {leads.map((lead) => (
-                  <DataRow
-                    key={lead.id}
-                    label={lead.walletLabel}
-                    value={`${lead.winRatePct}% WR · ${lead.tradeCount} trades · weight ${lead.weight.toFixed(2)}`}
-                  />
+                  <DataRow key={lead.id} label={lead.walletLabel} value={`${lead.winRatePct}% WR · ${lead.tradeCount} trades · weight ${lead.weight.toFixed(2)}`} />
                 ))}
               </div>
             )}
           </Glass>
 
-          {/* Lessons */}
           <Glass className="p-3">
             <TerminalLabel>Research lessons</TerminalLabel>
             {lessons.length === 0 ? (
@@ -395,7 +335,6 @@ export function MemecoinSniperPanel() {
           </Glass>
         </div>
 
-        {/* Trade journal */}
         <Glass className="p-3">
           <TerminalLabel>Trade journal (most recent {trades.length})</TerminalLabel>
           {trades.length === 0 ? (

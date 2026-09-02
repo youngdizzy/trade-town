@@ -51,7 +51,6 @@ import { PsychologyDashboardPanel } from "./panels/PsychologyDashboardPanel";
 import { EvolutionPanel } from "./panels/EvolutionPanel";
 import { SituationRoomPanel } from "./panels/SituationRoomPanel";
 import { TravelModePanel } from "./panels/TravelModePanel";
-import { MemecoinSniperPanel } from "./panels/MemecoinSniperPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
 // Design Bible Chapter 67 (TradeTown Operating System) — Phase 1: the
@@ -133,7 +132,6 @@ const TABS = [
   "TRAVELMODE",
   "EVOLUTION",
   "PSYCHOLOGY",
-  "SNIPER",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -294,7 +292,6 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "TRAVELMODE" && <TravelModePanel />}
         {tab === "EVOLUTION" && <EvolutionPanel />}
         {tab === "PSYCHOLOGY" && <PsychologyDashboardPanel />}
-        {tab === "SNIPER" && <MemecoinSniperPanel />}
         </PanelErrorBoundary>
       </div>
 
