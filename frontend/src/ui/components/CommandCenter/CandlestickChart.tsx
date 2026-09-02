@@ -12,6 +12,26 @@ const COLORS = {
   current: "#ffb443",
 };
 
+/** "Terminal 2.1" directive — a real, pre-existing formatting bug this
+ * pass's own live verification surfaced: every price label on this
+ * chart (axis gridlines, ENTRY/MARK/SL/TP overlay text) used a flat
+ * `.toFixed(2)`, which silently renders as "0.00" for any real
+ * sub-$0.01 price — exactly what most Memecoin Sniper prices actually
+ * are (see app/memecoin_sniper.py's own price generation). The exact
+ * frontend analog of the backend `_round_price()` fix from the prior
+ * Sniper pass (app/market_data.py) — same problem, same magnitude-
+ * aware fix, on the display side this time. `>= 1` keeps the original
+ * 2-decimal behavior exactly (zero change for every stock/futures/FX
+ * symbol this chart already rendered correctly); `< 1` scales decimal
+ * count to the price's own magnitude. */
+function fmtPrice(price: number): string {
+  if (price <= 0) return "0.00";
+  if (price >= 1) return price.toFixed(2);
+  const magnitude = Math.floor(Math.log10(price));
+  const decimals = Math.min(10, 3 - magnitude);
+  return price.toFixed(decimals);
+}
+
 /** CEO directive "Command Center + Professional Quant Trading Firm
  * Upgrade," Phase 2 (Markets area — chart overlays). A horizontal
  * price level (support/resistance, a Fibonacci ratio) — real prices
@@ -215,7 +235,7 @@ export function CandlestickChart({
         ctx.globalAlpha = 0.5;
         ctx.stroke();
         ctx.globalAlpha = 1;
-        ctx.fillText(price.toFixed(2), plotRight + 4, y);
+        ctx.fillText(fmtPrice(price), plotRight + 4, y);
       }
 
       // Candles
@@ -302,10 +322,10 @@ export function CandlestickChart({
         ctx.fillStyle = color;
         ctx.fillText(label, plotLeft + 2, y - 6);
       };
-      if (overlays?.entry !== undefined) drawLevel(overlays.entry, COLORS.entry, `ENTRY ${overlays.entry.toFixed(2)}`);
-      if (overlays?.currentPrice !== undefined) drawLevel(overlays.currentPrice, COLORS.current, `MARK ${overlays.currentPrice.toFixed(2)}`);
-      if (overlays?.stopPrice !== undefined) drawLevel(overlays.stopPrice, COLORS.bear, `${overlays.stopLabel ?? "SL"} ${overlays.stopPrice.toFixed(2)}`);
-      if (overlays?.targetPrice !== undefined) drawLevel(overlays.targetPrice, COLORS.bull, `${overlays.targetLabel ?? "TP"} ${overlays.targetPrice.toFixed(2)}`);
+      if (overlays?.entry !== undefined) drawLevel(overlays.entry, COLORS.entry, `ENTRY ${fmtPrice(overlays.entry)}`);
+      if (overlays?.currentPrice !== undefined) drawLevel(overlays.currentPrice, COLORS.current, `MARK ${fmtPrice(overlays.currentPrice)}`);
+      if (overlays?.stopPrice !== undefined) drawLevel(overlays.stopPrice, COLORS.bear, `${overlays.stopLabel ?? "SL"} ${fmtPrice(overlays.stopPrice)}`);
+      if (overlays?.targetPrice !== undefined) drawLevel(overlays.targetPrice, COLORS.bull, `${overlays.targetLabel ?? "TP"} ${fmtPrice(overlays.targetPrice)}`);
 
       // Analysis overlay lines (support/resistance, Fibonacci) — a
       // finer dash than the real order-price lines above, so a genuine

@@ -213,6 +213,7 @@ import type {
   SniperPosition,
   SniperRiskState,
   SniperTrade,
+  SniperWallet,
 } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -1383,4 +1384,9 @@ export const api = {
   updateSniperEngine: (payload: { status?: string; mode?: string; turbo?: boolean; copyTradingEnabled?: boolean }) =>
     request<SniperEngineStatusRead>("/sniper/engine", { method: "POST", body: JSON.stringify(payload) }),
   closeSniperPosition: (positionId: string) => request<SniperTrade>(`/sniper/positions/${encodeURIComponent(positionId)}/close`, { method: "POST" }),
+  getSniperWallets: () => request<SniperWallet[]>("/sniper/wallets"),
+  addSniperWallet: (payload: { label: string; publicAddress: string; network?: string }) =>
+    request<SniperWallet>("/sniper/wallets", { method: "POST", body: JSON.stringify(payload) }),
+  removeSniperWallet: (walletId: string) => request<{ removed: boolean }>(`/sniper/wallets/${encodeURIComponent(walletId)}`, { method: "DELETE" }),
+  activateSniperWallet: (walletId: string) => request<SniperWallet[]>(`/sniper/wallets/${encodeURIComponent(walletId)}/activate`, { method: "POST" }),
 };

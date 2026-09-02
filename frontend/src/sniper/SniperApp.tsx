@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
-import type { SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEvent, SniperLead, SniperLesson, SniperPosition, SniperSafetyStatus, SniperTrade } from "@/types";
+import type { SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEvent, SniperLead, SniperLesson, SniperPosition, SniperSafetyStatus, SniperTrade, SniperWallet } from "@/types";
 import { AnimatedGrid, DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
 import { SniperTerminal } from "./SniperTerminal";
 
@@ -67,10 +67,14 @@ function timeAgo(iso: string): string {
  * (`GET /api/sniper/events` — see SniperEvent's own docstring for the
  * real bug this pass found and fixed: these events used to be generated
  * every tick and then silently discarded, never actually kept anywhere).
- * Wallet management has NO real backend behind it at all (confirmed by
- * this pass's own recon: no secure credential storage exists anywhere
- * in this codebase) — the Wallet section below states that honestly
- * rather than faking an add/remove flow with nothing real underneath.
+ *
+ * "Terminal 2.1" directive, Phase 5 — Wallet management now has a real,
+ * persisted backend (add/remove/activate real METADATA — label, public
+ * address, network). What still does NOT exist, and is stated as such
+ * rather than faked: secure secret storage for a real signing key. No
+ * field for one exists anywhere on `SniperWallet`, and adding a wallet
+ * never arms live trading — `evaluate_live_arming()` still names the
+ * other three real unmet prerequisites (RPC/Jupiter/validation).
  */
 export function SniperApp() {
   const [status, setStatus] = useState<SniperEngineStatusRead | null>(null);
@@ -80,9 +84,13 @@ export function SniperApp() {
   const [leads, setLeads] = useState<SniperLead[]>([]);
   const [lessons, setLessons] = useState<SniperLesson[]>([]);
   const [events, setEvents] = useState<SniperEvent[]>([]);
+  const [wallets, setWallets] = useState<SniperWallet[]>([]);
+  const [walletLabel, setWalletLabel] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
   const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [walletError, setWalletError] = useState<string | null>(null);
 
   const refresh = () => {
     api.getSniperStatus().then(setStatus).catch(() => undefined);
@@ -92,6 +100,7 @@ export function SniperApp() {
     api.getSniperLeads().then(setLeads).catch(() => undefined);
     api.getSniperLessons().then(setLessons).catch(() => undefined);
     api.getSniperEvents({ limit: 15 }).then(setEvents).catch(() => undefined);
+    api.getSniperWallets().then(setWallets).catch(() => undefined);
   };
 
   useEffect(() => {
@@ -131,7 +140,48 @@ export function SniperApp() {
     }
   }
 
+  async function addWallet() {
+    setWalletError(null);
+    try {
+      const wallet = await api.addSniperWallet({ label: walletLabel, publicAddress: walletAddress });
+      setWallets((prev) => [...prev, wallet]);
+      setWalletLabel("");
+      setWalletAddress("");
+      api.getSniperStatus().then(setStatus).catch(() => undefined);
+    } catch (e) {
+      setWalletError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function removeWallet(walletId: string) {
+    if (!window.confirm("Remove this wallet? This only deletes its saved label/address — it never touches any real funds (this environment has none).")) return;
+    setWalletError(null);
+    try {
+      await api.removeSniperWallet(walletId);
+      setWallets((prev) => prev.filter((w) => w.id !== walletId));
+      api.getSniperStatus().then(setStatus).catch(() => undefined);
+    } catch (e) {
+      setWalletError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function activateWallet(walletId: string) {
+    setWalletError(null);
+    try {
+      const result = await api.activateSniperWallet(walletId);
+      setWallets(result);
+    } catch (e) {
+      setWalletError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   const opportunities = candidates.filter((c) => c.classification === "qualified" || c.classification === "high_conviction").slice(0, 4);
+  // "Terminal 2.1" directive, Phase 3 — rejected/blocked candidates are
+  // real evidence, not noise; the directive's own words: "This is much
+  // more useful than simply hiding the candidate." Real classification
+  // already on the candidate — no backend change needed for this view.
+  const recentlyRejected = candidates.filter((c) => c.classification === "rejected").slice(0, 4);
+  const enteredMints = new Set(positions.map((p) => p.mint));
 
   return (
     <div className="relative min-h-screen w-screen overflow-x-hidden bg-cmd-bg text-[10px] text-cmd-text">
@@ -252,7 +302,10 @@ export function SniperApp() {
                 <div key={c.id} className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-[9px]">
                   <div className="flex items-center justify-between gap-1">
                     <span className="font-semibold text-cmd-cyan">{c.symbol}</span>
-                    <StatusPill tone={CLASSIFICATION_TONE[c.classification]}>{c.classification.replace(/_/g, " ")}</StatusPill>
+                    <div className="flex items-center gap-1">
+                      {enteredMints.has(c.mint) && <StatusPill tone="green">ENTERED</StatusPill>}
+                      <StatusPill tone={CLASSIFICATION_TONE[c.classification]}>{c.classification.replace(/_/g, " ")}</StatusPill>
+                    </div>
                   </div>
                   <div className="mt-1 text-cmd-textDim">{timeAgo(c.discoveredAt)} · {c.timingState.replace(/_/g, " ")}</div>
                   <div className="mt-1 flex items-baseline gap-1">
@@ -286,8 +339,30 @@ export function SniperApp() {
           )}
         </Glass>
 
+        {/* "Terminal 2.1" directive, Phase 3 — a rejected candidate is
+            real evidence, not something to hide. Real classification +
+            real safety-check breakdown already on the candidate; no
+            backend change needed for this section. */}
+        {recentlyRejected.length > 0 && (
+          <Glass className="p-3">
+            <TerminalLabel>Recently rejected — real reasons, never hidden</TerminalLabel>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {recentlyRejected.map((c) => (
+                <div key={c.id} className="rounded-sm border border-cmd-red/30 bg-cmd-bg/40 p-2 text-[9px]">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="font-semibold text-cmd-text">{c.symbol}</span>
+                    <StatusPill tone="red">REJECTED</StatusPill>
+                  </div>
+                  <div className="mt-1 text-cmd-textDim">{timeAgo(c.discoveredAt)} · score {c.opportunityScore ?? "—"}</div>
+                  <div className="mt-1 text-cmd-red">{c.decisionReason}</div>
+                </div>
+              ))}
+            </div>
+          </Glass>
+        )}
+
         {/* Professional trading terminal — the directive's own headline correction */}
-        <SniperTerminal positions={positions} candidates={candidates} />
+        <SniperTerminal positions={positions} candidates={candidates} trades={trades} />
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <Glass className="p-3 lg:col-span-2">
@@ -306,13 +381,63 @@ export function SniperApp() {
             )}
           </Glass>
 
-          {/* Wallet management — no real backend exists; disclosed honestly rather than faked. */}
+          {/* "Terminal 2.1" directive, Phase 5 — real wallet METADATA
+              management. No field for a private key/seed phrase exists
+              anywhere on SniperWallet, and adding a wallet never arms
+              live trading — see this file's own module docstring. */}
           <Glass className="p-3">
-            <TerminalLabel>Wallet management</TerminalLabel>
-            <EmptyState>
-              Not available — this environment has no secure credential storage for a real signing key (see the backend's own evaluate_live_arming() gate). Building an add/remove/select UI with nothing
-              real underneath it would be exactly the kind of fabrication this directive forbids. Live trading stays locked until that storage genuinely exists.
-            </EmptyState>
+            <TerminalLabel>Wallet management — public metadata only, no secrets</TerminalLabel>
+            {walletError && <div className="mb-1.5 rounded-sm border border-cmd-red/50 bg-cmd-red/10 p-1.5 text-cmd-red">{walletError}</div>}
+            {wallets.length === 0 ? (
+              <EmptyState>No wallets added yet. Public address only — this environment has no secure credential storage for a real signing key, so adding a wallet never arms live trading.</EmptyState>
+            ) : (
+              <div className="space-y-1">
+                {wallets.map((w) => (
+                  <div key={w.id} data-testid={`sniper-wallet-${w.id}`} className="flex items-center gap-2 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate font-semibold text-cmd-text">{w.label}</span>
+                        {w.isActive && <StatusPill tone="green">ACTIVE</StatusPill>}
+                      </div>
+                      <div className="truncate text-cmd-textDim">{w.publicAddress} · {w.network}</div>
+                    </div>
+                    {!w.isActive && (
+                      <button type="button" onClick={() => void activateWallet(w.id)} className="shrink-0 rounded-sm border border-cmd-cyan/50 px-2 py-1 text-cmd-cyan hover:bg-cmd-cyan/10">
+                        Set active
+                      </button>
+                    )}
+                    <button type="button" onClick={() => void removeWallet(w.id)} className="shrink-0 rounded-sm border border-cmd-red/50 px-2 py-1 text-cmd-red hover:bg-cmd-red/10">
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-2 flex flex-wrap gap-1.5 border-t border-cmd-border/50 pt-2">
+              <input
+                type="text"
+                placeholder="Label (e.g. Ops wallet)"
+                value={walletLabel}
+                onChange={(e) => setWalletLabel(e.target.value)}
+                className="min-w-0 flex-1 rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text placeholder:text-cmd-textDim"
+              />
+              <input
+                type="text"
+                placeholder="Public address"
+                value={walletAddress}
+                onChange={(e) => setWalletAddress(e.target.value)}
+                className="min-w-0 flex-[2] rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text placeholder:text-cmd-textDim"
+              />
+              <button
+                type="button"
+                disabled={!walletLabel.trim() || !walletAddress.trim()}
+                onClick={() => void addWallet()}
+                className="shrink-0 rounded-sm border border-cmd-green/50 bg-cmd-green/10 px-3 py-1 uppercase tracking-wide text-cmd-green hover:bg-cmd-green/20 disabled:opacity-40"
+              >
+                Add wallet
+              </button>
+            </div>
+            {status && !status.liveArming.armed && <p className="mt-2 text-[8px] leading-relaxed text-cmd-textDim">Live trading locked regardless of wallet state: {status.liveArming.blockingReasons.join(" ")}</p>}
           </Glass>
         </div>
 

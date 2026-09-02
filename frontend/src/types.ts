@@ -8128,6 +8128,12 @@ export interface SniperCandidate {
   decisionReason: string;
 }
 
+/** "Terminal 2.1" directive, Phase 1 — never a fabricated version number.
+ * "versioned" is a real-but-unreachable value today (nothing in this
+ * codebase can ever produce it); every real position/trade honestly
+ * reports "unavailable". */
+export type SniperStrategyVersionStatus = "versioned" | "unavailable";
+
 export interface SniperPosition {
   id: string;
   mint: string;
@@ -8140,6 +8146,10 @@ export interface SniperPosition {
   targetPrice: number;
   trailingActive: boolean;
   trailingStopPrice: number | null;
+  /** Real timestamp/price the instant trailing first activated — both
+   * null until then, never updated again afterward. */
+  trailingActivatedAt: string | null;
+  trailingActivatedPrice: number | null;
   openedAt: string;
   status: SniperPositionStatus;
   rMultiple: number | null;
@@ -8152,6 +8162,10 @@ export interface SniperPosition {
    * tighter trailing stop) — the same formula SniperTrade.riskSol
    * uses, computed once at entry. See backend's position_risk_sol(). */
   riskSol: number;
+  strategyId: string;
+  strategyName: string;
+  strategyVersionId: string | null;
+  strategyVersionStatus: SniperStrategyVersionStatus;
   dataProvenance: "simulated";
 }
 
@@ -8163,6 +8177,14 @@ export interface SniperTrade {
   closedAt: string;
   entryPrice: number;
   exitPrice: number;
+  /** The position's own real stop/target levels, copied at close time —
+   * needed for a truthful historical chart, not derivable from
+   * entryPrice/exitPrice/riskSol alone. Null only for a trade closed
+   * before this field existed (an old save predating it). */
+  stopPrice: number | null;
+  targetPrice: number | null;
+  trailingActivatedAt: string | null;
+  trailingActivatedPrice: number | null;
   sizeSol: number;
   riskSol: number;
   rMultiple: number;
@@ -8175,6 +8197,10 @@ export interface SniperTrade {
   failureCodes: SniperFailureCode[];
   thesis: string;
   thesisValidated: boolean | null;
+  strategyId: string;
+  strategyName: string;
+  strategyVersionId: string | null;
+  strategyVersionStatus: SniperStrategyVersionStatus;
   dataProvenance: "simulated";
 }
 
@@ -8235,6 +8261,12 @@ export interface SniperEngineConfig {
 
 export type SniperEventType = "discovered" | "safety_reject" | "qualified" | "sniped" | "no_trade" | "exit" | "manual_exit" | "lesson";
 
+/** "Terminal 2.1" directive, Phase 3 — one real category per real gate
+ * inside evaluate_entry_firewall(), in the order that function checks
+ * them. Never decorative: every value corresponds to exactly one real
+ * `if` branch the firewall can actually take. */
+export type SniperBlockReason = "safety" | "data_quality" | "timing" | "score" | "risk_profile" | "kill_switch" | "daily_loss" | "max_positions" | "max_open_risk";
+
 /** Professional Trading Terminal directive, Part VII — a real, persisted
  * event (see backend SniperEvent's own docstring for why this replaced a
  * per-tick list[str] that used to be silently discarded every tick). */
@@ -8245,12 +8277,27 @@ export interface SniperEvent {
   mint: string | null;
   symbol: string | null;
   detail: string;
+  /** Set only on type="no_trade" events; null otherwise. */
+  blockReason: SniperBlockReason | null;
 }
 
 export interface SniperLiveArmingStatus {
   armed: boolean;
   blockingReasons: string[];
   checkedAt: string;
+}
+
+/** "Terminal 2.1" directive, Phase 5 — real wallet METADATA only. No
+ * field for a private key/seed phrase/secret exists anywhere on this
+ * type — this codebase has no secure secret-storage infrastructure, so
+ * one was never added rather than faked. */
+export interface SniperWallet {
+  id: string;
+  label: string;
+  publicAddress: string;
+  network: string;
+  isActive: boolean;
+  addedAt: string;
 }
 
 export interface SniperEngineStatusRead {
