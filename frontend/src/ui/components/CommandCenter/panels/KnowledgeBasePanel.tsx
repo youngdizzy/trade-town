@@ -22,6 +22,10 @@ const MEMORY_SOURCE_LABEL: Record<InstitutionalMemorySource, string> = {
   model_validation: "Model Validation",
   risk_event: "Risk Event",
   market_regime_shift: "Regime Shift",
+  prediction: "Prediction Outcome",
+  failure_classification: "Failure Classification",
+  // "TradeTown — Learning Organization 1.0" — bridged from a real ResearchLessonRecord.
+  research_lesson: "Research Lesson",
 };
 
 const MEMORY_SOURCE_TONE: Record<InstitutionalMemorySource, "cyan" | "green" | "amber" | "purple" | "red"> = {
@@ -32,6 +36,9 @@ const MEMORY_SOURCE_TONE: Record<InstitutionalMemorySource, "cyan" | "green" | "
   model_validation: "purple",
   risk_event: "red",
   market_regime_shift: "cyan",
+  prediction: "amber",
+  failure_classification: "red",
+  research_lesson: "purple",
 };
 
 const MEMORY_STATUS_TONE: Record<InstitutionalMemoryStatus, "neutral" | "cyan" | "amber" | "red"> = {

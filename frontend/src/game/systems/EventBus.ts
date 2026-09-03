@@ -20,6 +20,7 @@ import type {
   CeoDecisionRecord,
   CaseStudy,
   InstitutionalMemoryEntry,
+  KnowledgeEvent,
   ChallengeReport,
   CoachReport,
   CompanyDNA,
@@ -263,6 +264,7 @@ export interface GameEvents {
   "disciplineReviews:updated": DisciplineReview[];
   "caseStudies:updated": CaseStudy[];
   "institutionalMemory:updated": InstitutionalMemoryEntry[];
+  "knowledgeEvents:updated": KnowledgeEvent[];
   "agentPerformanceReviews:updated": AgentPerformanceReview[];
   "agentSkillProfiles:updated": AgentSkillProfile[];
   "predictionRecords:updated": PredictionRecord[];

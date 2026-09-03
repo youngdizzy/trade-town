@@ -123,6 +123,25 @@ development milestones, not semver releases.
     per-candidate `Debate`/`DepartmentOpinion` signals that exist
     regardless of trade outcome — a materially larger design problem
     than the four bridged this pass, deliberately not rushed.
+  - **Frontend explainability, no redesign.** `ReflectionPanel.tsx`'s
+    Company Wisdom factor list is now click-to-expand (reusing the same
+    single-expand pattern the panel's own Reflection Journal rows
+    already established) — expanding a factor renders its own real,
+    previously-defined-but-never-rendered `WisdomFactor.detail`, plus,
+    for the four factors above, a real evidence line computed live from
+    `institutionalMemory`/`knowledgeEvents` (e.g. "1 real lesson-sharing
+    event(s) via Institutional Memory"). The other four factors show
+    only their existing `detail` text — no fabricated evidence line for
+    a formula that doesn't use this data. `KnowledgeBasePanel.tsx`'s two
+    `InstitutionalMemorySource` label/tone maps gained the three source
+    values this pass introduced/exposed (`prediction`, `failure_
+    classification`, `research_lesson`) — TypeScript's own exhaustiveness
+    check caught these as compile errors before the build could pass.
+    Live-verified against the real running stack via Playwright (an
+    isolated per-test database, per this repo's own "Paper Burn-in
+    Test-Isolation Hardening" safeguard) — screenshots confirm both
+    expand/collapse and the real evidence lines render correctly.
+    Frontend `tsc`, ESLint, and `vite build` all clean.
 
 - **CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0."** A
   bounded auditability fix, not a risk-model change — closes the one

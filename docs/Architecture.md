@@ -20730,6 +20730,31 @@ tests covering all four changed metrics, including the every-existing-
 call-site-still-passes regression and the no-double-counting-fan-out
 case), and a real restart round-trip proof for `knowledge_events`
 (`tests/test_persistence.py`). Full backend suite, mypy, and ruff clean.
-No frontend files touched in this slice — frontend explainability
-(rendering the Wisdom panel's already-defined-but-unused `detail` field
-plus real evidence counts) is a separate, subsequent pass.
+
+### Frontend explainability
+
+A separate, subsequent pass: `ReflectionPanel.tsx`'s Company Wisdom
+factor list is now click-to-expand (reusing the panel's own existing
+Reflection Journal row expand/collapse pattern — no new UI pattern, no
+redesign). Expanding a factor renders its real, previously-defined-but-
+never-rendered `WisdomFactor.detail`, plus, only for the four factors
+this pass actually changed, a real evidence line computed live from
+`institutionalMemory`/`knowledgeEvents` (e.g. "1 real lesson-sharing
+event(s) via Institutional Memory"). `knowledgeEvents` was threaded
+through the full frontend real-time pipeline (`GameSaveState`/
+`NexusSnapshot` types, `EventBus`, `NexusManager`, `gameStore`, WS
+message parsing in `socket.ts`) the same way `institutionalMemory`
+already was. `KnowledgeBasePanel.tsx`'s two `InstitutionalMemorySource`
+label/tone `Record`s gained the three source values this milestone
+introduced or exposed (`prediction`, `failure_classification`,
+`research_lesson`) — TypeScript's exhaustiveness check on those Records
+caught the gap as a real compile error before `vite build` could pass.
+Live-verified against the real running stack via a throwaway Playwright
+spec (deleted after use, never committed) run against an isolated
+per-test database per this repo's own "Paper Burn-in Test-Isolation
+Hardening" safeguard — screenshots confirmed both the expand/collapse
+interaction and the real evidence lines render correctly. `tsc`,
+ESLint, and `vite build` all clean. The real, continuously-running
+burn-in backend was restarted afterward with zero migration errors,
+confirming `institutional_memory`/`knowledge_events` also survive a
+real production restart, not just the isolated persistence test.

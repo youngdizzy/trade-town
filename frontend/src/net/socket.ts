@@ -14,6 +14,7 @@ import type {
   CalendarState,
   CaseStudy,
   InstitutionalMemoryEntry,
+  KnowledgeEvent,
   AgentPerformanceReview,
   AgentSkillProfile,
   PredictionRecord,
@@ -175,6 +176,7 @@ type ServerMessage =
       disciplineReviews: DisciplineReview[];
       caseStudies: CaseStudy[];
       institutionalMemory: InstitutionalMemoryEntry[];
+      knowledgeEvents: KnowledgeEvent[];
       agentPerformanceReviews: AgentPerformanceReview[];
       agentSkillProfiles: AgentSkillProfile[];
       predictionRecords: PredictionRecord[];
@@ -339,6 +341,7 @@ export class GameSocket {
             disciplineReviews: msg.disciplineReviews,
             caseStudies: msg.caseStudies,
             institutionalMemory: msg.institutionalMemory,
+            knowledgeEvents: msg.knowledgeEvents,
             agentPerformanceReviews: msg.agentPerformanceReviews,
             agentSkillProfiles: msg.agentSkillProfiles,
             predictionRecords: msg.predictionRecords,

@@ -5226,7 +5226,12 @@ export type InstitutionalMemorySource =
   | "strategy_success"
   | "model_validation"
   | "risk_event"
-  | "market_regime_shift";
+  | "market_regime_shift"
+  | "prediction"
+  | "failure_classification"
+  // "TradeTown — Learning Organization 1.0" — promoted from a
+  // ResearchLessonRecord once it has real, sufficient trade evidence.
+  | "research_lesson";
 
 export type InstitutionalMemoryStatus = "active" | "superseded" | "contradicted" | "stale";
 
@@ -5255,6 +5260,22 @@ export interface InstitutionalMemoryEntry {
   supersedesId: string | null;
   supersededById: string | null;
   supportingEvidence: string[];
+}
+
+/** "TradeTown — Learning Organization 1.0" — real, timestamped,
+ * attributable, idempotent knowledge-sharing lifecycle telemetry
+ * (backend/app/knowledge_sharing.py). Deliberately distinct from
+ * LearningEvent (Academy tier crossings) — a different real concept. */
+export type KnowledgeEventType = "lesson_created" | "lesson_shared" | "knowledge_received" | "knowledge_applied" | "lesson_confirmed" | "lesson_contradicted";
+
+export interface KnowledgeEvent {
+  id: string;
+  type: KnowledgeEventType;
+  lessonId: string;
+  agentId: AgentId | null;
+  simDay: number;
+  detail: string;
+  createdAt: string;
 }
 
 /** v0.7 Feature 54 (the brief self-numbered it "Feature 53," already used
@@ -7560,6 +7581,8 @@ export interface GameSaveState {
   caseStudies: CaseStudy[];
   // CEO directive "Features 26-30," Feature 26 — Institutional Memory 2.0.
   institutionalMemory: InstitutionalMemoryEntry[];
+  // "TradeTown — Learning Organization 1.0" — knowledge-sharing lifecycle telemetry.
+  knowledgeEvents: KnowledgeEvent[];
   // CEO directive "Features 26-30," Feature 27 — Agent Performance Reviews.
   agentPerformanceReviews: AgentPerformanceReview[];
   // CEO directive "Features 26-30," Feature 28 — Academy + Skill Progression.

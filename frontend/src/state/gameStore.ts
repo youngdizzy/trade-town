@@ -19,6 +19,7 @@ import type {
   CalendarState,
   CaseStudy,
   InstitutionalMemoryEntry,
+  KnowledgeEvent,
   CeoDecisionRecord,
   ChallengeReport,
   CoachReport,
@@ -187,6 +188,7 @@ export interface GameUiState {
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
   institutionalMemory: InstitutionalMemoryEntry[];
+  knowledgeEvents: KnowledgeEvent[];
   agentPerformanceReviews: AgentPerformanceReview[];
   agentSkillProfiles: AgentSkillProfile[];
   predictionRecords: PredictionRecord[];
@@ -493,6 +495,7 @@ class GameStore {
     disciplineReviews: [],
     caseStudies: [],
     institutionalMemory: [],
+    knowledgeEvents: [],
     agentPerformanceReviews: [],
     agentSkillProfiles: [],
     predictionRecords: [],
@@ -802,6 +805,7 @@ class GameStore {
     EventBus.on("disciplineReviews:updated", (disciplineReviews) => this.set({ disciplineReviews }));
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
     EventBus.on("institutionalMemory:updated", (institutionalMemory) => this.set({ institutionalMemory }));
+    EventBus.on("knowledgeEvents:updated", (knowledgeEvents) => this.set({ knowledgeEvents }));
     EventBus.on("agentPerformanceReviews:updated", (agentPerformanceReviews) => this.set({ agentPerformanceReviews }));
     EventBus.on("agentSkillProfiles:updated", (agentSkillProfiles) => this.set({ agentSkillProfiles }));
     EventBus.on("predictionRecords:updated", (predictionRecords) => this.set({ predictionRecords }));

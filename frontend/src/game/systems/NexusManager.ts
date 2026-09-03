@@ -16,6 +16,7 @@ import type {
   BlackSwanReport,
   CaseStudy,
   InstitutionalMemoryEntry,
+  KnowledgeEvent,
   CeoDecisionRecord,
   ChallengeReport,
   CoachReport,
@@ -166,6 +167,7 @@ interface NexusSnapshot {
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
   institutionalMemory: InstitutionalMemoryEntry[];
+  knowledgeEvents: KnowledgeEvent[];
   agentPerformanceReviews: AgentPerformanceReview[];
   agentSkillProfiles: AgentSkillProfile[];
   predictionRecords: PredictionRecord[];
@@ -425,6 +427,7 @@ export class NexusManager {
   private static disciplineReviews: DisciplineReview[] = [];
   private static caseStudies: CaseStudy[] = [];
   private static institutionalMemory: InstitutionalMemoryEntry[] = [];
+  private static knowledgeEvents: KnowledgeEvent[] = [];
   private static agentPerformanceReviews: AgentPerformanceReview[] = [];
   private static agentSkillProfiles: AgentSkillProfile[] = [];
   private static predictionRecords: PredictionRecord[] = [];
@@ -844,6 +847,10 @@ export class NexusManager {
 
   static getInstitutionalMemory(): InstitutionalMemoryEntry[] {
     return this.institutionalMemory;
+  }
+
+  static getKnowledgeEvents(): KnowledgeEvent[] {
+    return this.knowledgeEvents;
   }
 
   static getAgentPerformanceReviews(): AgentPerformanceReview[] {
@@ -1532,6 +1539,11 @@ export class NexusManager {
     }
     this.institutionalMemory = update.institutionalMemory;
 
+    if (update.knowledgeEvents.length !== this.knowledgeEvents.length) {
+      EventBus.emit("knowledgeEvents:updated", update.knowledgeEvents);
+    }
+    this.knowledgeEvents = update.knowledgeEvents;
+
     if (update.agentPerformanceReviews.length !== this.agentPerformanceReviews.length) {
       EventBus.emit("agentPerformanceReviews:updated", update.agentPerformanceReviews);
     }
@@ -1791,6 +1803,7 @@ export class NexusManager {
     this.disciplineReviews = save.disciplineReviews;
     this.caseStudies = save.caseStudies;
     this.institutionalMemory = save.institutionalMemory ?? [];
+    this.knowledgeEvents = save.knowledgeEvents ?? [];
     this.agentPerformanceReviews = save.agentPerformanceReviews ?? [];
     this.agentSkillProfiles = save.agentSkillProfiles ?? [];
     this.predictionRecords = save.predictionRecords ?? [];
