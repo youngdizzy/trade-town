@@ -7,6 +7,99 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Opportunity Gate Calibration Experiment 1.0."** A
+  pure, read-only shadow-scoring module answering the prior forensic
+  audit's own recommended next milestone: is the Opportunity
+  Gatekeeper's unweighted-mean composite, combined with a structurally
+  weak liquidity sub-score, excluding otherwise-strong candidates? Zero
+  production Gatekeeper behavior changed — `evaluate_opportunity()`,
+  every threshold, and every real trading decision are byte-for-byte
+  unchanged by this pass.
+  - **Phase 0 finding that reshaped scope, disclosed up front.**
+    `OpportunityRejection` never persisted the 7 individual sub-scores
+    behind its composite — only the already-collapsed number — and
+    `app/market_data.py`'s mock provider can't be rewound to reconstruct
+    a historical evaluation's exact inputs without leakage (it
+    regenerates on every call, rescaled to whatever the LIVE price
+    happens to be). So the 100 pre-existing real rejections cannot
+    honestly support any model that excludes/caps/reweights a
+    sub-score — recomputing them now would silently score against
+    different information than the real gate decision saw.
+  - **The fix: `OpportunityShadowSubScoreCapture`** (`backend/app/
+    schemas.py`) — a real, separate, versioned capture of the exact
+    `DecisionScoreBreakdown` already in memory at the moment
+    `evaluate_opportunity()` rejects a candidate (`backend/app/nexus.py`),
+    deliberately NOT a new field on `OpportunityRejection` itself. This
+    means the critical "rescued candidate" (production FAIL → shadow
+    PASS) population only has real data for rejections created after
+    this instrumentation shipped — the 100 pre-existing rejections are
+    counted as `ineligibleRejectionsNoCapture` and never scored, backfilled,
+    or fabricated. The approved-candidate side needed no new capture:
+    `WarRoomSession.decisionScore` (already real, already persisted for
+    every candidate that passed the gate) was reused directly.
+  - **Four predeclared shadow models** (`backend/app/opportunity_gate_
+    calibration_experiment.py`), all pure functions of the same
+    already-persisted sub-scores: **A. Control** (reproduces `app/
+    war_room.py::build_decision_score()`'s real formula exactly).
+    **B. Liquidity-Excluded** (removes liquidity from the average
+    entirely). **C. Capped-Penalty** (floors liquidity's downward pull
+    at `LIQUIDITY_DOMINANT_DRAG_THRESHOLD` — reused from `app/
+    opportunity_gatekeeper.py` rather than a new arbitrary number).
+    **D. Weighted Composite** — exactly 3 predeclared weight schemes
+    (equal / reduced-liquidity / increased-liquidity, each summing to
+    1.0), fixed before the module ever computed a real outcome; no
+    search over weights.
+  - **A real, observed, fully-explained rounding-boundary artifact.**
+    Live against the real burn-in save, control equivalence read 39/40
+    on first check (1 real mismatch: 66.0 recomputed vs. 65.9 real).
+    Root cause, confirmed by hand-tracing that candidate's real
+    sub-scores: `expectedValueScore` is the one sub-score `build_
+    decision_score()` persists pre-rounded to 1 decimal, and that
+    candidate's true unrounded mean happened to sit within ~0.006 of an
+    exact X.X5 rounding boundary — enough to flip the final rounded
+    composite by the minimum unit. Documented precisely in `control_
+    equivalence()`'s own docstring; not a Gatekeeper defect, not
+    fixable by loosening tolerance (a discrete rounding-bucket flip, not
+    a continuous drift).
+  - **Reuse over invention.** `bootstrap_compare_samples()`
+    (`app/statistical_comparison.py`) for the rescued-vs-confirmed-reject
+    win-rate comparison, honestly `insufficient_evidence` below its real
+    20-observation floor on either side — a `pending` outcome is never
+    counted as a win or a loss. `LIQUIDITY_DOMINANT_DRAG_THRESHOLD`
+    reused as the Capped-Penalty floor. No second statistics framework,
+    no second candidate-lineage concept.
+  - **New `GET /api/trades/opportunity-gate-calibration-experiment`** —
+    computed fresh from current state on every call, no persistence of
+    its own beyond the capture list above.
+  - **Frontend:** a new section inside the existing Command Center →
+    Research & Intelligence → Opportunities tab (never a new top-level
+    tab), explicitly labeled "SHADOW EXPERIMENT — DOES NOT CONTROL
+    TRADING" — group counts per model, control-equivalence check,
+    eligible/ineligible counts, liquidity/data-honesty notes.
+  - **Tests.** 27 new backend tests: control equivalence (both synthetic
+    and against real linked data), weight-scheme validity (sum to 1),
+    determinism, no-production-mutation (a static source check plus an
+    input-immutability check), no-historical-mutation (pre-instrumentation
+    rejections excluded, never backfilled), unresolved (`pending`)
+    outcome handling, insufficient-sample N/A handling, and leakage-audit
+    checks (duplicate detection, predeclared weights). Full backend
+    suite (3919 tests), mypy, and ruff all clean; frontend tsc, ESLint,
+    and build all clean.
+  - **Verified live against the real burn-in save** (Day 101 → Day 119+,
+    continuously running in the background across this whole milestone,
+    never fast-forwarded via `/api/time/advance`) — see this milestone's
+    own forensic report for the exact real counts and conclusion.
+  - **Not built, disclosed explicitly:** a Playwright regression run for
+    the new UI section — running the real suite against this save is
+    exactly what `tests/global-setup.ts` (Paper Burn-in Test-Isolation
+    Hardening) correctly refuses to do, and standing up a second,
+    isolated backend+frontend pair was judged unnecessary for a purely
+    additive, read-only section (new fetch, new render call, no changed
+    interaction logic elsewhere) — verified instead via tsc/ESLint/build
+    plus a live, read-only, non-mutating browser screenshot against the
+    real running save (player-position save only, the same narrow real
+    mechanism the game's own Continue button uses).
+
 - **CEO directive "Paper Burn-in Test-Isolation Hardening."** A real
   incident, root-caused during the Paper Trading Evidence Collection /
   Controlled Burn-in 2.0 milestone: `tests/alertCenter.spec.ts`'s

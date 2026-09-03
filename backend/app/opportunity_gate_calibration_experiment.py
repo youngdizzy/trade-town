@@ -416,7 +416,31 @@ def control_equivalence(rejected_results: list[ShadowCandidateResult]) -> tuple[
     `OpportunityRejection.decisionScoreAtRejection` (both come from the
     same original `build_decision_score()` call at the same tick — see
     this module's own docstring). Returns (checked, mismatches); a
-    mismatch is a real, reportable finding, never silently ignored."""
+    mismatch is a real, reportable finding, never silently ignored.
+
+    A REAL, OBSERVED, FULLY-EXPLAINED MISMATCH SOURCE, disclosed here for
+    future readers. Live against the real burn-in save, this genuinely
+    produced a 1-in-40 mismatch (66.0 recomputed vs. 65.9 real). Root
+    cause, confirmed by hand-tracing that candidate's real captured
+    sub-scores: `app/war_room.py::build_decision_score()` stores
+    `expectedValueScore=round(expected_value_score, 1)` — the ONLY
+    sub-score persisted pre-rounded — but computes `overall` from the
+    RAW, unrounded `expected_value_score` (every other sub-score is
+    stored and used unrounded, so this module's `_composite()` matches
+    production exactly for those). The up-to-0.05 rounding perturbation
+    this introduces is normally negligible once averaged over 7-8 terms
+    (well under 0.01) — but if the true unrounded mean happens to sit
+    within that margin of an exact X.X5 rounding boundary, `round(x, 1)`
+    is discontinuous there: a ~0.006 input shift can flip the output by
+    a full 0.1, exactly what was observed. This is a genuine, bounded,
+    disclosed PRECISION LIMITATION of reconstructing Model A from the
+    already-persisted (lightly-rounded) DecisionScoreBreakdown — not a
+    Gatekeeper defect, not a scoring bug, and not fixable by loosening
+    this function's tolerance (a rounding-bucket flip is discrete, not a
+    small continuous drift a wider tolerance would catch). Expected
+    real-world rate: roughly 1 in (10 / typical-sub-score-count) i.e. a
+    low single-digit percentage of candidates, only when the true mean
+    lands unusually close to a rounding boundary."""
     mismatches = 0
     for result in rejected_results:
         control_score = result.shadow_scores["control"].overall

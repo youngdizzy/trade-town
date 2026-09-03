@@ -5442,6 +5442,69 @@ export interface DecisionScoreBreakdown {
   passed: boolean;
 }
 
+// CEO directive "Opportunity Gate Calibration Experiment 1.0" — mirrors
+// backend/app/schemas.py's report schemas exactly. SHADOW EXPERIMENT,
+// DOES NOT CONTROL TRADING — see backend/app/opportunity_gate_
+// calibration_experiment.py's own module docstring for the full real
+// methodology and its disclosed limitations.
+export interface ShadowModelScore {
+  modelId: string;
+  overall: number;
+  passed: boolean;
+}
+
+export interface ShadowCandidateResult {
+  rejectionId: string;
+  symbol: string;
+  productionDecisionScore: number;
+  liquidityQualityScore: number;
+  expectedValueAtRejectionPct: number;
+  outcome: GatekeeperOutcome;
+  resolvedPriceChangePct: number | null;
+  shadowScores: Record<string, ShadowModelScore>;
+}
+
+export interface ModelGroupSummary {
+  modelId: string;
+  rescuedCount: number;
+  confirmedRejectCount: number;
+  confirmedApproveCount: number;
+  shadowWouldRejectCount: number;
+}
+
+export interface RescuedOutcomeEvidence {
+  modelId: string;
+  rescuedNResolved: number;
+  confirmedRejectNResolved: number;
+  evidenceState: "sufficient_evidence" | "insufficient_evidence";
+  bootstrap: BootstrapComparisonResult | null;
+  note: string;
+}
+
+export interface LeakageAuditCheck {
+  check: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface OpportunityGateCalibrationExperimentReport {
+  experimentVersion: string;
+  generatedAt: string;
+  totalRejectionsOnRecord: number;
+  eligibleRejectionsWithCapture: number;
+  ineligibleRejectionsNoCapture: number;
+  totalApprovedWarRoomSessions: number;
+  controlEquivalenceChecked: number;
+  controlEquivalenceMismatches: number;
+  weightSchemeValidity: Record<string, number>;
+  groupCounts: ModelGroupSummary[];
+  rescuedCandidates: ShadowCandidateResult[];
+  rescuedWinRateComparisons: RescuedOutcomeEvidence[];
+  liquidityAnalysisNote: string;
+  leakageAudit: LeakageAuditCheck[];
+  dataHonestyNote: string;
+}
+
 /** Filled in once a WarRoomSession's linked trade actually closes — the
  * real scenario whose predicted range midpoint sits closest to what
  * actually happened, and whether the real outcome landed inside that

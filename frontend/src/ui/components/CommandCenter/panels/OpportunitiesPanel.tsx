@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { OpportunityFeed, OpportunityFeedEntry, OpportunityFeedStatus, SymbolTrendRanking, TradeDecision, WatchlistEligibilitySummary, WatchlistTier } from "@/types";
+import type {
+  OpportunityFeed,
+  OpportunityFeedEntry,
+  OpportunityFeedStatus,
+  OpportunityGateCalibrationExperimentReport,
+  SymbolTrendRanking,
+  TradeDecision,
+  WatchlistEligibilitySummary,
+  WatchlistTier,
+} from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
 import { SIGNAL_STATE_LABEL, SIGNAL_STATE_TONE, voteDirection } from "../lib/derive";
@@ -176,6 +185,87 @@ function AssetDiscoverySection() {
   );
 }
 
+const MODEL_LABEL: Record<string, string> = {
+  liquidity_excluded: "B: Liquidity-Excluded",
+  capped_penalty: "C: Capped-Penalty",
+  weighted_equal_weight: "D: Weighted (equal)",
+  weighted_reduced_liquidity_weight: "D: Weighted (reduced liquidity)",
+  weighted_increased_liquidity_weight: "D: Weighted (increased liquidity)",
+};
+
+/**
+ * CEO directive "Opportunity Gate Calibration Experiment 1.0" — a pure,
+ * read-only shadow-scoring diagnostic. See backend/app/opportunity_gate_
+ * calibration_experiment.py's own module docstring for the full real
+ * methodology, its disclosed limitations (the rescued-candidate
+ * population only has real data for rejections created after this
+ * directive's own instrumentation shipped), and why this lives here
+ * rather than on a new top-level tab: this IS the existing Opportunity
+ * Gatekeeper surface. SHADOW EXPERIMENT — DOES NOT CONTROL TRADING;
+ * nothing here feeds evaluate_opportunity() or any live gate decision.
+ */
+function OpportunityGateCalibrationExperimentSection() {
+  const [report, setReport] = useState<OpportunityGateCalibrationExperimentReport | null>(null);
+  useEffect(() => {
+    api.getOpportunityGateCalibrationExperiment().then(setReport).catch(() => undefined);
+  }, []);
+
+  if (!report) return null;
+
+  return (
+    <div className="space-y-2">
+      <TerminalLabel>Opportunity Gate Calibration Experiment — shadow scoring, research only</TerminalLabel>
+      <Glass className="space-y-2 border border-cmd-amber/50 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <StatusPill tone="amber">SHADOW EXPERIMENT — DOES NOT CONTROL TRADING</StatusPill>
+          <span className="text-[9px] text-cmd-textDim">{report.experimentVersion}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[9px] text-cmd-textDim sm:grid-cols-4">
+          <span>Eligible rejections: <span className="text-cmd-text">{report.eligibleRejectionsWithCapture}</span></span>
+          <span>Ineligible (pre-instrumentation): <span className="text-cmd-text">{report.ineligibleRejectionsNoCapture}</span></span>
+          <span>Approved sessions: <span className="text-cmd-text">{report.totalApprovedWarRoomSessions}</span></span>
+          <span>
+            Control equivalence:{" "}
+            <span className={report.controlEquivalenceMismatches === 0 ? "text-cmd-green" : "text-cmd-red"}>
+              {report.controlEquivalenceChecked - report.controlEquivalenceMismatches}/{report.controlEquivalenceChecked}
+            </span>
+          </span>
+        </div>
+        {report.groupCounts.length === 0 ? (
+          <EmptyState>No eligible candidates yet — the rescued-candidate population only accumulates from rejections created after this experiment shipped.</EmptyState>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[9px]">
+              <thead>
+                <tr className="text-cmd-textDim">
+                  <th className="p-1 text-left">Model</th>
+                  <th className="p-1 text-right">Rescued</th>
+                  <th className="p-1 text-right">Confirmed Reject</th>
+                  <th className="p-1 text-right">Confirmed Approve</th>
+                  <th className="p-1 text-right">Shadow Would Reject</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.groupCounts.map((g) => (
+                  <tr key={g.modelId} className="border-t border-cmd-border/50">
+                    <td className="p-1 text-cmd-text">{MODEL_LABEL[g.modelId] ?? g.modelId}</td>
+                    <td className="p-1 text-right text-cmd-green">{g.rescuedCount}</td>
+                    <td className="p-1 text-right text-cmd-text">{g.confirmedRejectCount}</td>
+                    <td className="p-1 text-right text-cmd-text">{g.confirmedApproveCount}</td>
+                    <td className="p-1 text-right text-cmd-red">{g.shadowWouldRejectCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[8px] italic text-cmd-textDim">{report.liquidityAnalysisNote}</p>
+        <p className="text-[8px] italic text-cmd-textDim">{report.dataHonestyNote}</p>
+      </Glass>
+    </div>
+  );
+}
+
 /**
  * "Recent Decisions" (the original per-tab content) reuses the same
  * TradeDecision records the Decisions tab shows in full — TradeTown's
@@ -196,6 +286,8 @@ export function OpportunitiesPanel({ onInspect }: { onInspect: (d: TradeDecision
       <WatchlistEligibilitySection />
 
       <AssetDiscoverySection />
+
+      <OpportunityGateCalibrationExperimentSection />
 
       <div className="space-y-2">
         <TerminalLabel>Recent Decisions — resolved ({recent.length})</TerminalLabel>

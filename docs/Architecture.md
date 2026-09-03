@@ -20351,3 +20351,139 @@ trades/positions) was confirmed byte-identical before and after the
 attempt; the same command against an isolated `DATABASE_URL` ran
 normally to completion. Full backend suite/mypy/ruff and frontend
 tsc/lint/build all clean.
+
+## CEO directive "Opportunity Gate Calibration Experiment 1.0"
+
+The prior forensic audit ("Opportunity Gatekeeper Calibration Forensic
+Audit 1.0") found a real calibration concern — an unweighted-mean
+composite interacting with a structurally weak liquidity sub-score
+(genuine equal-high/equal-low clustering is rare in this codebase's own
+smooth stochastic-walk synthetic price series) may be excluding
+otherwise-strong candidates — and recommended a non-contaminating shadow
+experiment as the next milestone rather than touching the real gate.
+This is that experiment. **Zero production Gatekeeper behavior
+changed**: `evaluate_opportunity()`, `build_decision_score()`, every
+threshold, and every real accept/reject decision are byte-for-byte
+unchanged.
+
+### Phase 0 — why the existing 100 rejections can't fully answer this
+
+`OpportunityRejection` (`app/schemas.py`) has never persisted the 7
+individual sub-scores behind `decisionScoreAtRejection` — only the
+already-collapsed composite (`app/opportunity_gatekeeper.py`'s own
+module docstring documents this as an intentional two-phase design
+choice: a rejected candidate's full `WarRoomSession` was never
+permanently stored). Recomputing those sub-scores now, for an old
+rejection, is not an honest substitute — `app/market_data.py`'s mock
+provider regenerates a fresh candle series on every call, rescaled to
+the symbol's CURRENT live price (see that module's own docstring); a
+"reconstructed" score would silently use different information than the
+real gate decision actually saw. `WarRoomSession` (which DOES carry the
+full breakdown) is only ever persisted for a candidate that PASSED the
+gate — real sub-score history already existed for the approved side
+(`state.war_room_sessions`, capped at 60), zero existed for the rejected
+side.
+
+### The fix: a real, separate, versioned capture
+
+`OpportunityShadowSubScoreCapture` (new schema) captures the exact real
+`DecisionScoreBreakdown` already sitting in memory the instant
+`evaluate_opportunity()` rejects a candidate (`app/nexus.py`'s `tick()`,
+right where `build_opportunity_rejection()` is called) — linked by
+`rejectionId`, capped 1:1 with `opportunity_rejections`. Deliberately
+NOT a new field on `OpportunityRejection` itself, so the production
+record's own shape is completely untouched and the addition is
+trivially reversible. Honest limitation, disclosed everywhere this
+matters: it has zero real observations for any rejection that predates
+this directive — those are reported as `ineligibleRejectionsNoCapture`
+and never scored, backfilled, or fabricated. The "rescued candidate"
+(production FAIL → shadow PASS) population — the directive's own
+central question — therefore only has real data accumulated from this
+point forward.
+
+### Four predeclared models, no search over weights
+
+All in `app/opportunity_gate_calibration_experiment.py`, all pure
+functions of an already-persisted `DecisionScoreBreakdown`:
+
+- **A. Control** — reproduces `build_decision_score()`'s real mean-of-
+  real-sub-scores formula. Proven equivalent two ways: synthetic unit
+  tests, and (materially stronger) a real, data-level check that
+  recomputing it from every eligible candidate's actual captured
+  sub-scores reproduces that same candidate's real, independently-
+  persisted `decisionScoreAtRejection`.
+- **B. Liquidity-Excluded** — liquidity genuinely removed from the
+  average (not zeroed).
+- **C. Capped-Penalty** — liquidity floored at `LIQUIDITY_DOMINANT_DRAG_
+  THRESHOLD` (reused from `app/opportunity_gatekeeper.py`, the same real
+  constant production already uses to name liquidity as a rejection's
+  "dominant drag" — never a new arbitrary number) before averaging.
+- **D. Weighted Composite** — exactly 3 predeclared weight schemes over
+  the 7 core sub-scores (`equal_weight`, `reduced_liquidity_weight`,
+  `increased_liquidity_weight`), fixed at import time before the module
+  ever computed a real outcome-linked statistic. No iteration over a
+  range of weight vectors looking for the best-performing one.
+
+### A real, observed, fully-explained rounding-boundary case
+
+Live against the real burn-in save, `controlEquivalenceMismatches` read
+1 out of 40 on an early check (66.0 recomputed vs. 65.9 real). Hand-
+tracing that candidate's real captured sub-scores confirmed the cause:
+`expectedValueScore` is the ONE sub-score `build_decision_score()`
+persists pre-rounded to 1 decimal (every other sub-score is stored and
+used unrounded); that candidate's true unrounded mean happened to sit
+within ~0.006 of an exact X.X5 rounding boundary, and `round(x, 1)` is
+discontinuous there — enough to flip the final composite by the minimum
+unit. This is a genuine, bounded, disclosed precision limitation of
+reconstructing Model A from the already-persisted (lightly-rounded)
+breakdown — not a Gatekeeper defect, and not something a wider tolerance
+would fix (a discrete rounding-bucket flip, not a continuous drift). See
+`control_equivalence()`'s own docstring for the full derivation.
+
+### Classification, outcomes, and statistical discipline
+
+Every eligible rejected candidate and every approved `WarRoomSession` is
+scored under all 4 models and classified into the real (production
+PASS/FAIL) × (shadow PASS/FAIL) grid; `rescuedCandidates` is the union
+across models B/C/D. Outcome evidence (`grade_opportunity_rejections()`'s
+own real `pending`/`would_have_won`/`would_have_lost`, never a fabricated
+grading path) feeds a rescued-vs-confirmed-reject win-rate comparison via
+`app/statistical_comparison.py::bootstrap_compare_samples()` — reused,
+not duplicated — honestly `insufficient_evidence` below its real
+20-observation floor on either side. A `pending` outcome is never counted
+toward any win-rate denominator.
+
+### UI
+
+A new section inside the existing Command Center → Research &
+Intelligence → Opportunities tab (`OpportunitiesPanel.tsx`) — never a
+new top-level tab — fetching the new read-only `GET /api/trades/
+opportunity-gate-calibration-experiment` endpoint on mount. Explicitly
+labeled "SHADOW EXPERIMENT — DOES NOT CONTROL TRADING". Shows eligible/
+ineligible/approved counts, the control-equivalence check, a per-model
+group-count table, and the liquidity/data-honesty notes verbatim from
+the backend report.
+
+### Verification
+
+27 new backend tests (control equivalence against both synthetic and
+real linked data, weight-scheme validity, determinism, no-production-
+mutation via a static source check plus input-immutability assertions,
+no-historical-mutation, unresolved-outcome handling, insufficient-sample
+N/A handling, leakage-audit checks). Full backend suite (3919 tests),
+mypy, and ruff all clean; frontend tsc, ESLint, and build all clean.
+Verified live against the real, continuously-running burn-in save
+(restarted once to load the new instrumentation, never via `/api/time/
+advance` — this directive's own explicit prohibition) — see this
+milestone's own forensic report for the exact real counts and final
+classification.
+
+**Not built, disclosed explicitly:** a Playwright regression run for the
+new UI section. Running the real suite against this save is exactly what
+`tests/global-setup.ts` (Paper Burn-in Test-Isolation Hardening, above)
+correctly refuses to do; standing up a second, isolated backend+frontend
+pair was judged unnecessary for a purely additive, read-only section (one
+new fetch, one new render call, no changed interaction logic elsewhere).
+Verified instead via tsc/ESLint/build plus a live, read-only, non-mutating
+browser check against the real running save (a player-position save only
+— the same narrow real mechanism the game's own Continue button uses).
