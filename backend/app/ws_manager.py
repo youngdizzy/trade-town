@@ -148,6 +148,9 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # CEO directive "Features 26-30," Feature 26 — Institutional
         # Memory 2.0 (app/institutional_memory.py).
         "institutionalMemory": [m.model_dump(by_alias=True) for m in state.institutional_memory],
+        # "TradeTown — Learning Organization 1.0" — real knowledge-
+        # sharing lifecycle telemetry (app/knowledge_sharing.py).
+        "knowledgeEvents": [e.model_dump(by_alias=True) for e in state.knowledge_events],
         # CEO directive "Features 26-30," Feature 27 — Agent Performance
         # Reviews (app/performance_review.py).
         "agentPerformanceReviews": [r.model_dump(by_alias=True) for r in state.agent_performance_reviews],

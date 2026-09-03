@@ -73,15 +73,19 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from app.agents import all_agent_ids
+from app.audit_log import compute_compliance_score
 from app.mistakes import CATEGORY_TITLES as MISTAKE_CATEGORY_TITLES
 from app.mistakes import INCOMPLETE_RESEARCH_THRESHOLD, OVERCONFIDENCE_THRESHOLD
 from app.successes import CATEGORY_TITLES as SUCCESS_CATEGORY_TITLES
 from app.schemas import (
+    AuditEntry,
     CaseStudy,
     CaseStudyCategory,
     DisciplineReview,
     ExecutiveReview,
     GatekeeperRejection,
+    InstitutionalMemoryEntry,
+    KnowledgeEvent,
     MemoryRecord,
     NewsItem,
     PaperTrade,
@@ -318,15 +322,36 @@ def _learn_from_experience(discipline_reviews: list[DisciplineReview]) -> float:
     return round(max(0.0, min(100.0, 50.0 + (later_avg - earlier_avg))), 1)
 
 
-def _share_knowledge(memory: list[MemoryRecord]) -> float:
+def _share_knowledge(memory: list[MemoryRecord], knowledge_events: list[KnowledgeEvent]) -> float:
+    """"TradeTown — Learning Organization 1.0" broadens this beyond
+    mentorship alone (real, but gated behind a >12-point knowledge-gap
+    trigger — see app/academy.py's MENTORSHIP_GAP_THRESHOLD, rare in
+    practice) to also count real lesson_shared KnowledgeEvents — the
+    same kind of act (this company's own knowledge actually distributed
+    to a named agent), at the same disclosed per-event weight, just
+    routed through app/knowledge_sharing.py instead of Academy
+    mentorship. Never double-counts: knowledge_received (one per
+    recipient of the same lesson_shared act) deliberately isn't counted
+    here, so one popular lesson isn't worth more than one mentorship
+    session."""
     mentorship_count = sum(1 for m in memory if m.category == "mentorship")
-    return round(min(100.0, mentorship_count * 15.0), 1)
+    lesson_shared_count = sum(1 for e in knowledge_events if e.type == "lesson_shared")
+    return round(min(100.0, (mentorship_count + lesson_shared_count) * 15.0), 1)
 
 
-def _follow_principles(trade_history: list[PaperTrade], gatekeeper_rejections: list[GatekeeperRejection]) -> float:
+def _follow_principles(
+    trade_history: list[PaperTrade], gatekeeper_rejections: list[GatekeeperRejection], audit_entries: list[AuditEntry]
+) -> float:
+    """"TradeTown — Learning Organization 1.0" replaces the bare 50.0
+    default (which fires whenever no trade has cleared or been blocked
+    by the Gatekeeper yet — true of every real save with 0 closed
+    trades) with app/audit_log.py's own real, already-computed
+    compute_compliance_score() — a real count over the real Audit Log
+    rather than an invented placeholder. Once real trade/rejection
+    history exists, the original real ratio takes over unchanged."""
     total = len(trade_history) + len(gatekeeper_rejections)
     if total == 0:
-        return 50.0
+        return compute_compliance_score(audit_entries)
     return round(len(trade_history) / total * 100.0, 1)
 
 
@@ -337,14 +362,52 @@ def _improve_communication(discipline_reviews: list[DisciplineReview]) -> float:
     return round(sum(scores) / len(scores), 1)
 
 
-def _document_lessons(discipline_reviews: list[DisciplineReview], case_studies: list[CaseStudy], reasoning_challenges: list[ReasoningChallenge]) -> float:
-    total = len(discipline_reviews) + len(case_studies) + len(reasoning_challenges)
+def _document_lessons(
+    discipline_reviews: list[DisciplineReview],
+    case_studies: list[CaseStudy],
+    reasoning_challenges: list[ReasoningChallenge],
+    institutional_memory: list[InstitutionalMemoryEntry],
+) -> float:
+    """"TradeTown — Learning Organization 1.0" extends the same real,
+    uncapped-weight raw count (unchanged: 1.0 per item, capped at 100)
+    to also include real InstitutionalMemoryEntry rows that actually
+    carry a documented `lesson` (many entries honestly don't — see that
+    schema's own docstring). Unlike DisciplineReview/CaseStudy, several
+    institutional-memory sources (risk_event, market_regime_shift,
+    research_lesson, model_validation) are promoted independent of any
+    trade ever closing, so this factor is no longer entirely gated
+    behind trade-closure the way the original three counts alone were."""
+    documented_lessons = sum(1 for entry in institutional_memory if entry.lesson is not None)
+    total = len(discipline_reviews) + len(case_studies) + len(reasoning_challenges) + documented_lessons
     return round(min(100.0, total * 1.0), 1)
 
 
-def _avoid_repeating_mistakes(case_studies: list[CaseStudy]) -> float:
+def _avoid_repeating_mistakes(
+    case_studies: list[CaseStudy],
+    knowledge_events: list[KnowledgeEvent],
+    institutional_memory: list[InstitutionalMemoryEntry],
+) -> float:
+    """"TradeTown — Learning Organization 1.0" replaces the bare 50.0
+    default (which fires whenever no case study exists yet — true of
+    every real save with 0 closed trades) with a real, disclosed check:
+    a lesson_confirmed KnowledgeEvent whose linked institutional-memory
+    entry is itself a mistake/risk-pattern source (behavioral_mistake,
+    failure_classification, risk_event) means new real evidence just
+    corroborated a STANDING mistake-or-risk lesson — i.e. the same real
+    pattern recurring, which is exactly what this factor measures. No
+    real signal exists yet to detect the mistake NOT repeating in the
+    absence of any case study, so a clean record with zero such
+    confirmations still reads as the same disclosed 50.0 baseline as
+    before, not an invented high score. Once real case studies exist,
+    the original real category-diversity formula takes over unchanged."""
     if not case_studies:
-        return 50.0
+        mistake_pattern_ids = {
+            entry.id for entry in institutional_memory if entry.source in ("behavioral_mistake", "failure_classification", "risk_event")
+        }
+        repeat_confirmations = sum(1 for e in knowledge_events if e.type == "lesson_confirmed" and e.lesson_id in mistake_pattern_ids)
+        if repeat_confirmations == 0:
+            return 50.0
+        return round(max(0.0, 50.0 - repeat_confirmations * 10.0), 1)
     counts = Counter(c.category for c in case_studies)
     dominant_share = max(counts.values()) / len(case_studies)
     return round(max(0.0, 100.0 - dominant_share * 100.0), 1)
@@ -373,14 +436,27 @@ def compute_wisdom_score(
     trade_history: list[PaperTrade],
     gatekeeper_rejections: list[GatekeeperRejection],
     memory: list[MemoryRecord],
+    institutional_memory: list[InstitutionalMemoryEntry],
+    knowledge_events: list[KnowledgeEvent],
+    audit_entries: list[AuditEntry],
 ) -> WisdomState:
+    """"TradeTown — Learning Organization 1.0" added the last three
+    params — real evidence from app/institutional_memory.py,
+    app/knowledge_sharing.py, and app/audit_log.py respectively — so
+    four of these eight factors (share_knowledge, document_lessons,
+    avoid_repeating_mistakes, follow_principles) draw on real evidence
+    that doesn't require a trade to have closed yet, alongside the four
+    left unchanged this milestone (learn_from_experience,
+    improve_communication, complete_research, support_collaboration —
+    see CHANGELOG.md for why those four are a disclosed scope cut, not
+    an oversight)."""
     readings: list[tuple[WisdomFactorId, str, float, str]] = [
         ("learn_from_experience", "Learning From Experience", _learn_from_experience(discipline_reviews), "Whether recent Discipline Scores are trending up against the desk's own earlier record."),
-        ("share_knowledge", "Sharing Knowledge", _share_knowledge(memory), "Real mentorship/teaching sessions logged in Company Memory."),
-        ("follow_principles", "Following Principles", _follow_principles(trade_history, gatekeeper_rejections), "Share of trades that cleared the Trade Gatekeeper's real configured limits without a block."),
+        ("share_knowledge", "Sharing Knowledge", _share_knowledge(memory, knowledge_events), "Real mentorship sessions plus real lesson-sharing events (Institutional Memory → relevant agents)."),
+        ("follow_principles", "Following Principles", _follow_principles(trade_history, gatekeeper_rejections, audit_entries), "Share of trades that cleared the Trade Gatekeeper's real configured limits without a block, or the real Audit Log compliance score before any trade exists."),
         ("improve_communication", "Improving Communication", _improve_communication(discipline_reviews), "Average real Cross-Examination factor across recent Discipline Reviews."),
-        ("document_lessons", "Documenting Lessons", _document_lessons(discipline_reviews, case_studies, reasoning_challenges), "Real Discipline Reviews, Case Studies, and Reasoning Challenges filed to date."),
-        ("avoid_repeating_mistakes", "Avoiding Repeated Mistakes", _avoid_repeating_mistakes(case_studies), "How diversified the Library of Mistakes' real categories are, rather than one repeating pattern."),
+        ("document_lessons", "Documenting Lessons", _document_lessons(discipline_reviews, case_studies, reasoning_challenges, institutional_memory), "Real Discipline Reviews, Case Studies, Reasoning Challenges, and documented Institutional Memory lessons filed to date."),
+        ("avoid_repeating_mistakes", "Avoiding Repeated Mistakes", _avoid_repeating_mistakes(case_studies, knowledge_events, institutional_memory), "How diversified the Library of Mistakes' real categories are, or whether new evidence keeps confirming the same standing mistake/risk pattern."),
         ("complete_research", "Completing Research", _complete_research(research), "Share of the research queue that has actually reached completed status."),
         ("support_collaboration", "Supporting Collaboration", _support_collaboration(discipline_reviews), "Average real Viewpoint Diversity factor across recent Discipline Reviews."),
     ]

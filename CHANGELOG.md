@@ -7,6 +7,123 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Learning Organization 1.0" (backend
+  slice).** A Phase 0 forensic audit (four parallel research passes over
+  Institutional Memory, the Discipline Chamber, agent-collaboration
+  telemetry, and governance/frontend infra) found ~80% of what this
+  directive asks for already real and built — Institutional Memory
+  2.0's full confidence/relevance/status/supersession lifecycle; a
+  completely separate, parallel `ResearchLessonRecord` system with its
+  own confidence math; real governance citation and override-
+  justification tracking; real prediction-vs-outcome grading with Brier
+  calibration — but zero hits anywhere, under any name, for the
+  "share it, apply it, confirm it" half of the loop. This pass bridges
+  those already-real systems into one coherent lifecycle rather than
+  building anything from scratch, per the directive's own explicit
+  "reuse first, do not create unrelated systems" instruction.
+  - **The confirm/link lifecycle was dead code — now wired.**
+    `app/institutional_memory.py`'s own `find_related_memory()`/
+    `supersede_memory()` were fully implemented but never once called
+    from the live pipeline; every promotion was a flat, unlinked append.
+    New `record_and_link_institutional_memory()` is the one real
+    gateway every write site (`app/nexus.py`, `app/state.py`) now calls
+    instead: a genuinely related active entry gets linked
+    (`relationship="superseded"`, i.e. real corroboration) instead of
+    silently duplicated. No real signal exists to tell agreement from
+    disagreement between two related entries' text, so `relationship=
+    "contradicted"` is never chosen here — a disclosed scope cut, not a
+    fabricated judgment call.
+  - **`ResearchLessonRecord` bridged into Institutional Memory.** New
+    `"research_lesson"` `InstitutionalMemorySource`, new `promote_
+    research_lesson()`/`should_promote_research_lesson()` (gated on
+    `confidence_pct >= 100.0` — this codebase's own existing
+    `RESEARCH_CANDIDATE_MIN_TRADE_COUNT`-normalized "enough real trades
+    to trust this" bar — and `candidacy != "insufficient_evidence"`),
+    wired at all three real research-loop call sites in `app/state.py`.
+  - **New `app/knowledge_sharing.py`** — the real, previously-nonexistent
+    "share it, apply it" half. New `KnowledgeEvent` schema/type
+    (`lesson_created`/`lesson_shared`/`knowledge_received`/
+    `knowledge_applied`/`lesson_confirmed`, plus a reserved but never-
+    emitted `lesson_contradicted`), capped at `MAX_KNOWLEDGE_EVENTS=400`,
+    persisted in the existing `knowledge_archive` save-module group
+    alongside `institutional_memory`. `share_lesson_with_relevant_
+    agents()` routes a new lesson to the real agents whose role class
+    (`app/performance_review.py`'s existing `AGENT_ROLE_CLASS`) the
+    lesson's own source is relevant to, via a predeclared, static
+    `LESSON_RELEVANT_ROLE_CLASSES` table — never a simulated "who would
+    care" judgment. `record_knowledge_application_from_challenge()`
+    reuses the one real, already-existing, non-behavior-changing signal
+    for "an agent applied a documented lesson": a Devil's Advocate
+    `ChallengeReport`'s own `historical_comparisons` field (real
+    CaseStudy titles already cited for the live proposal's symbol) —
+    recording the citation never feeds back into the challenge report or
+    the decision it informs, so trading behavior is untouched.
+  - **Four of the eight Company Wisdom metrics now draw on real evidence
+    that doesn't require a trade to have closed** (the other four —
+    `learn_from_experience`, `improve_communication`, `complete_
+    research`, `support_collaboration` — are an explicit, disclosed
+    scope cut this milestone, not an oversight; see "Next milestone"
+    below). No score was hand-raised — every change adds a real evidence
+    source the old formula didn't have access to, or replaces a bare
+    hardcoded default with a real, already-computed number:
+    - `share_knowledge`: broadened beyond mentorship sessions alone
+      (real, but gated behind Academy's rare >12-point knowledge-gap
+      trigger) to also count real `lesson_shared` `KnowledgeEvent`s, at
+      the same disclosed per-event weight. `knowledge_received` events
+      (one per recipient of the same share) are deliberately NOT counted
+      separately, so a widely-shared lesson isn't worth more than a
+      narrowly-shared one.
+    - `document_lessons`: the existing raw count (Discipline Reviews +
+      Case Studies + Reasoning Challenges, unchanged weight/cap) now
+      also counts real `InstitutionalMemoryEntry` rows that carry an
+      actual `lesson` — several of those sources (risk events, market
+      regime shifts, research lessons) promote independent of any trade
+      ever closing, so this factor is no longer entirely gated behind
+      trade closure.
+    - `avoid_repeating_mistakes`: the bare `50.0` no-case-studies default
+      (true of every real save with 0 closed trades) is now a real check
+      — a `lesson_confirmed` event whose linked entry is itself a
+      mistake/risk-pattern source (`behavioral_mistake`, `failure_
+      classification`, `risk_event`) means new evidence just corroborated
+      a STANDING mistake pattern, i.e. real repetition, and lowers the
+      score below the baseline. A clean record with no such confirmations
+      still reads as the same disclosed `50.0` — no invented "clean, so
+      high score" claim. Once real case studies exist, the original
+      category-diversity formula takes over completely unchanged.
+    - `follow_principles`: the bare `50.0` no-trades-yet default is now
+      `app/audit_log.py`'s own real, already-computed `compute_
+      compliance_score()`. Once real trade/rejection history exists, the
+      original real ratio takes over completely unchanged.
+  - **WS broadcast + `GET /api/load/archive/knowledge_archive`** now
+    include `knowledgeEvents` (`app/ws_manager.py`, `app/save_
+    modules.py`) — no new router endpoint needed; the existing generic
+    archive-module machinery already exposes it once it was added to
+    that group's field list.
+  - **Regression-safety.** Zero changes to trading thresholds, strategy
+    selection, risk sizing, entry/exit rules, Gatekeeper behavior, paper
+    execution, Emergency Stop, Risk Contract/RiskLimits/dynamic risk
+    scaling semantics, or the Memecoin Sniper (kept fully separate) —
+    `institutional_memory`/`knowledge_events` are read-only company
+    knowledge, never consulted by the trading pipeline itself (confirmed
+    directly in Phase 0: `retrieve_relevant_memory()` is read-only-API-
+    only, called from nowhere inside the sim).
+  - **Testing.** New `tests/test_knowledge_sharing.py` (15 tests) and new
+    test classes in `tests/test_institutional_memory.py` (link-vs-append,
+    never-contradicted, research-lesson promotion gating) and `tests/
+    test_wisdom.py` (12 tests covering all four changed metrics'
+    old-formula-unchanged and new-evidence-moves-the-score behavior,
+    including the no-double-counting-fan-out case for `share_knowledge`),
+    plus a real restart round-trip proof for the new `knowledge_events`
+    field (`tests/test_persistence.py`). Full backend suite, mypy, and
+    ruff clean.
+  - **Next milestone (disclosed, not started this pass):** decouple
+    `improve_communication`/`support_collaboration`/`learn_from_
+    experience` from `DisciplineReview`-only evidence (currently 100%
+    gated behind a real closed trade) using the real, already-computed,
+    per-candidate `Debate`/`DepartmentOpinion` signals that exist
+    regardless of trade outcome — a materially larger design problem
+    than the four bridged this pass, deliberately not rushed.
+
 - **CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0."** A
   bounded auditability fix, not a risk-model change — closes the one
   real, named limitation the just-completed "Paper Trading Evidence

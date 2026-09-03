@@ -101,6 +101,34 @@ def test_risk_decisions_survive_a_real_restart_round_trip(temp_db):
     assert loaded.risk_decisions[0] == auto_risk_decision
 
 
+def test_knowledge_events_survive_a_real_restart_round_trip(temp_db):
+    """"TradeTown — Learning Organization 1.0" — proves the new
+    KnowledgeEvent field genuinely round-trips through the real
+    production save path (persist_modules()/load_modules()), the same
+    proof risk_decisions above already establishes, not just inferred
+    from "it's a normal Pydantic field"."""
+    from app.schemas import InstitutionalMemoryEntry, KnowledgeEvent
+
+    lesson_entry = InstitutionalMemoryEntry(
+        id="im-1", source="risk_event", createdAt="2026-01-01T00:00:00+00:00", simDay=5,
+        eventRef="event-1", observation="test observation", lesson="test lesson",
+        confidence=50.0, provenance="test provenance", relevancePct=50.0,
+    )
+    knowledge_event = KnowledgeEvent(
+        id="ke-1", type="lesson_created", lessonId="im-1", agentId="sentinel",
+        simDay=5, detail="test lesson", createdAt="2026-01-01T00:00:00+00:00",
+    )
+    state = default_state().model_copy(
+        update={"institutional_memory": [lesson_entry], "knowledge_events": [knowledge_event]}
+    )
+    persistence.persist_modules(state)
+
+    loaded = persistence.load_modules()
+    assert loaded is not None
+    assert len(loaded.knowledge_events) == 1
+    assert loaded.knowledge_events[0] == knowledge_event
+
+
 def test_migration_recovers_an_old_save_missing_a_newer_field(temp_db):
     """Simulates exactly the bug this file fixes: a save written before a
     field existed. Rather than being silently discarded and overwritten

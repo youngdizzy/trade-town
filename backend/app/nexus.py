@@ -127,7 +127,14 @@ from app.institutional_memory import (
     promote_market_regime_shift,
     promote_prediction_outcome,
     promote_risk_event,
-    record_institutional_memory,
+    record_and_link_institutional_memory,
+)
+from app.knowledge_sharing import (
+    lesson_confirmed_event,
+    lesson_created_event,
+    record_knowledge_application_from_challenge,
+    record_knowledge_event,
+    share_lesson_with_relevant_agents,
 )
 from app.mistakes import generate_case_studies, record_case_studies
 from app.opportunity_gatekeeper import build_opportunity_rejection, evaluate_opportunity, grade_opportunity_rejections
@@ -247,6 +254,7 @@ from app.schemas import (
     HallOfFameEntry,
     InnovationState,
     InstitutionalMemoryEntry,
+    KnowledgeEvent,
     LearningEvent,
     MarketEnvironmentRegime,
     MarketIntelligenceLearningEntry,
@@ -570,6 +578,32 @@ _DEFAULT_CATEGORY_BY_AGENT: dict[AgentId, TaskCategory] = {
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _promote_and_share_lesson(
+    institutional_memory: list[InstitutionalMemoryEntry],
+    knowledge_events: list[KnowledgeEvent],
+    promoted_entry: InstitutionalMemoryEntry,
+    *,
+    sim_day: int,
+) -> tuple[list[InstitutionalMemoryEntry], list[KnowledgeEvent]]:
+    """"TradeTown — Learning Organization 1.0" — the one real call site
+    every institutional-memory promotion in this tick now goes through,
+    replacing a bare record_institutional_memory() append: links related
+    evidence (see record_and_link_institutional_memory()'s own
+    docstring) and emits the matching real KnowledgeEvent(s) — a
+    lesson_confirmed for a link, or a lesson_created plus real
+    role-class-based distribution for a genuinely new lesson."""
+    institutional_memory, linked_id = record_and_link_institutional_memory(
+        institutional_memory, promoted_entry, current_sim_day=sim_day
+    )
+    if linked_id is not None:
+        knowledge_events = record_knowledge_event(knowledge_events, lesson_confirmed_event(promoted_entry, linked_id))
+    else:
+        knowledge_events = record_knowledge_event(knowledge_events, lesson_created_event(promoted_entry))
+        for share_event in share_lesson_with_relevant_agents(promoted_entry):
+            knowledge_events = record_knowledge_event(knowledge_events, share_event)
+    return institutional_memory, knowledge_events
 
 
 def _truncate(text: str, max_len: int) -> str:
@@ -1410,6 +1444,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # CEO directive "Features 26-30," Feature 26 — Institutional Memory
     # 2.0 (app/institutional_memory.py).
     institutional_memory: list[InstitutionalMemoryEntry] = list(state.institutional_memory)
+    # "TradeTown — Learning Organization 1.0" — one capped, permanent
+    # KnowledgeEvent per real step of the knowledge-sharing lifecycle
+    # (see app/knowledge_sharing.py's own module docstring).
+    knowledge_events: list[KnowledgeEvent] = list(state.knowledge_events)
     # CEO Company Health + Live Market Realism directive, Section 3 —
     # one capped, permanent LearningEvent per real Knowledge-tier
     # crossing (see app/academy.py's award_points()).
@@ -1633,8 +1671,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             # tick's watch" gate as the Article citations right above,
             # so a standing warning that persists across many ticks
             # never floods institutional memory with duplicates.
-            institutional_memory = record_institutional_memory(
-                institutional_memory, promote_risk_event(warning, sim_day=new_time.day), current_sim_day=new_time.day
+            institutional_memory, knowledge_events = _promote_and_share_lesson(
+                institutional_memory, knowledge_events, promote_risk_event(warning, sim_day=new_time.day), sim_day=new_time.day
             )
 
     # --- v0.6.3 Feature 12: CEO Approval pipeline --------------------------
@@ -1677,8 +1715,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # institutional memory so a future decision can weigh "setups
         # from a different regime shouldn't be assumed reliable here."
         latest_regime_entry = market_environment.timeline[-1]
-        institutional_memory = record_institutional_memory(
+        institutional_memory, knowledge_events = _promote_and_share_lesson(
             institutional_memory,
+            knowledge_events,
             promote_market_regime_shift(
                 regime=latest_regime_entry.regime,
                 label=latest_regime_entry.label,
@@ -1686,7 +1725,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 event_ref=latest_regime_entry.id,
                 sim_day=new_time.day,
             ),
-            current_sim_day=new_time.day,
+            sim_day=new_time.day,
         )
 
     # Design Bible Chapter 75 — Company Trading Modes & Institutional
@@ -1910,6 +1949,18 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # instant Executive Voting opens" convention Feature 17's Debate
         # below already establishes for approved candidates.
         new_challenge_report = generate_challenge_report(proposal, provider=market_data_provider, case_studies=case_studies, existing_count=len(challenge_reports))
+        # "TradeTown — Learning Organization 1.0" — the Devil's Advocate's
+        # own real historical_comparisons field (set just above) is the
+        # one real, non-behavior-changing "an agent cited a documented
+        # past lesson" signal this codebase has; recording it here never
+        # feeds back into the challenge report or the decision it
+        # informs.
+        knowledge_events = record_knowledge_event(
+            knowledge_events,
+            record_knowledge_application_from_challenge(
+                new_challenge_report, case_studies, institutional_memory, sim_day=new_time.day
+            ),
+        )
 
         # v0.7 Feature 55 — the Executive Decision Simulator's Digital
         # War Room. Built eagerly for every candidate — joins the
@@ -2252,14 +2303,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 )
                 failure_classifications = record_failure_classification(failure_classifications, failure_classification)
                 if should_promote_failure_classification(failure_classification):
-                    institutional_memory = record_institutional_memory(
-                        institutional_memory, promote_failure_classification(failure_classification), current_sim_day=new_time.day
+                    institutional_memory, knowledge_events = _promote_and_share_lesson(
+                        institutional_memory, knowledge_events, promote_failure_classification(failure_classification), sim_day=new_time.day
                     )
 
                 for case_study in new_case_studies:
                     record_case_study(memory, case_study, max_records=effective_risk_limits.max_memory_records)
-                    institutional_memory = record_institutional_memory(
-                        institutional_memory, promote_case_study(case_study), current_sim_day=new_time.day
+                    institutional_memory, knowledge_events = _promote_and_share_lesson(
+                        institutional_memory, knowledge_events, promote_case_study(case_study), sim_day=new_time.day
                     )
                     news.append(
                         NewsItem(
@@ -2322,8 +2373,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 trade_case_studies = new_success_studies
                 for success_study in new_success_studies:
                     record_case_study(memory, success_study, max_records=effective_risk_limits.max_memory_records)
-                    institutional_memory = record_institutional_memory(
-                        institutional_memory, promote_case_study(success_study), current_sim_day=new_time.day
+                    institutional_memory, knowledge_events = _promote_and_share_lesson(
+                        institutional_memory, knowledge_events, promote_case_study(success_study), sim_day=new_time.day
                     )
                     news.append(
                         NewsItem(
@@ -2479,8 +2530,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         del prediction_records[: len(prediction_records) - MAX_PREDICTION_RECORDS]
     for prediction in prediction_records:
         if prediction.id in pending_prediction_ids and prediction.outcome != "pending" and should_promote_prediction_outcome(prediction):
-            institutional_memory = record_institutional_memory(
-                institutional_memory, promote_prediction_outcome(prediction), current_sim_day=new_time.day
+            institutional_memory, knowledge_events = _promote_and_share_lesson(
+                institutional_memory, knowledge_events, promote_prediction_outcome(prediction), sim_day=new_time.day
             )
 
     backtest_sessions, simulation_results, newly_completed_sims = tick_simulation_lab(
@@ -3051,6 +3102,27 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             trade_history=paper_portfolio.trade_history,
             gatekeeper_rejections=gatekeeper_rejections,
             memory=memory,
+            institutional_memory=institutional_memory,
+            knowledge_events=knowledge_events,
+            # "TradeTown — Learning Organization 1.0" — a fresh real
+            # Audit Log read using this tick's own current values (the
+            # same real inputs the later, fully-finalized
+            # audit_entries_for_incidents read below uses), needed only
+            # for the real Following Principles fallback below; Wisdom
+            # itself only recomputes on this weekly/monthly cadence, so
+            # a few in-tick events landing after this point is an
+            # already-disclosed, immaterial staleness at this cadence.
+            audit_entries=compute_audit_log(
+                ceo_decisions=ceo_decisions,
+                gatekeeper_rejections=gatekeeper_rejections,
+                opportunity_rejections=opportunity_rejections,
+                risk_warnings=risk_warnings,
+                discipline_reviews=discipline_reviews,
+                memory=memory,
+                black_swan_events=black_swan_events,
+                accounts=state.accounts,
+                current_sim_day=new_time.day,
+            ),
         )
         cadence: ReflectionCadence = "monthly" if new_time.day % MONTHLY_INTERVAL_DAYS == 0 else "weekly"
         reflection_session = generate_reflection_session(
@@ -3442,6 +3514,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "compliance_incidents": compliance_incidents,
             "ceo_override_evaluations": ceo_override_evaluations,
             "institutional_memory": institutional_memory,
+            "knowledge_events": knowledge_events,
             "agent_performance_reviews": agent_performance_reviews,
             "agent_skill_profiles": agent_skill_profiles,
             "learning_events": learning_events,

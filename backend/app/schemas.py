@@ -9124,6 +9124,13 @@ InstitutionalMemorySource = Literal[
     # — see app/institutional_memory.py's should_promote_failure_
     # classification()).
     "failure_classification",
+    # "TradeTown — Learning Organization 1.0" — promoted from a
+    # ResearchLessonRecord (app/research_loop.py) once it has real,
+    # sufficient trade evidence (see app/institutional_memory.py's
+    # should_promote_research_lesson()) — bridges what was previously a
+    # completely separate, parallel lesson store into the one canonical
+    # institutional-memory hub.
+    "research_lesson",
 ]
 
 # "active" — the current, standing read. "superseded" — a newer entry
@@ -9191,6 +9198,69 @@ class InstitutionalMemoryEntry(CamelModel):
     supersedes_id: str | None = Field(default=None, alias="supersedesId")
     superseded_by_id: str | None = Field(default=None, alias="supersededById")
     supporting_evidence: list[str] = Field(default_factory=list, alias="supportingEvidence")
+
+
+# "TradeTown — Learning Organization 1.0." The Phase 0 forensic audit for
+# this directive found zero hits anywhere in the codebase for this
+# vocabulary under any name — this is the first real event model for the
+# knowledge-sharing half of the learning loop (Institutional Memory
+# already covers the lesson-recording half). Deliberately named
+# KnowledgeEvent, not LearningEvent — app/academy.py's LearningEvent
+# (Knowledge-tier crossings) already owns that name; these are a
+# different real concept and must never be merged into one list.
+#
+#   lesson_created      — a new InstitutionalMemoryEntry with a real,
+#                          non-None `lesson` field was recorded.
+#   lesson_shared        — that lesson was routed to the real agents
+#                          whose role class this lesson's source is
+#                          actually relevant to (see
+#                          app/knowledge_sharing.py's
+#                          LESSON_RELEVANT_ROLE_CLASSES).
+#   knowledge_received   — one per real recipient agent from the
+#                          lesson_shared distribution above.
+#   knowledge_applied    — a real, already-existing signal (a
+#                          ChallengeReport's own `historical_comparisons`
+#                          — app/devils_advocate.py) shows one named
+#                          agent actually cited a documented past lesson
+#                          while reasoning about a new, live decision.
+#                          Never fabricated — no event fires when nothing
+#                          was actually cited.
+#   lesson_confirmed      — a new institutional-memory entry was linked
+#                          (via supersede_memory(relationship=
+#                          "superseded")) to an existing active entry
+#                          because real evidence corroborates it.
+#   lesson_contradicted   — reserved: InstitutionalMemoryStatus already
+#                          supports "contradicted", but this module has
+#                          no real signal today that can honestly tell
+#                          agreement from disagreement between two
+#                          related entries' text — never emitted this
+#                          milestone (disclosed scope cut, see
+#                          CHANGELOG.md).
+KnowledgeEventType = Literal[
+    "lesson_created",
+    "lesson_shared",
+    "knowledge_received",
+    "knowledge_applied",
+    "lesson_confirmed",
+    "lesson_contradicted",
+]
+
+
+class KnowledgeEvent(CamelModel):
+    """One real, timestamped, attributable, idempotent (id-deduplicated
+    by the real originating record — see app/knowledge_sharing.py's
+    record_knowledge_event()) step in the knowledge-sharing lifecycle.
+    `agent_id` is the acting/receiving agent for shared/received/applied
+    events, and the single originating agent (or None) for
+    created/confirmed events — never a fabricated attribution."""
+
+    id: str
+    type: KnowledgeEventType
+    lesson_id: str = Field(alias="lessonId")
+    agent_id: AgentId | None = Field(default=None, alias="agentId")
+    sim_day: int = Field(alias="simDay")
+    detail: str
+    created_at: str = Field(alias="createdAt")
 
 
 # v0.7 Feature 55 (the brief self-numbered it "Feature 54," already used
@@ -13411,6 +13481,10 @@ class GameSaveState(CamelModel):
     institutional_memory: list[InstitutionalMemoryEntry] = Field(
         default_factory=list, alias="institutionalMemory"
     )
+    # "TradeTown — Learning Organization 1.0" — one capped, permanent
+    # KnowledgeEvent per real step of the knowledge-sharing lifecycle
+    # (see that schema's own docstring above and app/knowledge_sharing.py).
+    knowledge_events: list[KnowledgeEvent] = Field(default_factory=list, alias="knowledgeEvents")
     # CEO Company Health + Live Market Realism directive, Section 3 —
     # one capped, permanent LearningEvent per real Knowledge-tier
     # crossing (see app/academy.py's award_points()).

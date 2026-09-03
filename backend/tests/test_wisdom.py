@@ -1,6 +1,6 @@
 """Covers app/wisdom.py — v0.7 Feature 30, the Reflection Chamber. The
 core rule under test throughout: Company Wisdom never reads pnl —
-compute_wisdom_score()'s signature has no pnl/profit parameter at all —
+compute_wisdom_score(, institutional_memory=[], knowledge_events=[], audit_entries=[])'s signature has no pnl/profit parameter at all —
 only real process/behavior signals already computed elsewhere.
 """
 from __future__ import annotations
@@ -13,10 +13,13 @@ from app.wisdom import (
 )
 from app.schemas import (
     AGENT_IDS,
+    AuditEntry,
     CaseStudy,
     DisciplineFactor,
     DisciplineReview,
     GatekeeperRejection,
+    InstitutionalMemoryEntry,
+    KnowledgeEvent,
     MemoryRecord,
     PaperTrade,
     PostDecisionReview,
@@ -127,15 +130,15 @@ def _memory(category: str) -> MemoryRecord:
 
 
 def _empty_wisdom_score() -> WisdomState:
-    return compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
+    return compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
 
 
 class TestComputeWisdomScore:
     def test_never_reads_pnl_identical_process_scores_identically_regardless_of_win_or_loss(self) -> None:
         win_review = _review(score=70.0, outcome="win")
         loss_review = _review(score=70.0, outcome="loss")
-        win_state = compute_wisdom_score(discipline_reviews=[win_review], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
-        loss_state = compute_wisdom_score(discipline_reviews=[loss_review], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
+        win_state = compute_wisdom_score(discipline_reviews=[win_review], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        loss_state = compute_wisdom_score(discipline_reviews=[loss_review], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
         assert win_state.score == loss_state.score
 
     def test_fresh_company_has_no_data_reads_as_a_low_early_tier(self) -> None:
@@ -150,48 +153,48 @@ class TestComputeWisdomScore:
             assert round(factor.weight, 3) == round(1.0 / 8, 3)
 
     def test_more_mentorship_memory_raises_share_knowledge_factor(self) -> None:
-        no_mentorship = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
-        with_mentorship = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[_memory("mentorship"), _memory("mentorship")])
+        no_mentorship = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        with_mentorship = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[_memory("mentorship"), _memory("mentorship")], institutional_memory=[], knowledge_events=[], audit_entries=[])
         no_share = next(f for f in no_mentorship.factors if f.id == "share_knowledge")
         with_share = next(f for f in with_mentorship.factors if f.id == "share_knowledge")
         assert with_share.score > no_share.score
 
     def test_higher_gatekeeper_rejection_rate_lowers_follow_principles(self) -> None:
-        clean = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[_trade(), _trade()], gatekeeper_rejections=[], memory=[])
-        rejected = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[_trade()], gatekeeper_rejections=[_rejection()], memory=[])
+        clean = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[_trade(), _trade()], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        rejected = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[_trade()], gatekeeper_rejections=[_rejection()], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
         clean_factor = next(f for f in clean.factors if f.id == "follow_principles")
         rejected_factor = next(f for f in rejected.factors if f.id == "follow_principles")
         assert clean_factor.score > rejected_factor.score
 
     def test_diversified_case_study_categories_score_higher_on_avoid_repeating_mistakes(self) -> None:
-        repeated = compute_wisdom_score(discipline_reviews=[], case_studies=[_case_study(category="overconfidence"), _case_study(category="overconfidence"), _case_study(category="overconfidence")], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
-        diversified = compute_wisdom_score(discipline_reviews=[], case_studies=[_case_study(category="overconfidence"), _case_study(category="acted_too_quickly"), _case_study(category="ignored_dissent")], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
+        repeated = compute_wisdom_score(discipline_reviews=[], case_studies=[_case_study(category="overconfidence"), _case_study(category="overconfidence"), _case_study(category="overconfidence")], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        diversified = compute_wisdom_score(discipline_reviews=[], case_studies=[_case_study(category="overconfidence"), _case_study(category="acted_too_quickly"), _case_study(category="ignored_dissent")], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
         repeated_factor = next(f for f in repeated.factors if f.id == "avoid_repeating_mistakes")
         diversified_factor = next(f for f in diversified.factors if f.id == "avoid_repeating_mistakes")
         assert diversified_factor.score > repeated_factor.score
 
     def test_completed_research_ratio_drives_complete_research_factor(self) -> None:
-        state = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[_research_item(status="completed"), _research_item(status="in_progress")], trade_history=[], gatekeeper_rejections=[], memory=[])
+        state = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[_research_item(status="completed"), _research_item(status="in_progress")], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
         factor = next(f for f in state.factors if f.id == "complete_research")
         assert factor.score == 50.0
 
     def test_higher_cross_examination_scores_raise_improve_communication(self) -> None:
-        weak = compute_wisdom_score(discipline_reviews=[_review(factors=[_factor("cross_examination", 20.0)])], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
-        strong = compute_wisdom_score(discipline_reviews=[_review(factors=[_factor("cross_examination", 90.0)])], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
+        weak = compute_wisdom_score(discipline_reviews=[_review(factors=[_factor("cross_examination", 20.0)])], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        strong = compute_wisdom_score(discipline_reviews=[_review(factors=[_factor("cross_examination", 90.0)])], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
         weak_factor = next(f for f in weak.factors if f.id == "improve_communication")
         strong_factor = next(f for f in strong.factors if f.id == "improve_communication")
         assert strong_factor.score > weak_factor.score
 
     def test_higher_viewpoint_diversity_scores_raise_support_collaboration(self) -> None:
-        weak = compute_wisdom_score(discipline_reviews=[_review(factors=[_factor("viewpoint_diversity", 20.0)])], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
-        strong = compute_wisdom_score(discipline_reviews=[_review(factors=[_factor("viewpoint_diversity", 90.0)])], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
+        weak = compute_wisdom_score(discipline_reviews=[_review(factors=[_factor("viewpoint_diversity", 20.0)])], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        strong = compute_wisdom_score(discipline_reviews=[_review(factors=[_factor("viewpoint_diversity", 90.0)])], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
         weak_factor = next(f for f in weak.factors if f.id == "support_collaboration")
         strong_factor = next(f for f in strong.factors if f.id == "support_collaboration")
         assert strong_factor.score > weak_factor.score
 
     def test_more_documented_records_raise_document_lessons(self) -> None:
-        few = compute_wisdom_score(discipline_reviews=[_review()], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
-        many = compute_wisdom_score(discipline_reviews=[_review(), _review(), _review()], case_studies=[_case_study(), _case_study()], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
+        few = compute_wisdom_score(discipline_reviews=[_review()], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        many = compute_wisdom_score(discipline_reviews=[_review(), _review(), _review()], case_studies=[_case_study(), _case_study()], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
         few_factor = next(f for f in few.factors if f.id == "document_lessons")
         many_factor = next(f for f in many.factors if f.id == "document_lessons")
         assert many_factor.score > few_factor.score
@@ -199,8 +202,8 @@ class TestComputeWisdomScore:
     def test_improving_discipline_scores_over_time_raises_learn_from_experience(self) -> None:
         declining = [_review(score=90.0), _review(score=90.0), _review(score=40.0), _review(score=40.0)]
         improving = [_review(score=40.0), _review(score=40.0), _review(score=90.0), _review(score=90.0)]
-        declining_state = compute_wisdom_score(discipline_reviews=declining, case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
-        improving_state = compute_wisdom_score(discipline_reviews=improving, case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
+        declining_state = compute_wisdom_score(discipline_reviews=declining, case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        improving_state = compute_wisdom_score(discipline_reviews=improving, case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
         declining_factor = next(f for f in declining_state.factors if f.id == "learn_from_experience")
         improving_factor = next(f for f in improving_state.factors if f.id == "learn_from_experience")
         assert improving_factor.score > declining_factor.score
@@ -266,7 +269,7 @@ class TestGenerateReflectionSession:
         assert "NEXA" in surprise_answer
 
     def test_wisdom_score_on_the_session_matches_the_passed_in_state(self) -> None:
-        state = compute_wisdom_score(discipline_reviews=[_review(score=90.0)], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[])
+        state = compute_wisdom_score(discipline_reviews=[_review(score=90.0)], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
         session = generate_reflection_session(
             "weekly",
             discipline_reviews=[_review(score=90.0)],
@@ -305,3 +308,174 @@ class TestGenerateReflectionSession:
         )
         patterns_answer = next(q.answer for q in session.questions if q.question == "What patterns are repeating?")
         assert "A Well-Disciplined Process" in patterns_answer
+
+
+def _institutional_memory_entry(
+    *,
+    entry_id: str = "im-1",
+    source: str = "risk_event",
+    lesson: str | None = "A real, documented lesson.",
+) -> InstitutionalMemoryEntry:
+    return InstitutionalMemoryEntry(
+        id=entry_id,
+        source=source,  # type: ignore[arg-type]
+        createdAt=_now_iso(),
+        simDay=1,
+        eventRef="event-1",
+        observation="A real observed event.",
+        lesson=lesson,
+        confidence=50.0,
+        provenance="test provenance",
+        relevancePct=50.0,
+    )
+
+
+def _knowledge_event(
+    *,
+    event_id: str = "ke-1",
+    event_type: str = "lesson_shared",
+    lesson_id: str = "im-1",
+    agent_id: str | None = "nova",
+) -> KnowledgeEvent:
+    return KnowledgeEvent(
+        id=event_id,
+        type=event_type,  # type: ignore[arg-type]
+        lessonId=lesson_id,
+        agentId=agent_id,  # type: ignore[arg-type]
+        simDay=1,
+        detail="test detail",
+        createdAt=_now_iso(),
+    )
+
+
+def _audit_entry(*, entry_id: str = "audit-1") -> AuditEntry:
+    return AuditEntry(
+        id=entry_id,
+        timestamp=_now_iso(),
+        simDay=1,
+        category="gatekeeper_rejection",  # type: ignore[arg-type]
+        severity="warning",  # type: ignore[arg-type]
+        department="Trade Gatekeeper",
+        summary="test summary",
+        detail="test detail",
+    )
+
+
+class TestShareKnowledgeReusesRealKnowledgeEvents:
+    def test_lesson_shared_events_raise_the_factor_even_without_mentorship(self) -> None:
+        without = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        with_shared = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[_knowledge_event(event_type="lesson_shared")], audit_entries=[])
+        without_factor = next(f for f in without.factors if f.id == "share_knowledge")
+        with_factor = next(f for f in with_shared.factors if f.id == "share_knowledge")
+        assert with_factor.score > without_factor.score
+
+    def test_knowledge_received_events_alone_do_not_double_count(self) -> None:
+        """One lesson_shared act fans out into several knowledge_received
+        events (one per recipient) — those must not each add their own
+        weight, or a widely-shared lesson would be worth more than a
+        narrowly-shared one for no real reason."""
+        shared_only = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[_knowledge_event(event_id="ke-1", event_type="lesson_shared")], audit_entries=[])
+        shared_and_received = compute_wisdom_score(
+            discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[],
+            institutional_memory=[],
+            knowledge_events=[
+                _knowledge_event(event_id="ke-1", event_type="lesson_shared"),
+                _knowledge_event(event_id="ke-2", event_type="knowledge_received", agent_id="scout"),
+                _knowledge_event(event_id="ke-3", event_type="knowledge_received", agent_id="atlas"),
+            ],
+            audit_entries=[],
+        )
+        shared_only_factor = next(f for f in shared_only.factors if f.id == "share_knowledge")
+        shared_and_received_factor = next(f for f in shared_and_received.factors if f.id == "share_knowledge")
+        assert shared_only_factor.score == shared_and_received_factor.score
+
+
+class TestFollowPrinciplesFallsBackToRealComplianceScore:
+    def test_no_trades_yet_uses_the_real_audit_log_compliance_score_not_a_bare_default(self) -> None:
+        no_incidents = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        with_incidents = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[_audit_entry(entry_id="a1"), _audit_entry(entry_id="a2")])
+        no_incidents_factor = next(f for f in no_incidents.factors if f.id == "follow_principles")
+        with_incidents_factor = next(f for f in with_incidents.factors if f.id == "follow_principles")
+        assert no_incidents_factor.score == 100.0
+        assert with_incidents_factor.score < no_incidents_factor.score
+
+    def test_once_real_trade_history_exists_the_original_ratio_takes_over_unchanged(self) -> None:
+        """Audit-log evidence must never override the real ratio once
+        real trade/rejection history exists — it's only a fallback for
+        the "nothing has happened yet" case."""
+        state = compute_wisdom_score(
+            discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[_trade()], gatekeeper_rejections=[],
+            memory=[], institutional_memory=[], knowledge_events=[],
+            audit_entries=[_audit_entry(entry_id="a1"), _audit_entry(entry_id="a2"), _audit_entry(entry_id="a3")],
+        )
+        factor = next(f for f in state.factors if f.id == "follow_principles")
+        assert factor.score == 100.0
+
+
+class TestDocumentLessonsReusesInstitutionalMemory:
+    def test_documented_institutional_memory_lessons_raise_the_factor(self) -> None:
+        without = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        with_lessons = compute_wisdom_score(
+            discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[],
+            institutional_memory=[_institutional_memory_entry(entry_id="im-1"), _institutional_memory_entry(entry_id="im-2")],
+            knowledge_events=[], audit_entries=[],
+        )
+        without_factor = next(f for f in without.factors if f.id == "document_lessons")
+        with_factor = next(f for f in with_lessons.factors if f.id == "document_lessons")
+        assert with_factor.score > without_factor.score
+
+    def test_entries_without_a_real_lesson_are_not_counted(self) -> None:
+        state = compute_wisdom_score(
+            discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[],
+            institutional_memory=[_institutional_memory_entry(entry_id="im-1", lesson=None)],
+            knowledge_events=[], audit_entries=[],
+        )
+        factor = next(f for f in state.factors if f.id == "document_lessons")
+        assert factor.score == 0.0
+
+
+class TestAvoidRepeatingMistakesReusesLessonConfirmedEvents:
+    def test_no_case_studies_and_no_confirmations_reads_as_the_disclosed_baseline(self) -> None:
+        state = compute_wisdom_score(discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[], institutional_memory=[], knowledge_events=[], audit_entries=[])
+        factor = next(f for f in state.factors if f.id == "avoid_repeating_mistakes")
+        assert factor.score == 50.0
+
+    def test_a_confirmed_mistake_pattern_lowers_the_factor_below_the_baseline(self) -> None:
+        mistake_entry = _institutional_memory_entry(entry_id="im-mistake", source="behavioral_mistake")
+        state = compute_wisdom_score(
+            discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[],
+            institutional_memory=[mistake_entry],
+            knowledge_events=[_knowledge_event(event_type="lesson_confirmed", lesson_id="im-mistake")],
+            audit_entries=[],
+        )
+        factor = next(f for f in state.factors if f.id == "avoid_repeating_mistakes")
+        assert factor.score < 50.0
+
+    def test_a_confirmation_of_a_non_mistake_lesson_does_not_lower_the_factor(self) -> None:
+        success_entry = _institutional_memory_entry(entry_id="im-success", source="behavioral_success")
+        state = compute_wisdom_score(
+            discipline_reviews=[], case_studies=[], reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[],
+            institutional_memory=[success_entry],
+            knowledge_events=[_knowledge_event(event_type="lesson_confirmed", lesson_id="im-success")],
+            audit_entries=[],
+        )
+        factor = next(f for f in state.factors if f.id == "avoid_repeating_mistakes")
+        assert factor.score == 50.0
+
+    def test_once_real_case_studies_exist_the_original_diversity_formula_takes_over_unchanged(self) -> None:
+        """Real lesson_confirmed evidence must never override the
+        original category-diversity formula once real case studies
+        exist — it's only a fallback for the "no case studies yet" case."""
+        mistake_entry = _institutional_memory_entry(entry_id="im-mistake", source="behavioral_mistake")
+        case_studies = [_case_study(category="overconfidence"), _case_study(category="acted_too_quickly"), _case_study(category="ignored_dissent")]
+        state = compute_wisdom_score(
+            discipline_reviews=[], case_studies=case_studies,
+            reasoning_challenges=[], research=[], trade_history=[], gatekeeper_rejections=[], memory=[],
+            institutional_memory=[mistake_entry],
+            knowledge_events=[_knowledge_event(event_type="lesson_confirmed", lesson_id="im-mistake")],
+            audit_entries=[],
+        )
+        factor = next(f for f in state.factors if f.id == "avoid_repeating_mistakes")
+        # Real category-diversity formula (unchanged): 1/3 dominant share → 100 - 33.3.
+        assert round(factor.score, 1) == round(100.0 - (1 / 3) * 100.0, 1)
+        assert factor.score != 50.0

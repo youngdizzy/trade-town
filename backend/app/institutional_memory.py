@@ -74,6 +74,7 @@ from app.schemas import (
     MarketEnvironmentRegime,
     ModelValidationReport,
     PredictionRecord,
+    ResearchLessonRecord,
     RiskWarning,
     StrategyHallOfFameEntry,
     SUCCESS_CASE_STUDY_CATEGORIES,
@@ -317,6 +318,48 @@ def promote_failure_classification(classification: FailureClassification) -> Ins
     )
 
 
+# "TradeTown — Learning Organization 1.0" — RESEARCH_CANDIDATE_MIN_TRADE_
+# COUNT (app/research_loop.py) is this codebase's own existing definition
+# of "enough real trades to trust this," and ResearchLessonRecord's own
+# confidence_pct is already trade_count normalized against that exact
+# threshold — so gating promotion on confidence_pct reaching 100 reuses
+# a real, already-established bar rather than inventing a new one. A
+# lesson explicitly binned "insufficient_evidence" is excluded even if
+# confidence_pct happens to read high, since that binning is itself a
+# real signal the evidence wasn't trustworthy for another reason.
+def should_promote_research_lesson(record: ResearchLessonRecord) -> bool:
+    return record.confidence_pct >= 100.0 and record.candidacy != "insufficient_evidence"
+
+
+def promote_research_lesson(record: ResearchLessonRecord, *, sim_day: int) -> InstitutionalMemoryEntry:
+    """Bridges app/research_loop.py's ResearchLessonRecord — a complete,
+    real, but previously fully disconnected parallel lesson store — into
+    the one canonical institutional-memory hub. `sim_day` is passed by
+    the caller (ResearchLessonRecord itself carries no sim_day field,
+    only `created_at`) the same way promote_market_regime_shift() and
+    promote_risk_event() already take it as an explicit parameter rather
+    than assuming one is on the source record."""
+    return InstitutionalMemoryEntry(
+        id=f"im-researchlesson-{record.id}",
+        source="research_lesson",
+        createdAt=record.created_at,
+        simDay=sim_day,
+        originatingAgent=None,
+        eventRef=record.id,
+        marketRegime=None,
+        observation=f'"{record.strategy_family}" (v{record.definition_version}) — {record.candidacy.replace("_", " ")}: {record.reason}',
+        interpretation=None,
+        lesson=record.lesson,
+        confidence=0.0,
+        provenance=(
+            f"Promoted from ResearchLessonRecord {record.id} (iteration {record.iteration_id}), "
+            f"{record.confidence_pct:.0f}% evidence confidence."
+        ),
+        relevancePct=0.0,
+        supportingEvidence=list(record.key_metrics),
+    )
+
+
 def _compute_confidence(entry: InstitutionalMemoryEntry, all_entries: list[InstitutionalMemoryEntry]) -> float:
     matches = 0
     for other in all_entries:
@@ -402,6 +445,52 @@ def supersede_memory(
     ]
     stamped_new = new_entry.model_copy(update={"supersedes_id": old_id})
     return record_institutional_memory(relinked, stamped_new, current_sim_day=current_sim_day, max_entries=max_entries)
+
+
+def record_and_link_institutional_memory(
+    existing: list[InstitutionalMemoryEntry],
+    entry: InstitutionalMemoryEntry,
+    *,
+    current_sim_day: int,
+    max_entries: int = MAX_INSTITUTIONAL_MEMORY,
+) -> tuple[list[InstitutionalMemoryEntry], str | None]:
+    """"TradeTown — Learning Organization 1.0" — the real gateway every
+    nexus.py/state.py write site now calls instead of a raw
+    record_institutional_memory(): find_related_memory() and
+    supersede_memory() were both fully built (see their own docstrings
+    above) but, per this milestone's own Phase 0 forensic audit, never
+    once called from the live pipeline — every promotion was a flat,
+    unlinked append, so a recurring pattern silently became dozens of
+    duplicate-looking rows instead of one linked, corroborated thread.
+
+    This function closes exactly that gap and nothing else: when a
+    genuinely related *active* entry already exists (same source, real
+    word-overlap — find_related_memory()'s own bar), the new entry is
+    linked to it via supersede_memory(relationship="superseded") — "an
+    intentional update, not a contradiction" per InstitutionalMemory-
+    Status's own docstring, i.e. real corroboration of a standing
+    lesson. This module has no real signal that can honestly tell
+    agreement from disagreement between two related entries' text, so
+    relationship="contradicted" is never chosen here — that stays a
+    disclosed gap for a future milestone with real valence evidence to
+    back it, not something this function guesses at.
+
+    Returns the updated list plus the id of the entry that was linked
+    (or None for a plain, unrelated append) — callers use that to decide
+    between a lesson_created and a lesson_confirmed KnowledgeEvent (see
+    app/knowledge_sharing.py)."""
+    related = find_related_memory(entry, existing)
+    if related:
+        updated = supersede_memory(
+            existing,
+            old_id=related[0],
+            new_entry=entry,
+            relationship="superseded",
+            current_sim_day=current_sim_day,
+            max_entries=max_entries,
+        )
+        return updated, related[0]
+    return record_institutional_memory(existing, entry, current_sim_day=current_sim_day, max_entries=max_entries), None
 
 
 def retrieve_relevant_memory(

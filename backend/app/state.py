@@ -148,6 +148,8 @@ from app.schemas import (
     GoalCategory,
     GoalMetric,
     HoldReason,
+    InstitutionalMemoryEntry,
+    KnowledgeEvent,
     MeetingState,
     NewsItem,
     PaperTradeJournalEntry,
@@ -252,8 +254,16 @@ from app.institutional_memory import (
     promote_failed_strategy,
     promote_hall_of_fame_strategy,
     promote_model_validation,
-    record_institutional_memory,
+    promote_research_lesson,
+    record_and_link_institutional_memory,
     should_promote_model_validation,
+    should_promote_research_lesson,
+)
+from app.knowledge_sharing import (
+    lesson_confirmed_event,
+    lesson_created_event,
+    record_knowledge_event,
+    share_lesson_with_relevant_agents,
 )
 from app.model_validation import cap_strategy_model_validations, generate_model_validation_report
 from app.talent import mark_talent_report_viewed
@@ -275,6 +285,32 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _promote_and_share_lesson(
+    institutional_memory: list[InstitutionalMemoryEntry],
+    knowledge_events: list[KnowledgeEvent],
+    promoted_entry: InstitutionalMemoryEntry,
+    *,
+    sim_day: int,
+) -> tuple[list[InstitutionalMemoryEntry], list[KnowledgeEvent]]:
+    """"TradeTown — Learning Organization 1.0" — the same real gateway
+    app/nexus.py's own _promote_and_share_lesson() uses for its
+    tick-driven promotions, mirrored here for state.py's own
+    request-driven promotions (Model Validation, Strategy Hall of Fame,
+    Failed Strategy Archive, Research Lesson) so every institutional-
+    memory write in this codebase goes through the same one real
+    confirm/share step rather than two competing implementations."""
+    institutional_memory, linked_id = record_and_link_institutional_memory(
+        institutional_memory, promoted_entry, current_sim_day=sim_day
+    )
+    if linked_id is not None:
+        knowledge_events = record_knowledge_event(knowledge_events, lesson_confirmed_event(promoted_entry, linked_id))
+    else:
+        knowledge_events = record_knowledge_event(knowledge_events, lesson_created_event(promoted_entry))
+        for share_event in share_lesson_with_relevant_agents(promoted_entry):
+            knowledge_events = record_knowledge_event(knowledge_events, share_event)
+    return institutional_memory, knowledge_events
+
+
 def default_state() -> GameSaveState:
     agents = nexus.default_agents()
     watchlist = default_watchlist()
@@ -294,6 +330,9 @@ def default_state() -> GameSaveState:
         trade_history=[],
         gatekeeper_rejections=[],
         memory=[],
+        institutional_memory=[],
+        knowledge_events=[],
+        audit_entries=[],
     )
     default_foundational_mentors = default_foundational_mentor_state()
     # CEO directive "Strategy Intelligence + Live Strategy Attribution,"
@@ -2037,8 +2076,8 @@ class GameState:
             # validation()); a routine approval is the expected outcome
             # of Meridian's process working normally, not a finding.
             if should_promote_model_validation(model_validation):
-                update["institutional_memory"] = record_institutional_memory(
-                    self.data.institutional_memory, promote_model_validation(model_validation), current_sim_day=self.data.time.day
+                update["institutional_memory"], update["knowledge_events"] = _promote_and_share_lesson(
+                    self.data.institutional_memory, self.data.knowledge_events, promote_model_validation(model_validation), sim_day=self.data.time.day
                 )
             self.data = self.data.model_copy(update=update)
             return self.data, None
@@ -2133,16 +2172,16 @@ class GameState:
                 update["strategy_hall_of_fame"] = cap_strategy_hall_of_fame([*self.data.strategy_hall_of_fame, hall_of_fame_entry])
                 update["company_dna_legacy"] = nudge_legacy(dict(self.data.company_dna_legacy), "research_rigor", STRATEGY_HALL_OF_FAME_NUDGE)
                 record_strategy_hall_of_fame_entry(memory, hall_of_fame_entry, max_records=self.data.risk_limits.max_memory_records)
-                update["institutional_memory"] = record_institutional_memory(
-                    self.data.institutional_memory, promote_hall_of_fame_strategy(hall_of_fame_entry), current_sim_day=self.data.time.day
+                update["institutional_memory"], update["knowledge_events"] = _promote_and_share_lesson(
+                    self.data.institutional_memory, self.data.knowledge_events, promote_hall_of_fame_strategy(hall_of_fame_entry), sim_day=self.data.time.day
                 )
             else:
                 assert failed_archive_entry is not None
                 new_failed_archive = cap_strategy_failed_archive([*self.data.strategy_failed_archive, failed_archive_entry])
                 update["strategy_failed_archive"] = new_failed_archive
                 record_strategy_failed_archive_entry(memory, failed_archive_entry, max_records=self.data.risk_limits.max_memory_records)
-                update["institutional_memory"] = record_institutional_memory(
-                    self.data.institutional_memory, promote_failed_strategy(failed_archive_entry), current_sim_day=self.data.time.day
+                update["institutional_memory"], update["knowledge_events"] = _promote_and_share_lesson(
+                    self.data.institutional_memory, self.data.knowledge_events, promote_failed_strategy(failed_archive_entry), sim_day=self.data.time.day
                 )
                 # Design Bible Chapter 74 Part 1 — the Strategy Retirement
                 # Cluster generator, checked at the one real place a
@@ -3233,7 +3272,15 @@ class GameState:
         async with self.lock:
             updated_iterations = [*self.data.research_iterations, iteration]
             updated_lessons = [*self.data.research_lessons, lesson]
-            self.data = self.data.model_copy(update={"research_iterations": updated_iterations, "research_lessons": updated_lessons})
+            update: dict[str, object] = {"research_iterations": updated_iterations, "research_lessons": updated_lessons}
+            if should_promote_research_lesson(lesson):
+                update["institutional_memory"], update["knowledge_events"] = _promote_and_share_lesson(
+                    self.data.institutional_memory,
+                    self.data.knowledge_events,
+                    promote_research_lesson(lesson, sim_day=self.data.time.day),
+                    sim_day=self.data.time.day,
+                )
+            self.data = self.data.model_copy(update=update)
             return self.data, iteration
 
     async def submit_research_factory_run(
@@ -3313,12 +3360,24 @@ class GameState:
             updated_lessons = [*self.data.research_lessons, *new_lessons]
             updated_full_registry = {**self.data.compiled_strategy_versions, family_slug: updated_registry.get(family_slug, [])}
             updated_runs = [*self.data.factory_runs, run_record]
+            updated_institutional_memory = self.data.institutional_memory
+            updated_knowledge_events = self.data.knowledge_events
+            for new_lesson in new_lessons:
+                if should_promote_research_lesson(new_lesson):
+                    updated_institutional_memory, updated_knowledge_events = _promote_and_share_lesson(
+                        updated_institutional_memory,
+                        updated_knowledge_events,
+                        promote_research_lesson(new_lesson, sim_day=self.data.time.day),
+                        sim_day=self.data.time.day,
+                    )
             self.data = self.data.model_copy(
                 update={
                     "research_iterations": updated_iterations,
                     "research_lessons": updated_lessons,
                     "compiled_strategy_versions": updated_full_registry,
                     "factory_runs": updated_runs,
+                    "institutional_memory": updated_institutional_memory,
+                    "knowledge_events": updated_knowledge_events,
                 }
             )
             return self.data, run_record
@@ -3390,12 +3449,24 @@ class GameState:
             updated_lessons = [*self.data.research_lessons, *new_lessons]
             updated_full_registry = {**self.data.compiled_strategy_versions, **{slug: updated_registry[slug] for slug in changed_slugs}}
             updated_cycles = [*self.data.discovery_cycles, record]
+            updated_institutional_memory = self.data.institutional_memory
+            updated_knowledge_events = self.data.knowledge_events
+            for new_lesson in new_lessons:
+                if should_promote_research_lesson(new_lesson):
+                    updated_institutional_memory, updated_knowledge_events = _promote_and_share_lesson(
+                        updated_institutional_memory,
+                        updated_knowledge_events,
+                        promote_research_lesson(new_lesson, sim_day=self.data.time.day),
+                        sim_day=self.data.time.day,
+                    )
             self.data = self.data.model_copy(
                 update={
                     "research_iterations": updated_iterations,
                     "research_lessons": updated_lessons,
                     "compiled_strategy_versions": updated_full_registry,
                     "discovery_cycles": updated_cycles,
+                    "institutional_memory": updated_institutional_memory,
+                    "knowledge_events": updated_knowledge_events,
                 }
             )
             return self.data, record

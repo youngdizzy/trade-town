@@ -17,10 +17,13 @@ from app.institutional_memory import (
     promote_market_regime_shift,
     promote_model_validation,
     promote_prediction_outcome,
+    promote_research_lesson,
     promote_risk_event,
+    record_and_link_institutional_memory,
     record_institutional_memory,
     retrieve_relevant_memory,
     should_promote_model_validation,
+    should_promote_research_lesson,
     supersede_memory,
 )
 from app.prediction_tracking import build_prediction_record
@@ -32,6 +35,7 @@ from app.schemas import (
     InstitutionalMemoryEntry,
     ModelValidationCheck,
     ModelValidationReport,
+    ResearchLessonRecord,
     RiskWarning,
     StrategyHallOfFameEntry,
     TradeDecision,
@@ -407,3 +411,82 @@ class TestPromotePredictionOutcome:
         prediction = _resolved_prediction(confidence=85.0, outcome="incorrect")
         memory = record_institutional_memory([], promote_prediction_outcome(prediction), current_sim_day=5)
         assert memory[0].relevance_pct == 100.0
+
+
+def _research_lesson(
+    *,
+    lesson_id: str = "lesson-1",
+    family: str = "Trend Following",
+    candidacy: str = "promising",
+    confidence_pct: float = 100.0,
+) -> ResearchLessonRecord:
+    return ResearchLessonRecord(
+        id=lesson_id,
+        strategyFamily=family,
+        definitionId="def-1",
+        definitionVersion=1,
+        iterationId="iter-1",
+        hypothesis="Trend continuation after a liquidity sweep.",
+        candidacy=candidacy,  # type: ignore[arg-type]
+        reason="Positive expectancy across 120 trades.",
+        keyMetrics=["expectancy +0.30R"],
+        confidencePct=confidence_pct,
+        lesson="Trend Following (v1) showed positive expectancy over sufficient real trade evidence.",
+        createdAt=_now_iso(),
+    )
+
+
+class TestShouldPromoteResearchLesson:
+    def test_full_evidence_is_promotable(self) -> None:
+        assert should_promote_research_lesson(_research_lesson(confidence_pct=100.0)) is True
+
+    def test_low_evidence_is_not_promotable(self) -> None:
+        assert should_promote_research_lesson(_research_lesson(confidence_pct=40.0)) is False
+
+    def test_insufficient_evidence_candidacy_is_never_promotable_even_at_full_confidence(self) -> None:
+        lesson = _research_lesson(confidence_pct=100.0, candidacy="insufficient_evidence")
+        assert should_promote_research_lesson(lesson) is False
+
+
+class TestPromoteResearchLesson:
+    def test_promotion_cites_the_real_source_lesson(self) -> None:
+        lesson = _research_lesson()
+        entry = promote_research_lesson(lesson, sim_day=42)
+        assert entry.source == "research_lesson"
+        assert entry.event_ref == lesson.id
+        assert entry.sim_day == 42
+        assert entry.lesson == lesson.lesson
+
+
+class TestRecordAndLinkInstitutionalMemory:
+    def test_unrelated_entry_is_a_plain_append(self) -> None:
+        first = promote_case_study(_case_study(case_id="case-a", background="NEXA broke below support on thin volume.", lessons="Do not trust breakdowns on thin volume."))
+        existing = record_institutional_memory([], first, current_sim_day=1)
+        second = promote_case_study(_case_study(case_id="case-b", category="ignored_dissent", background="A completely different scenario about interest rate announcements moving bonds.", lessons="Macro announcements need wider stops."))
+        updated, linked_id = record_and_link_institutional_memory(existing, second, current_sim_day=10)
+        assert linked_id is None
+        assert len(updated) == 2
+        assert all(e.status == "active" for e in updated)
+
+    def test_related_entry_is_linked_as_superseded_not_flat_appended(self) -> None:
+        first = promote_case_study(_case_study(case_id="case-a", background="NEXA broke below support and reversed hard on thin volume.", lessons="Do not trust breakdowns on thin volume."))
+        existing = record_institutional_memory([], first, current_sim_day=1)
+        second = promote_case_study(_case_study(case_id="case-b", background="NEXA broke below support again on thin volume, same pattern.", lessons="Do not trust breakdowns on thin volume without confirmation."))
+        updated, linked_id = record_and_link_institutional_memory(existing, second, current_sim_day=10)
+        assert linked_id == existing[0].id
+        old = next(e for e in updated if e.id == existing[0].id)
+        assert old.status == "superseded"
+        new = next(e for e in updated if e.id != existing[0].id)
+        assert new.status == "active"
+        assert new.supersedes_id == existing[0].id
+
+    def test_never_chooses_contradicted_relationship(self) -> None:
+        """No real signal in this module can honestly tell agreement from
+        disagreement between two related entries' text — see this
+        function's own docstring. A related match must always link as
+        "superseded", never "contradicted", regardless of input."""
+        first = promote_case_study(_case_study(case_id="case-a", background="NEXA broke below support and reversed hard on thin volume.", lessons="Do not trust breakdowns on thin volume."))
+        existing = record_institutional_memory([], first, current_sim_day=1)
+        second = promote_case_study(_case_study(case_id="case-b", background="NEXA broke below support again on thin volume, same pattern.", lessons="Do not trust breakdowns on thin volume without confirmation."))
+        updated, _ = record_and_link_institutional_memory(existing, second, current_sim_day=10)
+        assert all(e.status != "contradicted" for e in updated)
