@@ -59,7 +59,11 @@ holds unconditionally.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from app.schemas import (
+    AnalystChoice,
+    PaperPortfolio,
     RiskContract,
     RiskContractScalingBand,
     RiskContractScalingPolicy,
@@ -67,7 +71,10 @@ from app.schemas import (
     RiskContractStatus,
     RiskContractValidationIssue,
     RiskContractValidationResult,
+    RiskDecision,
     RiskLimits,
+    TradeDecision,
+    TradeProposal,
 )
 
 # Section 20 ("Never let missing data weaken safety") applied to this
@@ -419,6 +426,84 @@ def apply_active_risk_contract(
     return apply_risk_contract_scaling(risk_limits, scaling=scaling), contract, scaling
 
 
+# CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0" — the
+# permanent audit-record cap for `risk_decisions`. Was previously
+# defined only in app/state.py (the sole real appender before this
+# directive); relocated here to match this codebase's own established
+# convention for a cap constant shared by BOTH a manual-decision append
+# site and a tick-driven append site (see app/nexus.py's own
+# MAX_DECISIONS/MAX_GATEKEEPER_REJECTIONS/MAX_OPPORTUNITY_REJECTIONS,
+# each imported by app/state.py rather than redefined there) — now that
+# app/nexus.py's own auto-resolution path also appends real
+# RiskDecisions, app/state.py imports this constant from here instead.
+# Same real value (200), zero behavior change.
+MAX_RISK_DECISIONS = 200
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0" — THE
+# ONE authoritative RiskDecision computation, extracted verbatim (zero
+# logic change) from what was previously app/state.py::
+# submit_ceo_decision()'s own inline block (CEO directive "Persisted
+# Risk Contract...," Phase 4/5, consolidated by "Risk Contract
+# Enforcement + Dynamic Risk Scaling 1.0" to reuse the SAME
+# active_risk_contract/risk_contract_scaling already computed once
+# before resolve_proposal() ran, rather than a second, independent
+# recomputation after the fact). This function is now that one shared
+# call BOTH the manual/delegated CEO-decision path (app/state.py) and
+# the Operating-Mode auto-resolution path (app/nexus.py) make — never
+# two competing implementations of "what happened to this trade's risk
+# sizing."
+#
+# Returns `None` for exactly the two cases the original inline block
+# already silently skipped (never audited): a "wait" (no sizing/
+# Gatekeeper ever ran, nothing to audit) and a missing
+# `active_risk_contract`/`risk_contract_scaling` (the caller's own real
+# FAIL-CLOSED guard already rejected the trade before this function
+# would ever be reached in real production use — see
+# `apply_active_risk_contract()`'s own docstring). A caller MUST NOT
+# construct a `RiskDecision` itself in either case; `None` here means
+# "nothing to persist," not "persist nothing meaningful."
+def build_risk_decision(
+    proposal: TradeProposal,
+    choice: AnalystChoice,
+    decision: TradeDecision,
+    portfolio: PaperPortfolio,
+    *,
+    active_risk_contract: RiskContract | None,
+    risk_contract_scaling: RiskContractScalingRead | None,
+) -> RiskDecision | None:
+    if choice not in ("buy", "sell") or active_risk_contract is None or risk_contract_scaling is None:
+        return None
+    filled_position = next((p for p in portfolio.positions if p.id == f"pos-{proposal.id}"), None)
+    approved_quantity = filled_position.quantity if filled_position is not None else 0.0
+    rejected = decision.order_id is None
+    rejection_reason: str | None = None
+    if rejected:
+        verdict = decision.gatekeeper_verdict
+        if verdict is not None and not verdict.approved:
+            rejection_reason = "; ".join(f"{c.label}: {c.detail}" for c in verdict.checks if not c.passed)
+        elif risk_contract_scaling.kill_switch_triggered:
+            rejection_reason = f"Risk Contract v{active_risk_contract.version} kill switch triggered — {risk_contract_scaling.detail}"
+        else:
+            rejection_reason = "Position sized to zero — insufficient portfolio capacity/budget for this trade."
+    return RiskDecision(
+        id=f"riskdecision-{decision.id}",
+        createdAt=_now_iso(),
+        proposalId=proposal.id,
+        decisionId=decision.id,
+        symbol=proposal.symbol,
+        scaling=risk_contract_scaling,
+        requestedQuantity=proposal.quantity,
+        approvedQuantity=approved_quantity,
+        rejected=rejected,
+        rejectionReason=rejection_reason,
+    )
+
+
 __all__ = [
     "RiskContractStatus",
     "next_version_number",
@@ -433,4 +518,6 @@ __all__ = [
     "evaluate_risk_contract_scaling",
     "apply_risk_contract_scaling",
     "apply_active_risk_contract",
+    "build_risk_decision",
+    "MAX_RISK_DECISIONS",
 ]

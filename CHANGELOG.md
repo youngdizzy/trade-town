@@ -7,6 +7,93 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0."** A
+  bounded auditability fix, not a risk-model change — closes the one
+  real, named limitation the just-completed "Paper Trading Evidence
+  Gate 2.0" forensic audit found: a real `RiskDecision` audit record was
+  only ever created for a manual/delegated CEO decision
+  (`app/state.py::submit_ceo_decision()`); the auto-resolution path
+  (`app/nexus.py::_apply_operating_mode()`, the ACTIVE mode in the real
+  burn-in save) enforced Risk Contract scaling identically but produced
+  no audit record for it — a pre-existing, already-disclosed gap (named
+  in the "Controlled Paper Trading Readiness Audit + Burn-in 1.0"
+  report), not newly discovered.
+  - **One authoritative computation, not two.** The exact real
+    `RiskDecision` construction previously inlined in `submit_ceo_
+    decision()` is now `app/risk_contract.py::build_risk_decision()` —
+    zero logic change, a verbatim extraction. Both the manual/delegated
+    path and the auto-resolution path call this same function; a
+    structural regression test
+    (`test_riskdecision_is_only_ever_constructed_inside_build_risk_
+    decision`) greps both `app/nexus.py` and `app/state.py` for a
+    direct `RiskDecision(` construction and asserts neither has one.
+  - **`MAX_RISK_DECISIONS`** relocated from `app/state.py` to `app/
+    risk_contract.py` (same value, 200) to match this codebase's own
+    established convention for a cap constant shared by a manual-append
+    site and a tick-driven append site (mirrors `MAX_DECISIONS`/
+    `MAX_GATEKEEPER_REJECTIONS`, both already living in `app/nexus.py`).
+  - **`app/nexus.py::_apply_operating_mode()`** gained three new,
+    all-optional, backward-compatible parameters
+    (`active_risk_contract`/`risk_contract_scaling`/`risk_decisions`,
+    every existing caller — including every pre-existing test — omits
+    them and gets byte-identical behavior to before this pass) and now
+    appends a real `RiskDecision` for every real buy/sell it auto-
+    resolves, reusing the SAME `active_risk_contract`/`risk_contract_
+    scaling` this tick already derived (never a second Risk Contract
+    computation). Capped in place at `MAX_RISK_DECISIONS`, the same
+    established convention `gatekeeper_rejections`/`decisions` already
+    use in this same loop.
+  - **Trading behavior is provably unchanged.** `build_risk_decision()`
+    is a pure, read-only function of a `TradeDecision`/`PaperPortfolio`
+    that already exist by the time it's called — it never touches
+    `resolve_proposal()`'s own sizing/Gatekeeper/execution logic. Every
+    pre-existing Risk Contract/Gatekeeper/Emergency-Stop test in
+    `tests/test_nexus.py` and `tests/test_state.py` (128 + 26 tests)
+    passed unmodified after the refactor.
+  - **Idempotent by construction, not by a new guard.** A resolved
+    proposal is removed from the pending list `app/nexus.py`'s `tick()`
+    persists, so it can never be re-resolved (and therefore never
+    re-audited) on a later tick, a restart, or an event replay —
+    verified directly (`test_a_second_call_on_the_returned_still_
+    pending_list_cannot_duplicate`).
+  - **Historical records are never rewritten** — `build_risk_decision()`
+    only ever appends; a pre-existing `RiskDecision` comes out
+    byte-identical after a tick that adds a new one
+    (`test_pre_existing_risk_decisions_are_not_rewritten_by_a_new_tick`).
+  - **Strategy identity untouched, as instructed** — auto-resolved
+    trades still never populate `strategy_id` (only an explicit manual
+    CEO selection does); this pass does not touch that boundary at all.
+  - **No schema change.** `RiskDecision` already existed, already fully
+    wired through save/load, since "Persisted Risk Contract + Dynamic
+    Risk Scaling." A new regression test
+    (`test_risk_decisions_survive_a_real_restart_round_trip`) proves a
+    real, non-empty `RiskDecision` list survives the actual production
+    `persist_modules()`/`load_modules()` round trip end-to-end, not just
+    inferred from "nothing in the schema changed."
+  - **Testing.** 7 new unit tests on `build_risk_decision()` itself
+    (`tests/test_risk_contract.py`: wait/no-contract → `None`, a real
+    approved trade, a real Gatekeeper rejection, a real kill-switch
+    rejection, the single-construction-site structural proof), plus a
+    rewritten `tests/test_nexus.py` class (8 tests, replacing the one
+    that had pinned the old gap down as a permanent invariant) covering
+    the backward-compatible default, a real scaled RiskDecision, the
+    real drawdown band reflected in the persisted record, fail-closed
+    behavior unchanged, a real rejected/kill-switch record, the
+    `MAX_RISK_DECISIONS` cap, historical preservation, and idempotency.
+    Full backend suite, mypy, and ruff results in this entry's own
+    forensic report. Zero frontend files touched — the existing
+    Paper-Trade Journal UI already joins `RiskDecision` by
+    `decision_id`, source-agnostic to which path created it.
+  - **Live-verified against the real, continuously-running burn-in
+    save** — a clean restart with zero migration warnings (no schema
+    changed), real save state byte-identical before/after (100
+    `opportunityRejections`, 3 `decisions`, 0 trades/positions,
+    Emergency Stop inactive). No trade was forced and `/api/time/
+    advance` was never called to manufacture evidence, per this
+    directive's own explicit instruction — `riskDecisions` remains 0 in
+    the real save until a real auto-resolved buy/sell genuinely occurs,
+    which this pass does not force.
+
 - **CEO directive "Opportunity Gate Calibration Experiment 1.0."** A
   pure, read-only shadow-scoring module answering the prior forensic
   audit's own recommended next milestone: is the Opportunity

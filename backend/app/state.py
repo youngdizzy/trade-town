@@ -194,9 +194,11 @@ from app.strategy_families import SUPPORTED_FAMILIES
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 from app.strategy_compiler import strategy_definition_slug
 from app.risk_contract import (
+    MAX_RISK_DECISIONS,
     activate_risk_contract as _activate_risk_contract,
     apply_active_risk_contract,
     archive_risk_contract as _archive_risk_contract,
+    build_risk_decision,
     create_draft_risk_contract as _create_draft_risk_contract,
     get_active_risk_contract,
     mark_validated as _mark_validated_risk_contract,
@@ -267,9 +269,6 @@ MAX_BLACK_BOX_NOTES = 20
 # predicate can never spin the loop forever.
 MAX_FAST_FORWARD_HOURS = 72
 MAX_FAST_FORWARD_TICKS = 10_000
-# Risk Contract Phase 4/5 — same cap magnitude as MAX_DECISIONS/
-# MAX_CEO_DECISIONS (the two other permanent per-decision audit lists).
-MAX_RISK_DECISIONS = 200
 
 
 def _now_iso() -> str:
@@ -2628,44 +2627,21 @@ class GameState:
             # buy/sell — a "wait" never reaches sizing/the Gatekeeper, so
             # there is no real risk decision to audit.
             #
-            # CEO directive "Risk Contract Enforcement + Dynamic Risk
-            # Scaling 1.0" — reuses `active_risk_contract`/`risk_contract_
-            # scaling`, already computed once above BEFORE resolve_
-            # proposal() ran (the same real values that actually governed
-            # this decision's sizing) — this used to be a SECOND,
-            # independent recomputation of the same contract/drawdown/
-            # streak state after the fact; consolidating to one real
-            # computation, used for both enforcement and this audit
-            # record, is exactly the "one canonical path, never a
-            # duplicated risk calculation" this directive requires.
+            # CEO directive "Auto-Resolution Risk Decision Audit Trail
+            # 1.0" — this used to be an inline block computing the
+            # RiskDecision directly; it's now app/risk_contract.py's own
+            # build_risk_decision(), the ONE authoritative computation
+            # this path and app/nexus.py's auto-resolution path both call
+            # — never two competing implementations. Reuses
+            # `active_risk_contract`/`risk_contract_scaling`, already
+            # computed once above BEFORE resolve_proposal() ran (the same
+            # real values that actually governed this decision's sizing).
             risk_decisions = list(self.data.risk_decisions)
-            if choice in ("buy", "sell") and active_risk_contract is not None and risk_contract_scaling is not None:
-                filled_position = next((p for p in portfolio.positions if p.id == f"pos-{proposal.id}"), None)
-                approved_quantity = filled_position.quantity if filled_position is not None else 0.0
-                rejected = decision.order_id is None
-                rejection_reason: str | None = None
-                if rejected:
-                    verdict = decision.gatekeeper_verdict
-                    if verdict is not None and not verdict.approved:
-                        rejection_reason = "; ".join(f"{c.label}: {c.detail}" for c in verdict.checks if not c.passed)
-                    elif risk_contract_scaling.kill_switch_triggered:
-                        rejection_reason = f"Risk Contract v{active_risk_contract.version} kill switch triggered — {risk_contract_scaling.detail}"
-                    else:
-                        rejection_reason = "Position sized to zero — insufficient portfolio capacity/budget for this trade."
-                risk_decisions.append(
-                    RiskDecision(
-                        id=f"riskdecision-{decision.id}",
-                        createdAt=_now_iso(),
-                        proposalId=proposal.id,
-                        decisionId=decision.id,
-                        symbol=proposal.symbol,
-                        scaling=risk_contract_scaling,
-                        requestedQuantity=proposal.quantity,
-                        approvedQuantity=approved_quantity,
-                        rejected=rejected,
-                        rejectionReason=rejection_reason,
-                    )
-                )
+            new_risk_decision = build_risk_decision(
+                proposal, choice, decision, portfolio, active_risk_contract=active_risk_contract, risk_contract_scaling=risk_contract_scaling
+            )
+            if new_risk_decision is not None:
+                risk_decisions.append(new_risk_decision)
                 if len(risk_decisions) > MAX_RISK_DECISIONS:
                     del risk_decisions[: len(risk_decisions) - MAX_RISK_DECISIONS]
 

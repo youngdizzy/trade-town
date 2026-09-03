@@ -9,11 +9,20 @@ explicitly separate.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+import pytest
+
+from app.executive import generate_proposal, resolve_proposal
+from app.market_data import MockMarketDataProvider
+from app.market_intelligence import default_market_intelligence_state
+from app.portfolio import default_portfolio
 from app.risk_contract import (
     activate_risk_contract,
     apply_active_risk_contract,
     apply_risk_contract_scaling,
     archive_risk_contract,
+    build_risk_decision,
     classify_scaling_band,
     create_draft_risk_contract,
     evaluate_risk_contract_scaling,
@@ -23,9 +32,60 @@ from app.risk_contract import (
     next_version_number,
     validate_risk_contract,
 )
-from app.schemas import RiskContract, RiskContractScalingBand, RiskContractScalingPolicy, RiskLimits
+from app.schemas import GatekeeperCheck, GatekeeperVerdict, ResearchItem, RiskContract, RiskContractScalingBand, RiskContractScalingPolicy, RiskLimits
 
 NOW = "2026-01-01T00:00:00+00:00"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _research_item(symbol: str = "NEXA", confidence: float = 90.0) -> ResearchItem:
+    return ResearchItem(
+        id="research-1",
+        title="NEXA breakout setup",
+        symbol=symbol,
+        category="stock",
+        priority="high",
+        status="completed",
+        assignedAgent="nova",
+        summary="NEXA is showing a real breakout pattern.",
+        confidence=confidence,
+        createdAt=_now_iso(),
+        updatedAt=_now_iso(),
+    )
+
+
+def _proposal(*, quantity: float = 10.0, price: float = 100.0):  # type: ignore[no-untyped-def]
+    return generate_proposal(
+        _research_item(),
+        quantity=quantity,
+        price=price,
+        news=[],
+        scanner_alerts=[],
+        sentinel_warning=None,
+        guardian_warning=None,
+        provider=MockMarketDataProvider(),
+        now_sim_minutes=0,
+        portfolio=default_portfolio(),
+        risk_limits=RiskLimits(),
+        market_intelligence=default_market_intelligence_state(),
+        agent_vote_accuracy=[],
+    )
+
+
+def _stub_approved_verdict(*_args: object, **_kwargs: object) -> GatekeeperVerdict:
+    return GatekeeperVerdict(approved=True, checks=[], summary="APPROVED — stubbed for this test.", createdAt=_now_iso())
+
+
+def _stub_rejected_verdict(*_args: object, **_kwargs: object) -> GatekeeperVerdict:
+    return GatekeeperVerdict(
+        approved=False,
+        checks=[GatekeeperCheck(id="confidence", label="Decision Confidence", passed=False, detail="Stubbed rejection for this test.")],
+        summary="REJECTED — stubbed for this test.",
+        createdAt=_now_iso(),
+    )
 
 
 def _draft(history: list[RiskContract] | None = None, *, contract_id: str = "rc-1", limits: RiskLimits | None = None, scaling_policy: RiskContractScalingPolicy | None = None) -> RiskContract:
@@ -442,3 +502,108 @@ def test_apply_active_risk_contract_reads_base_from_the_passed_in_limits_not_the
     assert scaling is not None
     assert scaling.base_risk_per_trade_pct == 0.4
     assert result_limits.risk_per_trade_pct == 0.3  # 0.4 * 0.75
+
+
+# ---------------------------------------------------------------------------
+# build_risk_decision() — CEO directive "Auto-Resolution Risk Decision
+# Audit Trail 1.0." THE ONE authoritative RiskDecision computation, now
+# shared by app/state.py::submit_ceo_decision() (manual/delegated) and
+# app/nexus.py::_apply_operating_mode() (auto-resolution) alike — these
+# tests exercise it directly, independent of either caller, using the
+# exact same real resolve_proposal()/Gatekeeper mechanics either caller
+# would use.
+# ---------------------------------------------------------------------------
+
+
+def test_build_risk_decision_returns_none_for_a_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.executive.evaluate_gatekeeper", _stub_approved_verdict)
+    proposal = _proposal()
+    portfolio, decision, _record = resolve_proposal(
+        proposal, "wait", portfolio=default_portfolio(), risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=0, market_intelligence=default_market_intelligence_state()
+    )
+    active, history = _active_contract()
+    _limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=0.0, consecutive_losses=0)
+    assert build_risk_decision(proposal, "wait", decision, portfolio, active_risk_contract=contract, risk_contract_scaling=scaling) is None
+
+
+def test_build_risk_decision_returns_none_without_an_active_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.executive.evaluate_gatekeeper", _stub_approved_verdict)
+    proposal = _proposal()
+    portfolio, decision, _record = resolve_proposal(
+        proposal, "buy", portfolio=default_portfolio(), risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=0, market_intelligence=default_market_intelligence_state()
+    )
+    assert build_risk_decision(proposal, "buy", decision, portfolio, active_risk_contract=None, risk_contract_scaling=None) is None
+
+
+def test_build_risk_decision_records_a_real_approved_trade(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.executive.evaluate_gatekeeper", _stub_approved_verdict)
+    proposal = _proposal(quantity=5.0)
+    active, history = _active_contract()
+    limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=0.0, consecutive_losses=0)
+    portfolio, decision, _record = resolve_proposal(
+        proposal, "buy", portfolio=default_portfolio(), risk_limits=limits, current_price=100.0, now_sim_minutes=0, market_intelligence=default_market_intelligence_state()
+    )
+    risk_decision = build_risk_decision(proposal, "buy", decision, portfolio, active_risk_contract=contract, risk_contract_scaling=scaling)
+    assert risk_decision is not None
+    assert risk_decision.id == f"riskdecision-{decision.id}"
+    assert risk_decision.proposal_id == proposal.id
+    assert risk_decision.decision_id == decision.id
+    assert risk_decision.symbol == proposal.symbol
+    assert risk_decision.rejected is False
+    assert risk_decision.rejection_reason is None
+    assert risk_decision.requested_quantity == proposal.quantity
+    assert risk_decision.approved_quantity == portfolio.positions[0].quantity
+    assert risk_decision.scaling == scaling
+
+
+def test_build_risk_decision_records_a_real_gatekeeper_rejection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.executive.evaluate_gatekeeper", _stub_rejected_verdict)
+    proposal = _proposal()
+    active, history = _active_contract()
+    limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=0.0, consecutive_losses=0)
+    portfolio, decision, _record = resolve_proposal(
+        proposal, "buy", portfolio=default_portfolio(), risk_limits=limits, current_price=100.0, now_sim_minutes=0, market_intelligence=default_market_intelligence_state()
+    )
+    assert portfolio.positions == []  # rejected — no real position opened
+    risk_decision = build_risk_decision(proposal, "buy", decision, portfolio, active_risk_contract=contract, risk_contract_scaling=scaling)
+    assert risk_decision is not None
+    assert risk_decision.rejected is True
+    assert risk_decision.approved_quantity == 0.0
+    assert risk_decision.rejection_reason is not None and "Decision Confidence" in risk_decision.rejection_reason
+
+
+def test_build_risk_decision_records_a_real_kill_switch_rejection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.executive.evaluate_gatekeeper", _stub_approved_verdict)
+    proposal = _proposal()
+    active, history = _active_contract()
+    # 15% drawdown crosses the real kill-switch band (see
+    # test_apply_active_risk_contract_kill_switch_collapses_limits_to_zero
+    # above) — collapses risk_limits to 0, so resolve_proposal's own real
+    # "sized to zero -> wait" fallback fires and no position opens, even
+    # though the CALLER's own `choice` ("buy") is unchanged.
+    limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=15.0, consecutive_losses=0)
+    portfolio, decision, _record = resolve_proposal(
+        proposal, "buy", portfolio=default_portfolio(), risk_limits=limits, current_price=100.0, now_sim_minutes=0, market_intelligence=default_market_intelligence_state()
+    )
+    assert portfolio.positions == []
+    risk_decision = build_risk_decision(proposal, "buy", decision, portfolio, active_risk_contract=contract, risk_contract_scaling=scaling)
+    assert risk_decision is not None
+    assert risk_decision.rejected is True
+    assert risk_decision.rejection_reason is not None and "kill switch" in risk_decision.rejection_reason
+
+
+def test_riskdecision_is_only_ever_constructed_inside_build_risk_decision() -> None:
+    """CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0" —
+    "There must be exactly one authoritative risk-decision computation."
+    A real, structural proof rather than a naming convention: no other
+    module in this codebase constructs a real RiskDecision(...) object
+    directly — both app/state.py's manual/delegated path and
+    app/nexus.py's auto-resolution path call this module's own
+    build_risk_decision() instead."""
+    import inspect
+
+    import app.nexus as nexus_module
+    import app.state as state_module
+
+    assert "RiskDecision(" not in inspect.getsource(nexus_module)
+    assert "RiskDecision(" not in inspect.getsource(state_module)

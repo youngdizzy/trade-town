@@ -61,6 +61,46 @@ def test_persist_then_load_round_trips_real_state(temp_db):
     assert loaded.player.x == 144
 
 
+def test_risk_decisions_survive_a_real_restart_round_trip(temp_db):
+    """CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0,"
+    Section 8/9.I — no schema change was made (RiskDecision already
+    existed, already persisted since "Persisted Risk Contract + Dynamic
+    Risk Scaling"); this proves that reused field genuinely survives a
+    real save/restart round trip through SQLite with non-empty auto-
+    resolution-produced content, not just inferred from "no schema
+    changed."""
+    from app.schemas import RiskContractScalingRead, RiskDecision
+
+    scaling = RiskContractScalingRead(
+        riskContractId="rc-1",
+        riskContractVersion=1,
+        drawdownPct=0.0,
+        drawdownBandLabel="normal",
+        drawdownFactor=1.0,
+        consecutiveLosses=0,
+        losingStreakBandLabel="normal",
+        losingStreakFactor=1.0,
+        combinedFactor=1.0,
+        baseRiskPerTradePct=1.0,
+        approvedRiskPerTradePct=1.0,
+        baseMaxPositionPct=10.0,
+        approvedMaxPositionPct=10.0,
+        killSwitchTriggered=False,
+        detail="Normal band — no scaling applied.",
+    )
+    auto_risk_decision = RiskDecision(
+        id="riskdecision-auto-1", createdAt="2026-01-01T00:00:00+00:00", proposalId="proposal-auto-1", decisionId="decision-auto-1",
+        symbol="NEXA", scaling=scaling, requestedQuantity=5.0, approvedQuantity=5.0, rejected=False,
+    )
+    state = default_state().model_copy(update={"risk_decisions": [auto_risk_decision]})
+    persistence.persist_modules(state)  # the real production hot path (see load_state()'s own docstring)
+
+    loaded = persistence.load_modules()
+    assert loaded is not None
+    assert len(loaded.risk_decisions) == 1
+    assert loaded.risk_decisions[0] == auto_risk_decision
+
+
 def test_migration_recovers_an_old_save_missing_a_newer_field(temp_db):
     """Simulates exactly the bug this file fixes: a save written before a
     field existed. Rather than being silently discarded and overwritten

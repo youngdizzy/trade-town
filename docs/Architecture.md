@@ -20487,3 +20487,96 @@ new fetch, one new render call, no changed interaction logic elsewhere).
 Verified instead via tsc/ESLint/build plus a live, read-only, non-mutating
 browser check against the real running save (a player-position save only
 — the same narrow real mechanism the game's own Continue button uses).
+
+## CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0"
+
+Closes the one real, named limitation the "Paper Trading Evidence Gate
+2.0" forensic audit found: `RiskDecision` (the persisted audit record
+naming exactly which `RiskContract` version/scaling governed a real
+buy/sell's sizing) was only ever built on the manual/delegated CEO-
+decision path (`app/state.py::submit_ceo_decision()`) — never on the
+auto-resolution path (`app/nexus.py::_apply_operating_mode()`), the
+ACTIVE operating mode in the real burn-in save. Real enforcement was
+already identical on both paths (verified independently by that same
+audit); only the audit trail was incomplete. A bounded auditability fix
+— zero change to any Gatekeeper threshold, RiskContract factor,
+RiskLimits value, position-sizing math, or execution behavior.
+
+### One authoritative computation
+
+The exact real construction previously inlined in `submit_ceo_
+decision()` — deriving `approvedQuantity` from the real filled position,
+`rejected`/`rejectionReason` from the real `TradeDecision.orderId`/
+`gatekeeperVerdict`/kill-switch state — is now `app/risk_contract.py::
+build_risk_decision()`, a verbatim extraction (no logic change).
+`submit_ceo_decision()` calls it; `_apply_operating_mode()` now calls it
+too, reusing the SAME `active_risk_contract`/`risk_contract_scaling`
+that tick already derived for `effective_risk_limits` (never a second
+Risk Contract computation). `MAX_RISK_DECISIONS` moved from `app/
+state.py` to `app/risk_contract.py` (unchanged value, 200) to match this
+codebase's own convention for a cap constant shared by both a manual-
+append site and a tick-driven one (`MAX_DECISIONS`/`MAX_GATEKEEPER_
+REJECTIONS` already live in `app/nexus.py` for the identical reason).
+
+### Backward-compatible, additive signature change
+
+`_apply_operating_mode()` gained three new, all-optional trailing
+parameters (`active_risk_contract`/`risk_contract_scaling`/
+`risk_decisions`, each defaulting to `None`) rather than restructuring
+its existing positional signature or return tuple — every pre-existing
+caller (including every test in `tests/test_nexus.py` that predates this
+directive) is unaffected and gets exactly the old behavior (zero
+RiskDecisions produced) when it omits them. `risk_decisions` is mutated
+in place and capped in place, the same convention `gatekeeper_
+rejections`/`decisions` already use in this same loop — no new return
+slot, so no existing `remaining, _, _ = _apply_operating_mode(...)`
+unpacking call site anywhere needed to change.
+
+### Idempotency and historical preservation, structurally guaranteed
+
+A resolved proposal is removed from the pending list `app/nexus.py`'s
+`tick()` persists — it can never be re-resolved (and therefore never
+re-audited) on a later tick, a restart, or a duplicate-event replay.
+`build_risk_decision()` only ever appends, never mutates an existing
+record. Both proven directly: `test_a_second_call_on_the_returned_
+still_pending_list_cannot_duplicate` and `test_pre_existing_risk_
+decisions_are_not_rewritten_by_a_new_tick` (`tests/test_nexus.py`).
+
+### No schema change; real restart round-trip proven, not inferred
+
+`RiskDecision` already existed and was already fully wired through
+save/load since "Persisted Risk Contract + Dynamic Risk Scaling" — this
+pass adds no field, no new persisted type. `tests/test_persistence.py::
+test_risk_decisions_survive_a_real_restart_round_trip` proves a real,
+non-empty `RiskDecision` list survives the actual production `persist_
+modules()`/`load_modules()` round trip (not the legacy single-blob
+path), closing the loop the "prior sniper_trade_history migration
+incident" this directive's own instructions named as the failure mode
+to avoid repeating.
+
+### Strategy identity — deliberately untouched
+
+Auto-resolved trades still never populate `strategy_id` (only an
+explicit manual CEO selection via `submit_ceo_decision(strategy_id=...)`
+does) — this pass does not touch that boundary; `null` stays `null`,
+never inferred or fabricated.
+
+### Verification
+
+7 new unit tests directly on `build_risk_decision()` (`tests/test_risk_
+contract.py`, including a structural proof that neither `app/nexus.py`
+nor `app/state.py` ever constructs a `RiskDecision(...)` directly) plus
+a rewritten 8-test class in `tests/test_nexus.py` (replacing the one
+that had pinned the old gap down as a permanent, checkable invariant)
+and one new real-restart persistence test. Full backend suite, mypy,
+and ruff all clean; frontend tsc, ESLint, and build all clean (zero
+frontend files touched — the existing Paper-Trade Journal UI already
+joins a `RiskDecision` by `decisionId`, source-agnostic to which path
+created it, confirmed by reading that lookup rather than by a live
+screenshot, since no real auto-resolved trade has occurred yet in this
+save to display). Live-verified against the real, continuously-running
+burn-in save: a clean restart with zero migration warnings, real save
+state byte-identical before/after. No trade was forced and `/api/time/
+advance` was never called to manufacture evidence, per this directive's
+own explicit instruction — `riskDecisions` remains 0 in the real save
+until a real auto-resolved buy/sell genuinely occurs.

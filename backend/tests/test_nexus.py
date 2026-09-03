@@ -11,12 +11,21 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.market_intelligence import default_market_intelligence_state
-from app.nexus import MAX_DECISIONS, _apply_operating_mode, _generate_trade_proposals, _trim_decisions
+from app.nexus import MAX_DECISIONS, MAX_RISK_DECISIONS, _apply_operating_mode, _generate_trade_proposals, _trim_decisions
 from app.nexus import tick as nexus_tick
 from app.portfolio import default_portfolio, open_position
-from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, ResearchItem, RiskLimits, TimeState, TradeDecision, TradeProposal
+from app.risk_contract import activate_risk_contract, apply_active_risk_contract, create_draft_risk_contract, mark_validated
+from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, ResearchItem, RiskContract, RiskLimits, TimeState, TradeDecision, TradeProposal
 from app.state import default_state
 from app.trading_restrictions import activate_trading_restriction
+
+_NOW = "2026-01-01T00:00:00+00:00"
+
+
+def _active_risk_contract(*, limits: RiskLimits | None = None) -> tuple[RiskContract, list[RiskContract]]:
+    draft = create_draft_risk_contract(history=[], contract_id="rc-1", limits=limits or RiskLimits(), created_by="ceo", reason="Initial contract.", created_at=_NOW)
+    validated = mark_validated(draft, now_iso=_NOW)
+    return activate_risk_contract([validated], validated.id, now_iso=_NOW)
 
 
 def _decision(n: int) -> TradeDecision:
@@ -324,30 +333,27 @@ class TestApplyOperatingModeConsumesScaledRiskLimits:
         assert portfolio.positions[0].quantity == 20.0
 
 
-class TestAutoResolutionEnforcesButDoesNotAuditRiskDecisions:
-    """CEO directive "Controlled Paper Trading Readiness Audit + Burn-in
-    1.0" — a real 6-simulated-day burn-in (Executive Mode, this
-    directive's own multi-day requirement) surfaced a genuine, disclosed
-    gap: auto-resolved trades ARE correctly RiskContract-scaled (see
-    TestApplyOperatingModeConsumesScaledRiskLimits above — real
-    enforcement), but never produce a RiskDecision audit record. Only
-    app/state.py::submit_ceo_decision() (the CEO's own manual click)
-    builds one. This was always true (the RiskDecision mechanism's own
-    original directive scoped it to the manual path only) — this test
-    pins it down as a checkable, honest invariant rather than leaving it
-    an undocumented side effect, since a live burn-in is what actually
-    surfaced it as worth naming explicitly. Not a safety gap (enforcement
-    is real either way) — an audit-trail completeness gap, named here as
-    a candidate future finding, not fixed in this pass."""
+class TestAutoResolutionRiskDecisionAuditTrail:
+    """CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0" —
+    closes the real, disclosed gap the prior "Controlled Paper Trading
+    Readiness Audit + Burn-in 1.0" milestone found and named (auto-
+    resolved trades were always correctly RiskContract-scaled, but never
+    produced a RiskDecision audit record — only a manual/delegated CEO
+    click did). `_apply_operating_mode()` now builds one via the exact
+    same `app/risk_contract.py::build_risk_decision()` the manual path
+    uses, whenever a real `active_risk_contract`/`risk_contract_scaling`/
+    `risk_decisions` are supplied — see that function's own docstring
+    for why omitting them (as every OTHER test in this file does)
+    changes nothing about which trades execute."""
 
-    def test_auto_resolved_trades_leave_zero_risk_decisions_even_when_a_position_opens(self) -> None:
-        proposal = _proposal().model_copy(update={"quantity": 5.0})
-        remaining, portfolio, _meeting_log = _apply_operating_mode(
+    def _call(self, *, risk_decisions: list, risk_limits: RiskLimits = RiskLimits(), active_risk_contract=None, risk_contract_scaling=None, quantity: float = 5.0):  # type: ignore[no-untyped-def]
+        proposal = _proposal().model_copy(update={"quantity": quantity})
+        return _apply_operating_mode(
             "executive",
             [proposal],
             [],  # debates
             default_portfolio(),
-            RiskLimits(),
+            risk_limits,
             [],  # risk_warnings
             {"NEXA": 100.0},  # prices
             0,  # now_sim_minutes
@@ -367,16 +373,125 @@ class TestAutoResolutionEnforcesButDoesNotAuditRiskDecisions:
             "sideways",  # market_environment_regime
             "balanced_institutional",  # active_weight_profile
             {},  # custom_department_weights
+            active_risk_contract=active_risk_contract,
+            risk_contract_scaling=risk_contract_scaling,
+            risk_decisions=risk_decisions,
         )
+
+    def test_omitting_the_new_params_still_produces_zero_risk_decisions(self) -> None:
+        """Backward-compatible default — every other test in this file
+        (and every real caller before this directive) calls without
+        these params; behavior must stay exactly what it was."""
+        risk_decisions: list = []
+        remaining, portfolio, _meeting_log = self._call(risk_decisions=risk_decisions)
         assert remaining == []
         assert len(portfolio.positions) == 1
-        # _apply_operating_mode() has no risk_decisions parameter or
-        # return slot at all — the real, structural confirmation that
-        # this path cannot produce one today, not just an unpopulated
-        # list this test happened not to check.
-        import inspect
+        assert risk_decisions == []
 
-        assert "risk_decisions" not in inspect.signature(_apply_operating_mode).parameters
+    def test_a_real_active_contract_produces_a_real_risk_decision_for_an_approved_auto_resolved_trade(self) -> None:
+        active, history = _active_risk_contract()
+        limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=0.0, consecutive_losses=0)
+        risk_decisions: list = []
+        remaining, portfolio, _meeting_log = self._call(risk_decisions=risk_decisions, risk_limits=limits, active_risk_contract=contract, risk_contract_scaling=scaling)
+        assert remaining == []
+        assert len(portfolio.positions) == 1
+        assert len(risk_decisions) == 1
+        risk_decision = risk_decisions[0]
+        assert risk_decision.rejected is False
+        assert risk_decision.approved_quantity == portfolio.positions[0].quantity
+        assert risk_decision.symbol == "NEXA"
+
+    def test_scaled_risk_decision_reflects_the_real_drawdown_band(self) -> None:
+        """The persisted RiskDecision must reflect ACTUAL applied limits
+        — not a fixed/normal band regardless of real drawdown state."""
+        active, history = _active_risk_contract()
+        limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=5.0, consecutive_losses=0)
+        assert scaling is not None and scaling.drawdown_band_label == "moderate_drawdown"
+        risk_decisions: list = []
+        self._call(risk_decisions=risk_decisions, risk_limits=limits, active_risk_contract=contract, risk_contract_scaling=scaling)
+        assert len(risk_decisions) == 1
+        assert risk_decisions[0].scaling.drawdown_band_label == "moderate_drawdown"
+
+    def test_a_missing_contract_produces_no_risk_decision_fails_closed_like_before(self) -> None:
+        """A missing contract must never fabricate a RiskDecision — the
+        real fail-closed guard lives one layer up (risk_contract_available),
+        this just confirms build_risk_decision()'s own None-safety holds
+        even if a caller somehow reached this point without one."""
+        risk_decisions: list = []
+        remaining, portfolio, _meeting_log = self._call(risk_decisions=risk_decisions, active_risk_contract=None, risk_contract_scaling=None)
+        assert remaining == []
+        assert len(portfolio.positions) == 1  # enforcement/execution unchanged
+        assert risk_decisions == []  # but no audit record without a real contract
+
+    def test_a_rejected_auto_resolved_candidate_is_not_flattened_by_downstream_use(self) -> None:
+        """A candidate the real Gatekeeper vetoes (sized to zero via the
+        kill-switch band) still gets audited — rejected=True, no position."""
+        active, history = _active_risk_contract()
+        limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=15.0, consecutive_losses=0)
+        assert scaling is not None and scaling.kill_switch_triggered
+        risk_decisions: list = []
+        remaining, portfolio, _meeting_log = self._call(risk_decisions=risk_decisions, risk_limits=limits, active_risk_contract=contract, risk_contract_scaling=scaling)
+        assert remaining == []
+        assert portfolio.positions == []
+        assert len(risk_decisions) == 1
+        assert risk_decisions[0].rejected is True
+        assert risk_decisions[0].approved_quantity == 0.0
+
+    def test_risk_decisions_list_is_capped_at_max_risk_decisions(self) -> None:
+        """Same real permanent-audit-list cap discipline as gatekeeper_
+        rejections/decisions elsewhere in this same loop — never
+        unbounded growth."""
+        active, history = _active_risk_contract()
+        limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=0.0, consecutive_losses=0)
+        risk_decisions = [
+            __import__("app.schemas", fromlist=["RiskDecision"]).RiskDecision(
+                id=f"riskdecision-pre-{i}", createdAt="2026-01-01T00:00:00+00:00", proposalId=f"p{i}", decisionId=f"d{i}", symbol="AAA",
+                scaling=scaling, requestedQuantity=1.0, approvedQuantity=1.0, rejected=False,
+            )
+            for i in range(MAX_RISK_DECISIONS)
+        ]
+        self._call(risk_decisions=risk_decisions, risk_limits=limits, active_risk_contract=contract, risk_contract_scaling=scaling)
+        assert len(risk_decisions) == MAX_RISK_DECISIONS
+        assert risk_decisions[-1].symbol == "NEXA"  # the newest one — oldest was evicted, not this one
+
+    def test_pre_existing_risk_decisions_are_not_rewritten_by_a_new_tick(self) -> None:
+        """Historical preservation — a real, already-persisted RiskDecision
+        must come out byte-identical after a tick that adds a new one."""
+        active, history = _active_risk_contract()
+        limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=0.0, consecutive_losses=0)
+        RiskDecisionModel = __import__("app.schemas", fromlist=["RiskDecision"]).RiskDecision
+        historical = RiskDecisionModel(
+            id="riskdecision-historical-1", createdAt="2025-01-01T00:00:00+00:00", proposalId="old-proposal", decisionId="old-decision",
+            symbol="OLDSYM", scaling=scaling, requestedQuantity=3.0, approvedQuantity=3.0, rejected=False,
+        )
+        historical_copy = historical.model_copy()
+        risk_decisions: list = [historical]
+        self._call(risk_decisions=risk_decisions, risk_limits=limits, active_risk_contract=contract, risk_contract_scaling=scaling)
+        assert len(risk_decisions) == 2
+        assert risk_decisions[0] == historical_copy
+
+    def test_a_second_call_on_the_returned_still_pending_list_cannot_duplicate(self) -> None:
+        """Idempotency — once a proposal resolves, it's removed from the
+        pending list the real tick() loop actually persists; replaying
+        _apply_operating_mode() against that SAME (now-empty-of-it)
+        returned list can never re-resolve the same proposal twice."""
+        active, history = _active_risk_contract()
+        limits, contract, scaling = apply_active_risk_contract(RiskLimits(), risk_contracts=history, drawdown_pct=0.0, consecutive_losses=0)
+        risk_decisions: list = []
+        remaining, portfolio, _meeting_log = self._call(risk_decisions=risk_decisions, risk_limits=limits, active_risk_contract=contract, risk_contract_scaling=scaling)
+        assert len(risk_decisions) == 1
+        assert remaining == []
+
+        # Replay: call again with the real, now-empty remaining list — the
+        # exact real shape app/nexus.py's tick() would pass on the next
+        # real tick (or a duplicate-event replay of this same one).
+        remaining_2, portfolio_2, _meeting_log_2 = _apply_operating_mode(
+            "executive", remaining, [], portfolio, limits, [], {"NEXA": 100.0}, 0, [], [], [], [], [], [], [], [], [], [], 1,
+            default_market_intelligence_state(), [], "sideways", "balanced_institutional", {},
+            active_risk_contract=contract, risk_contract_scaling=scaling, risk_decisions=risk_decisions,
+        )
+        assert len(risk_decisions) == 1  # unchanged — nothing left to resolve
+        assert portfolio_2 == portfolio
 
 
 class TestFlattenedTradesReachTheLearningLoop:

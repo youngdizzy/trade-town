@@ -145,7 +145,7 @@ from app.position_sizing import build_position_sizing
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import compute_daily_objective_status, compute_risk_budget_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, portfolio_equity, recommended_quantity
-from app.risk_contract import apply_active_risk_contract
+from app.risk_contract import MAX_RISK_DECISIONS, apply_active_risk_contract, build_risk_decision
 from app.sandbox import apply_review_decision, cap_strategy_reports, cap_strategy_reviews, generate_strategy_report, maybe_advance_after_research, maybe_advance_after_result
 from app.strategy_drift import evaluate_strategy_drift
 from app.strategy_health import evaluate_health_transition
@@ -267,6 +267,9 @@ from app.schemas import (
     ReflectionCadence,
     ReflectionSession,
     ResearchItem,
+    RiskContract,
+    RiskContractScalingRead,
+    RiskDecision,
     RiskLimits,
     StrategicReview,
     StrategyHealthState,
@@ -969,6 +972,9 @@ def _apply_operating_mode(
     behavioral_size_increase_threshold_pct: float | None = None,
     trading_restrictions: list[TradingRestriction] | None = None,
     risk_contract_available: bool = True,
+    active_risk_contract: RiskContract | None = None,
+    risk_contract_scaling: RiskContractScalingRead | None = None,
+    risk_decisions: list[RiskDecision] | None = None,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -1049,9 +1055,34 @@ def _apply_operating_mode(
     unscaled, un-fail-closed risk state. A manual CEO decision on the
     deferred proposal is still safe: `app/state.py::submit_ceo_decision()`
     derives a real contract itself before deciding (see that method's
-    own FAIL CLOSED handling)."""
+    own FAIL CLOSED handling).
+
+    `active_risk_contract`/`risk_contract_scaling`/`risk_decisions`
+    (CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0") —
+    the real contract/scaling objects `risk_contract_available` above
+    was already derived from (never a second computation), and the
+    real, permanent audit list to append a `RiskDecision` to for every
+    real buy/sell this loop resolves — the exact same computation
+    (`app/risk_contract.py::build_risk_decision()`) `app/state.py::
+    submit_ceo_decision()` already uses for a manual/delegated
+    decision. All three default to `None`/`None`/an internal empty
+    list for any caller (chiefly existing tests) that never asked for
+    this — `build_risk_decision()` itself returns `None` (nothing
+    appended) whenever the contract/scaling aren't real, so omitting
+    these params changes nothing about which trades execute or how
+    they're sized, only whether a RiskDecision gets recorded."""
     if operating_mode == "learning" or not trade_proposals:
         return trade_proposals, portfolio, meeting_log
+
+    # CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0" —
+    # appended to in place below, exactly like gatekeeper_rejections/
+    # decisions/ceo_decisions already are in this same loop. `None`
+    # (the default for any caller — chiefly existing tests — that never
+    # asked for this) falls back to a throwaway local list, matching
+    # `trading_restrictions`'s own established None-default convention
+    # in this function's signature.
+    if risk_decisions is None:
+        risk_decisions = []
 
     still_pending: list[TradeProposal] = []
     for proposal in trade_proposals:
@@ -1143,6 +1174,25 @@ def _apply_operating_mode(
         new_prediction = build_prediction_record(decision, record, sim_day=sim_day)
         if new_prediction is not None:
             prediction_records.append(new_prediction)
+
+        # CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0"
+        # — the exact same real, canonical computation app/state.py's
+        # submit_ceo_decision() uses (app/risk_contract.py::
+        # build_risk_decision()), reusing this tick's own
+        # active_risk_contract/risk_contract_scaling (already computed
+        # once above, before this loop, the same real values that
+        # governed `risk_limits`'s own scaling) — never a second,
+        # independent risk-contract recomputation. Returns None (nothing
+        # appended) for the same two cases the manual path already
+        # silently skips: a "wait" resolution, or a missing contract/
+        # scaling — see that function's own docstring.
+        new_risk_decision = build_risk_decision(
+            proposal, proposal.overall_recommendation, decision, portfolio, active_risk_contract=active_risk_contract, risk_contract_scaling=risk_contract_scaling
+        )
+        if new_risk_decision is not None:
+            risk_decisions.append(new_risk_decision)
+            if len(risk_decisions) > MAX_RISK_DECISIONS:
+                del risk_decisions[: len(risk_decisions) - MAX_RISK_DECISIONS]
 
         challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == proposal.id), None)
         meeting_log = record_meeting_log_entry(
@@ -1318,6 +1368,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     prediction_records: list[PredictionRecord] = list(state.prediction_records)
     debates: list[Debate] = list(state.debates)
     gatekeeper_rejections: list[GatekeeperRejection] = list(state.gatekeeper_rejections)
+    # CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0" —
+    # previously only ever appended to by app/state.py's
+    # submit_ceo_decision(); _apply_operating_mode() below now appends
+    # to this same real, permanent audit list for auto-resolved trades
+    # too, via the one shared app/risk_contract.py::build_risk_decision().
+    risk_decisions: list[RiskDecision] = list(state.risk_decisions)
     opportunity_rejections: list[OpportunityRejection] = list(state.opportunity_rejections)
     # CEO directive "Opportunity Gate Calibration Experiment 1.0" — see
     # app/opportunity_gate_calibration_experiment.py's own module
@@ -2042,6 +2098,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         behavioral_size_increase_threshold_pct=trading_mode_state.behavioral_size_increase_threshold_pct,
         trading_restrictions=trading_restrictions,
         risk_contract_available=active_risk_contract is not None,
+        active_risk_contract=active_risk_contract,
+        risk_contract_scaling=risk_contract_scaling,
+        risk_decisions=risk_decisions,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)
@@ -3356,6 +3415,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "prediction_records": prediction_records,
             "debates": debates,
             "gatekeeper_rejections": gatekeeper_rejections,
+            "risk_decisions": risk_decisions,
             "opportunity_rejections": opportunity_rejections,
             "opportunity_shadow_captures": opportunity_shadow_captures,
             "market_environment": market_environment,
