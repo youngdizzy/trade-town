@@ -9281,6 +9281,165 @@ class DecisionScoreBreakdown(CamelModel):
     passed: bool
 
 
+# CEO directive "Opportunity Gate Calibration Experiment 1.0" — a real,
+# disclosed instrumentation gap this directive's own Phase 0 audit found:
+# OpportunityRejection (above) persists only the already-collapsed
+# `decisionScoreAtRejection` composite, never the 7 individual sub-scores
+# that fed it — `app/opportunity_gatekeeper.py`'s own module docstring
+# documents this as an intentional two-phase design tradeoff (the real
+# WarRoomSession a rejected candidate's DecisionScoreBreakdown lives on
+# was never permanently stored for a REJECTED candidate, only for an
+# APPROVED one — see WarRoomSession.decision_score above, real and
+# already persisted in `war_room_sessions` for every approved candidate).
+# Without the 7 sub-scores, no shadow model that excludes/caps/reweights
+# one of them (Models B/C/D below) can be honestly computed for a
+# rejected candidate — recomputing them after the fact from
+# `app/market_data.py` is not a substitute: that provider regenerates a
+# fresh series on every call, rescaled to whatever the LIVE price happens
+# to be at call time (see its own docstring), so a "recomputed" score
+# would silently use different information than the real gate decision
+# actually saw — exactly the kind of leakage this experiment's own
+# leakage-audit requirement forbids.
+#
+# This class is the fix, added by this directive: a real, minimal,
+# SEPARATE capture of the exact same `DecisionScoreBreakdown` object
+# already sitting in memory at the moment `evaluate_opportunity()` makes
+# its real gate decision (see app/nexus.py's tick()) — one per rejected
+# candidate, linked by `rejectionId`. Deliberately NOT a new field on
+# OpportunityRejection itself, honoring this directive's own "never
+# modifying production rejection records" instruction literally: the
+# production record's own shape is completely untouched; this is a
+# genuinely separate, versioned, trivially-rollback-able experiment
+# table (delete this list/class and app/opportunity_gate_calibration_
+# experiment.py and nothing about production Gatekeeper behavior,
+# persistence, or the OpportunityRejection record changes at all).
+#
+# HONEST LIMITATION, disclosed here and in the experiment module itself:
+# because this capture did not exist before this directive, it has ZERO
+# real observations for any rejection that predates this pass — the
+# experiment's own report must (and does) treat that as a real, honest
+# "insufficient evidence so far" for the rejected-candidate population,
+# never backfilled or fabricated.
+class OpportunityShadowSubScoreCapture(CamelModel):
+    id: str
+    rejection_id: str = Field(alias="rejectionId")
+    symbol: str
+    sub_scores: DecisionScoreBreakdown = Field(alias="subScores")
+    # The real, live `RiskLimits.min_trade_quality_score` gate value in
+    # effect at the moment of capture — kept alongside the sub-scores
+    # rather than assumed constant, since a CEO can edit this real,
+    # configurable limit over the life of a save (see app/risk_contract.py).
+    gate_threshold_at_capture: float = Field(alias="gateThresholdAtCapture")
+    captured_sim_minutes: int = Field(alias="capturedSimMinutes")
+    created_at: str = Field(alias="createdAt")
+
+
+# ============================================================================
+# CEO directive "Opportunity Gate Calibration Experiment 1.0" — report
+# schemas for app/opportunity_gate_calibration_experiment.py. See that
+# module's own docstring for the full real methodology; these are pure
+# read-only reporting shapes, never fed back into any live trading
+# decision (see OpportunityGateCalibrationExperimentReport's own
+# docstring for the explicit "does not control trading" disclosure).
+# ============================================================================
+
+
+class ShadowModelScore(CamelModel):
+    model_id: str = Field(alias="modelId")
+    overall: float
+    passed: bool
+
+
+class ShadowCandidateResult(CamelModel):
+    """One real, already-rejected candidate that has a matching
+    OpportunityShadowSubScoreCapture (see that schema's own docstring for
+    why only candidates rejected after this directive's own
+    instrumentation shipped are eligible)."""
+
+    rejection_id: str = Field(alias="rejectionId")
+    symbol: str
+    production_decision_score: float = Field(alias="productionDecisionScore")
+    liquidity_quality_score: float = Field(alias="liquidityQualityScore")
+    expected_value_at_rejection_pct: float = Field(alias="expectedValueAtRejectionPct")
+    outcome: GatekeeperOutcome
+    resolved_price_change_pct: float | None = Field(default=None, alias="resolvedPriceChangePct")
+    shadow_scores: dict[str, ShadowModelScore] = Field(alias="shadowScores")
+
+
+class ShadowApprovedCandidateResult(CamelModel):
+    """One real candidate that PASSED the Gatekeeper — sub-scores come
+    from the real, already-persisted WarRoomSession, no new capture
+    needed for this population (see this experiment module's own
+    docstring)."""
+
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    production_decision_score: float = Field(alias="productionDecisionScore")
+    liquidity_quality_score: float = Field(alias="liquidityQualityScore")
+    resolved_outcome: Literal["win", "loss", "unresolved"] = Field(alias="resolvedOutcome")
+    shadow_scores: dict[str, ShadowModelScore] = Field(alias="shadowScores")
+
+
+class ModelGroupSummary(CamelModel):
+    """The real 4-group classification for one shadow model — Section 4's
+    own (production PASS/FAIL) x (shadow PASS/FAIL) breakdown.
+    `rescuedCount` (production FAIL, shadow PASS) is the critical
+    population this whole experiment exists to characterize."""
+
+    model_id: str = Field(alias="modelId")
+    rescued_count: int = Field(alias="rescuedCount")
+    confirmed_reject_count: int = Field(alias="confirmedRejectCount")
+    confirmed_approve_count: int = Field(alias="confirmedApproveCount")
+    shadow_would_reject_count: int = Field(alias="shadowWouldRejectCount")
+
+
+class RescuedOutcomeEvidence(CamelModel):
+    """The rescued population's own real, resolved win rate vs. the
+    confirmed-reject population's, via a real bootstrap CI — or an
+    honest `insufficient_evidence` state below the real sample floor.
+    Never a fabricated interval, never a significance claim from a tiny
+    subgroup (Section 8)."""
+
+    model_id: str = Field(alias="modelId")
+    rescued_n_resolved: int = Field(alias="rescuedNResolved")
+    confirmed_reject_n_resolved: int = Field(alias="confirmedRejectNResolved")
+    evidence_state: Literal["sufficient_evidence", "insufficient_evidence"] = Field(alias="evidenceState")
+    bootstrap: BootstrapComparisonResult | None = None
+    note: str
+
+
+class LeakageAuditCheck(CamelModel):
+    check: str
+    passed: bool
+    detail: str
+
+
+class OpportunityGateCalibrationExperimentReport(CamelModel):
+    """SHADOW EXPERIMENT — DOES NOT CONTROL TRADING. Every number in this
+    report is diagnostic only: nothing here has ever been read by
+    `evaluate_opportunity()`, sized a position, or created a
+    TradeProposal/TradeDecision/RiskDecision/Order/Position/Trade. See
+    app/opportunity_gate_calibration_experiment.py's own module
+    docstring for the full real methodology and its disclosed
+    limitations."""
+
+    experiment_version: str = Field(alias="experimentVersion")
+    generated_at: str = Field(alias="generatedAt")
+    total_rejections_on_record: int = Field(alias="totalRejectionsOnRecord")
+    eligible_rejections_with_capture: int = Field(alias="eligibleRejectionsWithCapture")
+    ineligible_rejections_no_capture: int = Field(alias="ineligibleRejectionsNoCapture")
+    total_approved_war_room_sessions: int = Field(alias="totalApprovedWarRoomSessions")
+    control_equivalence_checked: int = Field(alias="controlEquivalenceChecked")
+    control_equivalence_mismatches: int = Field(alias="controlEquivalenceMismatches")
+    weight_scheme_validity: dict[str, float] = Field(alias="weightSchemeValidity")
+    group_counts: list[ModelGroupSummary] = Field(alias="groupCounts")
+    rescued_candidates: list[ShadowCandidateResult] = Field(alias="rescuedCandidates")
+    rescued_win_rate_comparisons: list[RescuedOutcomeEvidence] = Field(alias="rescuedWinRateComparisons")
+    liquidity_analysis_note: str = Field(alias="liquidityAnalysisNote")
+    leakage_audit: list[LeakageAuditCheck] = Field(alias="leakageAudit")
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+
+
 class ScenarioOutcomeComparison(CamelModel):
     """Filled in once the linked trade actually closes (see app/nexus.py's
     closed-trade loop) — a real comparison of WhatIfSimulation's own
@@ -13154,6 +13313,14 @@ class GameSaveState(CamelModel):
     # replacement for it.
     opportunity_rejections: list[OpportunityRejection] = Field(
         default_factory=list, alias="opportunityRejections"
+    )
+    # CEO directive "Opportunity Gate Calibration Experiment 1.0" — see
+    # OpportunityShadowSubScoreCapture's own docstring for why this is a
+    # separate list rather than a new field on opportunity_rejections
+    # above. Capped the same way as opportunity_rejections (see
+    # app/opportunity_gate_calibration_experiment.py's MAX_SHADOW_CAPTURES).
+    opportunity_shadow_captures: list[OpportunityShadowSubScoreCapture] = Field(
+        default_factory=list, alias="opportunityShadowCaptures"
     )
     # v0.7 Feature 22 — Market Environment Simulation (app/market_environment.py).
     market_environment: MarketEnvironmentState = Field(alias="marketEnvironment")

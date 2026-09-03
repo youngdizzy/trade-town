@@ -131,6 +131,7 @@ from app.institutional_memory import (
 )
 from app.mistakes import generate_case_studies, record_case_studies
 from app.opportunity_gatekeeper import build_opportunity_rejection, evaluate_opportunity, grade_opportunity_rejections
+from app.opportunity_gate_calibration_experiment import build_shadow_sub_score_capture
 from app.successes import generate_success_studies, record_success_studies
 from app.self_improvement import maybe_propose_recurring_mistake, maybe_propose_reinforce_success_pattern, record_self_improvement_proposal
 from app.evolution import compute_company_evolution_score, generate_institutional_evolution_report, record_evolution_report
@@ -257,6 +258,7 @@ from app.schemas import (
     MeetingState,
     NewsItem,
     OpportunityRejection,
+    OpportunityShadowSubScoreCapture,
     PaperPortfolio,
     PaperTrade,
     PaperTradeJournalEntry,
@@ -345,6 +347,11 @@ MAX_GATEKEEPER_REJECTIONS = 100
 # TradeProposal (see app/opportunity_gatekeeper.py); capped the same
 # way every other per-proposal record here is.
 MAX_OPPORTUNITY_REJECTIONS = 100
+# CEO directive "Opportunity Gate Calibration Experiment 1.0" — one
+# OpportunityShadowSubScoreCapture per real OpportunityRejection created
+# from here on (see that schema's own docstring for why this is a
+# separate list), capped 1:1 with MAX_OPPORTUNITY_REJECTIONS above.
+MAX_OPPORTUNITY_SHADOW_CAPTURES = 100
 # v0.7 Feature 22 — one MarketEnvironmentEntry per real regime change
 # (see app/market_environment.py) — a meaningful timeline stays small on
 # its own, but still capped like every other history list here.
@@ -1312,6 +1319,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     debates: list[Debate] = list(state.debates)
     gatekeeper_rejections: list[GatekeeperRejection] = list(state.gatekeeper_rejections)
     opportunity_rejections: list[OpportunityRejection] = list(state.opportunity_rejections)
+    # CEO directive "Opportunity Gate Calibration Experiment 1.0" — see
+    # app/opportunity_gate_calibration_experiment.py's own module
+    # docstring for why this is a separate list, paired 1:1 (by
+    # rejectionId) with opportunity_rejections above.
+    opportunity_shadow_captures: list[OpportunityShadowSubScoreCapture] = list(state.opportunity_shadow_captures)
     agent_energy = state.agent_energy
     operating_mode = state.settings.operating_mode
     executive_reviews: list[ExecutiveReview] = list(state.executive_reviews)
@@ -1886,19 +1898,36 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             correlated_position_count=real_correlated_positions,
         )
         if not approved:
-            opportunity_rejections.append(
-                build_opportunity_rejection(
-                    proposal,
+            new_rejection = build_opportunity_rejection(
+                proposal,
+                decision_score=war_room_session.decision_score,
+                expected_value=war_room_session.expected_value,
+                reasons=reject_reasons,
+                reason_codes=reject_reason_codes,
+                price_at_rejection=prices.get(proposal.symbol) or proposal.price,
+                now_sim_minutes=now_sim_minutes,
+            )
+            opportunity_rejections.append(new_rejection)
+            if len(opportunity_rejections) > MAX_OPPORTUNITY_REJECTIONS:
+                del opportunity_rejections[: len(opportunity_rejections) - MAX_OPPORTUNITY_REJECTIONS]
+            # CEO directive "Opportunity Gate Calibration Experiment 1.0"
+            # — captures the same real war_room_session.decision_score
+            # already in scope here, right before it would otherwise be
+            # discarded (see app/opportunity_gatekeeper.py's own
+            # docstring on why a rejected candidate's WarRoomSession was
+            # never previously stored). Pure diagnostic instrumentation:
+            # never read by evaluate_opportunity() above, never changes
+            # `approved`/reject_reasons/reject_reason_codes.
+            opportunity_shadow_captures.append(
+                build_shadow_sub_score_capture(
+                    new_rejection,
                     decision_score=war_room_session.decision_score,
-                    expected_value=war_room_session.expected_value,
-                    reasons=reject_reasons,
-                    reason_codes=reject_reason_codes,
-                    price_at_rejection=prices.get(proposal.symbol) or proposal.price,
+                    gate_threshold=effective_risk_limits.min_trade_quality_score,
                     now_sim_minutes=now_sim_minutes,
                 )
             )
-            if len(opportunity_rejections) > MAX_OPPORTUNITY_REJECTIONS:
-                del opportunity_rejections[: len(opportunity_rejections) - MAX_OPPORTUNITY_REJECTIONS]
+            if len(opportunity_shadow_captures) > MAX_OPPORTUNITY_SHADOW_CAPTURES:
+                del opportunity_shadow_captures[: len(opportunity_shadow_captures) - MAX_OPPORTUNITY_SHADOW_CAPTURES]
             continue
 
         challenge_reports.append(new_challenge_report)
@@ -3328,6 +3357,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "debates": debates,
             "gatekeeper_rejections": gatekeeper_rejections,
             "opportunity_rejections": opportunity_rejections,
+            "opportunity_shadow_captures": opportunity_shadow_captures,
             "market_environment": market_environment,
             "market_intelligence": market_intelligence,
             "market_intelligence_reports": market_intelligence_reports,

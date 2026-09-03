@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.data_quality_monitor import compute_data_quality_monitor
 from app.exit_efficiency import compute_exit_efficiency
 from app.opportunity_feed import compute_opportunity_feed
+from app.opportunity_gate_calibration_experiment import run_opportunity_gate_calibration_experiment
 from app.watchlist_eligibility import compute_watchlist_eligibility
 from app.performance_attribution import (
     compute_paper_trading_evidence_report,
@@ -33,6 +34,7 @@ from app.schemas import (
     DriftEvent,
     ExitEfficiencySummary,
     OpportunityFeed,
+    OpportunityGateCalibrationExperimentReport,
     PaperTradeJournalEntry,
     PaperTradingEvidenceReport,
     RegimePerformanceSummary,
@@ -96,6 +98,22 @@ async def get_paper_trading_evidence_report() -> PaperTradingEvidenceReport:
     new GameSaveState field, computed fresh per request."""
     state = await game_state.snapshot()
     return compute_paper_trading_evidence_report(state.paper_portfolio, state.decision_vault)
+
+
+@router.get("/opportunity-gate-calibration-experiment", response_model=OpportunityGateCalibrationExperimentReport)
+async def get_opportunity_gate_calibration_experiment() -> OpportunityGateCalibrationExperimentReport:
+    """CEO directive "Opportunity Gate Calibration Experiment 1.0" —
+    SHADOW EXPERIMENT, DOES NOT CONTROL TRADING. See app/opportunity_gate_
+    calibration_experiment.py's own module docstring for the full real
+    methodology. Read-only: computed fresh from already-persisted state
+    on every call, never mutates anything, never influences
+    evaluate_opportunity() or any other live Gatekeeper decision."""
+    state = await game_state.snapshot()
+    return run_opportunity_gate_calibration_experiment(
+        opportunity_rejections=state.opportunity_rejections,
+        opportunity_shadow_captures=state.opportunity_shadow_captures,
+        war_room_sessions=state.war_room_sessions,
+    )
 
 
 @router.get("/exit-efficiency", response_model=ExitEfficiencySummary)

@@ -229,6 +229,10 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "challenge_reports",
         "gatekeeper_rejections",
         "opportunity_rejections",
+        # CEO directive "Opportunity Gate Calibration Experiment 1.0" —
+        # paired 1:1 with opportunity_rejections above (linked by
+        # rejectionId), same real category, same persistence lifecycle.
+        "opportunity_shadow_captures",
         "executive_meeting_log",
         # CEO directive "TradeTown — Memecoin Sniper Agent" — the
         # permanent, append-only paper-trade journal (Section 20). Real,
