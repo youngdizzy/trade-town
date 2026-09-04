@@ -42,7 +42,8 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from app.broker import place_order
-from app.confidence import compute_confidence
+from app.confidence import compute_confidence, tier_for_score
+from app.player_vs_ai import _category_for_symbol
 from app.multi_timeframe import compute_multi_timeframe_confirmation
 from app.execution_quality import apply_slippage
 from app.gatekeeper import MIN_CONFIDENCE, evaluate_gatekeeper
@@ -61,10 +62,16 @@ from app.schemas import (
     AnalystRole,
     AnalystVote,
     CeoDecisionRecord,
+    ChallengerComparison,
+    ChampionRecord,
+    CompiledStrategyDefinition,
+    ConfidenceFactor,
     Debate,
+    DecisionConfidence,
     DecisionGrade,
     DecisionSessionContext,
     GatekeeperVerdict,
+    LiveSetupSignal,
     MarketIntelligenceState,
     NewsItem,
     OrderSide,
@@ -394,6 +401,150 @@ def generate_proposal(
         createdAt=_now_iso(),
         createdSimMinutes=now_sim_minutes,
         marketIntelligenceSummary=market_intelligence_summary,
+    )
+
+
+# CEO directive "TradeTown — Champion-Sourced Trade Proposal Provenance
+# + Shadow Bridge 1.0" — a real, disclosed, DERIVED score, never a flat
+# fabricated number. A champion signal is mechanical (a compiled rule
+# either fired or it didn't), so there is no analog to generate_proposal()'s
+# item.confidence (a research item's own random-walk gauge) or the
+# six-vote Multi-Agent Agreement factor compute_confidence() weighs —
+# forcing fake stand-ins into that engine would produce a fabricated
+# composite score dressed up as the same rigorous multi-agent read.
+# Instead this reuses the ONE real evidence source that actually exists:
+# the real StatisticalEconomicClassification from the promotion's own
+# ChallengerComparison (the exact evidence that justified promoting this
+# strategy to champion in the first place) — never recomputed, never a
+# second statistics implementation. Buckets reuse app/confidence.py's
+# own tier_for_score() bands so a "strong"-classified champion signal
+# reads as a "strong" tier here too, not a different scale. `None` (no
+# comparison found — true for the very first champion ever recorded, or
+# an old save) uses the same honest "moderate" default as a missing vote
+# already does elsewhere in this engine (_match_score()'s own `wait`
+# case) — never inflated to guarantee a Gatekeeper pass, never deflated
+# to guarantee a fail.
+_CHAMPION_CLASSIFICATION_SCORE: dict[str, float] = {
+    "both": 88.0,  # strong band (>=85) — statistically AND economically supported
+    "statistically_supported_only": 75.0,  # good band (>=70)
+    "economically_meaningful_only": 75.0,  # good band (>=70)
+    "neither": 58.0,  # moderate band (>=55) — promoted on the economic gate alone
+    "insufficient_sample": 58.0,
+    "invalid_evidence": 58.0,
+}
+_CHAMPION_NO_COMPARISON_SCORE = 58.0
+
+
+def build_champion_trade_proposal(
+    champion: ChampionRecord,
+    definition: CompiledStrategyDefinition,
+    signal: LiveSetupSignal,
+    symbol: str,
+    *,
+    price: float,
+    comparison: ChallengerComparison | None,
+    research: list[ResearchItem],
+    sentinel_warning: RiskWarning | None,
+    guardian_warning: RiskWarning | None,
+    now_sim_minutes: int,
+    portfolio: PaperPortfolio,
+    risk_limits: RiskLimits,
+    market_intelligence: MarketIntelligenceState,
+) -> TradeProposal | None:
+    """The one, thin, disclosed translation layer from a real
+    `ChampionLiveSignal`-equivalent (`LiveSetupSignal`) to a real
+    `TradeProposal`, `source="champion"`. Deliberately mirrors
+    `generate_proposal()`'s own real shape and reuses its same real
+    primitives (`recommended_quantity()`, the sentinel/guardian risk-
+    warning fallback, `_category_for_symbol()`, the market-intelligence
+    citation format) rather than inventing a second proposal-construction
+    path — the ONLY genuinely new logic here is the identity/provenance
+    fields and the classification-based confidence read above. Returns
+    `None`, exactly like `_generate_trade_proposals()`'s own `quantity <=
+    0: continue` case, when position sizing resolves to zero — never a
+    zero-size proposal.
+
+    Never fabricates identity: `source_definition_id`/
+    `source_definition_version` are the champion's own real, exact
+    values (never a guess), and `source_signal_bar_timestamp` is the
+    real market bar the signal fired on — this proposal's own
+    deterministic id is built from these same three real values by the
+    caller (app/nexus.py), so the exact same real signal can never
+    produce two different proposals."""
+    quantity = recommended_quantity(risk_limits, portfolio, price)
+    if quantity <= 0:
+        return None
+    risk_summary = sentinel_warning.message if sentinel_warning else guardian_warning.message if guardian_warning else f"{symbol} is within all configured risk limits."
+    choice: AnalystChoice = "buy" if signal.direction == "long" else "sell"
+    # Honest attribution: role="technical" is the closest real category
+    # fit (this IS a technical, rule-based read on the symbol's own
+    # candles), but agent_id="quant" — never "echo" (ROLE_TO_AGENT's own
+    # mapping for a HEURISTIC technical vote), since Echo produced
+    # nothing here. This is the one real vote behind this proposal, not
+    # a synthesized stand-in for a six-agent panel that never convened.
+    vote = AnalystVote(
+        role="technical",
+        agentId="quant",
+        choice=choice,
+        reasoning=(
+            f"Champion strategy '{champion.strategy_family}' (definition v{definition.version}) compiled entry rule "
+            f"triggered on {symbol}'s latest bar ({signal.entry_timestamp})."
+        ),
+        evidence=[
+            f"Entry {signal.entry_price:.4f}",
+            f"Stop {signal.stop_price:.4f}",
+            f"Target {signal.target_price:.4f}",
+            f"Champion promoted {champion.promoted_at} ({champion.promoted_by}): {champion.reasoning}",
+        ],
+    )
+    classification = comparison.classification if comparison is not None else None
+    score = _CHAMPION_CLASSIFICATION_SCORE.get(classification, _CHAMPION_NO_COMPARISON_SCORE) if classification is not None else _CHAMPION_NO_COMPARISON_SCORE
+    tier = tier_for_score(score)
+    evidence_detail = (
+        f"Promotion comparison {comparison.id}: classification={classification}."
+        if comparison is not None
+        else "No promotion comparison on record for this champion — neutral default applied."
+    )
+    confidence_engine = DecisionConfidence(
+        score=score,
+        tier=tier,
+        summary=(
+            f"Deterministic rule signal from promoted champion '{champion.strategy_family}' — not a probabilistic "
+            "multi-agent estimate. Confidence reflects the real evidence classification from this champion's own "
+            "promotion, not a fabricated composite."
+        ),
+        factors=[
+            ConfidenceFactor(name="Champion Promotion Evidence", score=score, weight=1.0, detail=evidence_detail),
+        ],
+    )
+    market_intelligence_summary = (
+        f"{market_intelligence.regime_label} — Market Quality {market_intelligence.quality.tier.replace('_', ' ')} "
+        f"({market_intelligence.quality.score:.0f}/100, {market_intelligence.quality.confidence_pct:.0f}% confidence)."
+    )
+    return TradeProposal(
+        id=f"proposal-champion-{champion.id}-{symbol}-{signal.entry_timestamp}",
+        symbol=symbol,
+        category=_category_for_symbol(symbol, research),
+        quantity=quantity,
+        price=price,
+        confidence=score,
+        analystVotes=[vote],
+        overallRecommendation=choice,
+        researchSummary=(
+            f"Champion-sourced signal: strategy '{champion.strategy_family}' (definition {definition.id} v{definition.version}), "
+            f"promoted {champion.promoted_at}."
+        ),
+        riskSummary=risk_summary,
+        confidenceEngine=confidence_engine,
+        createdAt=_now_iso(),
+        createdSimMinutes=now_sim_minutes,
+        marketIntelligenceSummary=market_intelligence_summary,
+        source="champion",
+        sourceChampionId=champion.id,
+        sourceStrategyFamily=champion.strategy_family,
+        sourceDefinitionId=definition.id,
+        sourceDefinitionVersion=definition.version,
+        sourceSignalBarTimestamp=signal.entry_timestamp,
     )
 
 

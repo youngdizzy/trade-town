@@ -3335,6 +3335,16 @@ AnalystRole = Literal["technical", "news", "macro", "risk", "sentiment", "execut
 # the one boundary where a CEO decision becomes a permanent TradeDecision.
 AnalystChoice = Literal["buy", "sell", "wait"]
 
+# CEO directive "TradeTown — Champion-Sourced Trade Proposal Provenance +
+# Shadow Bridge 1.0" — the smallest canonical provenance model the Phase
+# 0 audit justified. "heuristic" is the only source that has ever existed
+# in this codebase (app/executive.py's generate_proposal(), driven by
+# app/research.py's confidence-gauge research items); "champion" is the
+# one new, real source this directive adds (a promoted champion's own
+# live rule signal, app/strategy_engine.py's detect_live_setup_at_latest_bar()).
+# No other source type is justified by the current architecture.
+ProposalSource = Literal["heuristic", "champion"]
+
 # v0.7 Feature 40.5 — the Expert Consultation System's two real CEO
 # actions beyond buy/sell/wait. Both do the same real thing (reset the
 # proposal's own expiry clock — see app/executive.py's hold_proposal());
@@ -3429,6 +3439,28 @@ class TradeProposal(CamelModel):
     # time here — see that module's own docstring for the deterministic
     # rotation formula. None only for a proposal predating this chapter.
     trading_style: "TradingStyle | None" = Field(default=None, alias="tradingStyle")
+    # CEO directive "TradeTown — Champion-Sourced Trade Proposal
+    # Provenance + Shadow Bridge 1.0." `source` defaults to "heuristic"
+    # for every EXISTING/old proposal — a true historical fact, not a
+    # guess: this codebase had no other proposal-generation path before
+    # this directive, so every proposal ever created before it shipped
+    # really was heuristic. The five `source_*` fields below are ONLY
+    # ever populated when `source == "champion"`; they distinguish "this
+    # proposal came FROM a champion's own live signal" from "this
+    # proposal merely happens to involve a strategy" — see
+    # app/executive.py's build_champion_trade_proposal() for the one
+    # real, disclosed construction path. Never fabricated: a champion
+    # proposal preserves the champion's own real `definitionId`/
+    # `definitionVersion` exactly, never an invented version, and
+    # `sourceSignalBarTimestamp` is the real market bar timestamp the
+    # signal fired on (see LiveSetupSignal), doubling as this proposal's
+    # own deterministic duplicate-prevention key.
+    source: ProposalSource = Field(default="heuristic")
+    source_champion_id: str | None = Field(default=None, alias="sourceChampionId")
+    source_strategy_family: str | None = Field(default=None, alias="sourceStrategyFamily")
+    source_definition_id: str | None = Field(default=None, alias="sourceDefinitionId")
+    source_definition_version: int | None = Field(default=None, alias="sourceDefinitionVersion")
+    source_signal_bar_timestamp: str | None = Field(default=None, alias="sourceSignalBarTimestamp")
 
 
 # v0.7 Feature 17 — AI Debate Room. Every turn's substance is a real

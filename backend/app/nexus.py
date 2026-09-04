@@ -54,6 +54,7 @@ from app.discussion import generate_discussion
 from app.executive import (
     MAX_CEO_DECISIONS,
     MAX_PENDING_PROPOSALS,
+    build_champion_trade_proposal,
     expire_stale_proposals,
     generate_proposal,
     grade_ceo_decisions,
@@ -103,6 +104,7 @@ from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
 from app.market_debate import generate_market_debate
 from app.market_environment import tick_market_environment
+from app.player_vs_ai import _category_for_symbol
 from app.strategy_compiler import strategy_definition_slug
 from app.strategy_engine import detect_live_setup_at_latest_bar
 from app.market_intelligence import (
@@ -1611,23 +1613,36 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     watchlist = tick_watchlist(watchlist, research, market_data_provider)
     prices = {w.symbol: w.last_price for w in watchlist}
 
+    # --- v0.7 Feature 51: Market Intelligence Department -------------------
+    # Recomputed fresh every tick, before any proposal is generated below —
+    # "the company's eyes," the same real-data-every-tick convention
+    # market_environment/company_health already use. See
+    # app/market_intelligence.py's module docstring for the full honesty
+    # boundary (real technical analysis over real mock OHLCV data, named
+    # proxies where this codebase has no real order-flow/news-calendar
+    # source, nothing fabricated).
+    market_intelligence = compute_market_intelligence_state(watchlist, news, market_intelligence_reports, market_data_provider)
+
     # CEO directive "TradeTown — Autonomous Quant Operating System
-    # Ultimate End-State 1.0" — Phase 0 of "connect champion_history to
-    # live trading" (the single largest gap every audit this session
-    # independently converged on). SHADOW ONLY: this block creates no
-    # TradeProposal, is never read by resolve_proposal()/the Opportunity
-    # Gatekeeper/any Risk Contract code, and cannot affect what
-    # TradeTown actually trades. For each strategy family with a real,
-    # currently-promoted champion (get_current_champion()), checks
-    # whether that champion's own real compiled rules have a fresh
-    # entry setup on the LATEST bar of each watchlist symbol
-    # (detect_live_setup_at_latest_bar() — reuses the exact same
-    # setup-detection pipeline the backtest engine already trusts,
-    # never a second rule engine) and captures it if so. Real evidence
-    # of whether/how often a champion WOULD have signaled — never a
-    # trade. Empty on any save with no real promoted champion yet,
-    # which is honest, not a defect (see ChampionLiveSignalCapture's
-    # own docstring, app/schemas.py).
+    # Ultimate End-State 1.0" (Champion Live Signal Shadow Capture) +
+    # "TradeTown — Champion-Sourced Trade Proposal Provenance + Shadow
+    # Bridge 1.0." For each strategy family with a real, currently-
+    # promoted champion (get_current_champion()), checks whether that
+    # champion's own real compiled rules have a fresh entry setup on the
+    # LATEST bar of each watchlist symbol (detect_live_setup_at_latest_bar()
+    # — reuses the exact same setup-detection pipeline the backtest
+    # engine already trusts, never a second rule engine). Every real
+    # fresh signal is ALWAYS captured as shadow evidence
+    # (ChampionLiveSignalCapture, unconditional — unchanged from the
+    # prior milestone). A real signal MAY ALSO become a real,
+    # source="champion" TradeProposal candidate — added to
+    # champion_candidate_proposals below, which is merged into the SAME
+    # candidate_proposals list the heuristic path uses further down, so
+    # it passes through the identical, unmodified Opportunity Gatekeeper/
+    # War Room/Risk Contract funnel. Empty on any save with no real
+    # promoted champion yet, which is honest, not a defect (see
+    # ChampionLiveSignalCapture's own docstring, app/schemas.py).
+    champion_candidate_proposals: list[TradeProposal] = []
     champion_families = {c.strategy_family for c in state.champion_history}
     for family in champion_families:
         champion = get_current_champion(state.champion_history, strategy_family=family)
@@ -1644,6 +1659,17 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         )
         if champion_definition is None or champion_definition.status != "compiled":
             continue
+        # Real evidence for the confidence read below (app/executive.py's
+        # build_champion_trade_proposal()) — the SAME comparison that
+        # justified promoting this champion, never recomputed. `None`
+        # only when this champion has no comparison on record (the very
+        # first champion ever promoted for a family, or an old save) —
+        # an honest absence, never fabricated.
+        champion_comparison = (
+            next((c for c in state.challenger_comparisons if c.id == champion.source_comparison_id), None)
+            if champion.source_comparison_id is not None
+            else None
+        )
         for watchlist_entry in watchlist:
             try:
                 champion_live_candles = market_data_provider.get_candles(
@@ -1670,15 +1696,55 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             if len(champion_live_signal_captures) > MAX_CHAMPION_LIVE_SIGNAL_CAPTURES:
                 del champion_live_signal_captures[: len(champion_live_signal_captures) - MAX_CHAMPION_LIVE_SIGNAL_CAPTURES]
 
-    # --- v0.7 Feature 51: Market Intelligence Department -------------------
-    # Recomputed fresh every tick, before any proposal is generated below —
-    # "the company's eyes," the same real-data-every-tick convention
-    # market_environment/company_health already use. See
-    # app/market_intelligence.py's module docstring for the full honesty
-    # boundary (real technical analysis over real mock OHLCV data, named
-    # proxies where this codebase has no real order-flow/news-calendar
-    # source, nothing fabricated).
-    market_intelligence = compute_market_intelligence_state(watchlist, news, market_intelligence_reports, market_data_provider)
+            # --- Champion -> TradeProposal bridge ---------------------------
+            # Deterministic id from three real values (champion identity,
+            # symbol, the signal's own real bar timestamp) — the exact
+            # "reuse existing deterministic IDs" pattern generate_proposal()'s
+            # own `f"proposal-{item.id}"` already establishes, and
+            # resolve_proposal()'s own `f"decision-{proposal.id}"` already
+            # makes this id traceable into a resolved decision too. The
+            # SAME real bar can be "the latest bar" for many consecutive
+            # ticks (a 1h bar outlives many 5-minute ticks) — checking
+            # BOTH trade_proposals (still pending) AND decisions (already
+            # resolved — CEO decision, auto-resolution, OR an expired-to-
+            # wait auto-decision, since expire_stale_proposals() always
+            # produces one) is what makes this idempotent across ticks,
+            # ticks-since-restart, and repeated evaluation, per this
+            # directive's own explicit duplicate-prevention test matrix.
+            champion_candidate_id = f"proposal-champion-{champion.id}-{watchlist_entry.symbol}-{champion_live_signal.entry_timestamp}"
+            already_pending = any(p.id == champion_candidate_id for p in trade_proposals)
+            already_resolved = any(d.id == f"decision-{champion_candidate_id}" for d in decisions)
+            if already_pending or already_resolved:
+                continue
+            if trading_restrictions and find_blocking_restriction(trading_restrictions, symbol=watchlist_entry.symbol, category=_category_for_symbol(watchlist_entry.symbol, research)):
+                continue
+            champion_price = prices.get(watchlist_entry.symbol)
+            if champion_price is None or champion_price <= 0:
+                continue
+            champion_quantity = recommended_quantity(effective_risk_limits, paper_portfolio, champion_price)
+            if champion_quantity <= 0:
+                continue
+            champion_sentinel_warning = evaluate_sentinel_risk(
+                effective_risk_limits, paper_portfolio, symbol=watchlist_entry.symbol, proposed_value=champion_quantity * champion_price, sim_day=sim_minutes(new_time) // 1440
+            )
+            champion_guardian_warning = evaluate_guardian_exposure(effective_risk_limits, paper_portfolio, symbol=watchlist_entry.symbol)
+            champion_proposal = build_champion_trade_proposal(
+                champion,
+                champion_definition,
+                champion_live_signal,
+                watchlist_entry.symbol,
+                price=champion_price,
+                comparison=champion_comparison,
+                research=research,
+                sentinel_warning=champion_sentinel_warning,
+                guardian_warning=champion_guardian_warning,
+                now_sim_minutes=sim_minutes(new_time),
+                portfolio=paper_portfolio,
+                risk_limits=effective_risk_limits,
+                market_intelligence=market_intelligence,
+            )
+            if champion_proposal is not None:
+                champion_candidate_proposals.append(champion_proposal)
 
     # --- v0.6: Pulse's market scanner --------------------------------------
     # Runs off this tick's freshest watchlist prices, same as everything
@@ -2023,6 +2089,17 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             agent_vote_accuracy,
             trading_restrictions,
         )
+        # CEO directive "TradeTown — Champion-Sourced Trade Proposal
+        # Provenance + Shadow Bridge 1.0" — champion-sourced candidates
+        # merge into the EXACT SAME candidate list the heuristic path
+        # produces, so they pass through the identical, unmodified War
+        # Room / Opportunity Gatekeeper loop immediately below: one
+        # proposal system, one Gatekeeper, no bypass. Emergency Stop and
+        # every other block_new_proposals condition (Circuit Breaker,
+        # Losing Streak, Defensive Mode) already zero out this whole
+        # expression above, so they block champion candidates exactly
+        # the same way.
+        + champion_candidate_proposals
     )
     # v0.7 Design Bible Chapter 58 — the Institutional Trade Filter &
     # Opportunity Gatekeeper. Every candidate above is only a raw,

@@ -21762,3 +21762,117 @@ company's OVERALL automation classification (still C) or the
 champion-history-to-live-trading disconnection itself, which remains
 real and unresolved — this pass built its prerequisite, not its
 resolution.
+
+## CEO directive "TradeTown — Champion-Sourced Trade Proposal Provenance + Shadow Bridge 1.0"
+
+Closes the immediately-preceding milestone's own recommended next step:
+give `TradeProposal` real source provenance, and let a champion's live
+signal become one, subject to every existing safety system unchanged.
+
+### Phase 0 — exact construction path traced first
+
+`TradeProposal` is constructed in exactly one place for the heuristic
+path, `app/executive.py::generate_proposal()`, with a deterministic id
+(`f"proposal-{item.id}"`); `resolve_proposal()` derives
+`decision_id = f"decision-{proposal.id}"` from it. A second, earlier
+gate was found and confirmed generic: `app/nexus.py::tick()`'s
+`candidate_proposals` list — built by `_generate_trade_proposals()` —
+feeds a War Room/Devil's Advocate/**Opportunity Gatekeeper** loop
+(Design Bible Chapter 58) BEFORE a candidate is ever allowed into the
+real, CEO-visible `trade_proposals` list; rejected candidates leave no
+trace anywhere. This loop operates generically on `TradeProposal`
+objects, never re-deriving them from a `ResearchItem` — confirming a
+well-formed `TradeProposal` from any source flows through it
+identically, which is what makes "one proposal system, one Gatekeeper"
+architecturally true rather than merely asserted.
+
+### The bridge
+
+- **`TradeProposal.source: Literal["heuristic", "champion"]`**
+  (`app/schemas.py`), defaulting `"heuristic"` for every pre-existing
+  proposal — a true historical fact (no other path existed before this
+  directive), never fabricated. Five `source_*` fields carry the
+  champion's own real identity, populated only when `source ==
+  "champion"`.
+- **`app/executive.py::build_champion_trade_proposal()`** — the one
+  thin adapter, reusing `generate_proposal()`'s own real primitives.
+  The single real `AnalystVote` is attributed to `agent_id="quant"`,
+  never `"echo"` (the heuristic technical vote's own real attribution),
+  since Echo produced nothing here. Confidence is derived from the
+  champion's own real promotion-evidence classification
+  (`ChallengerComparison.classification`, the exact evidence that
+  justified the promotion in the first place) bucketed into
+  `app/confidence.py`'s own existing tier bands — never forced fake
+  multi-agent-agreement inputs into that engine's 7-factor formula,
+  which has no honest analog for a single, mechanical rule signal. `None`
+  comparison (first-ever champion, or an old save) uses the same
+  honest neutral default (58.0, "moderate") the confidence engine
+  already uses elsewhere for a missing vote.
+- **Wired into `nexus.py::tick()` as one more candidate source.**
+  Champion candidates are concatenated into the SAME `candidate_proposals`
+  list immediately before the unmodified Opportunity Gatekeeper loop,
+  gated by the exact same `emergency_stop.active or block_new_proposals`
+  check that already zeroes out heuristic candidates — verified live:
+  with Emergency Stop active, zero champion-sourced proposals appear
+  while the shadow capture (which only observes) keeps recording.
+
+### Duplicate prevention
+
+Each candidate's id
+(`proposal-champion-<championId>-<symbol>-<signalBarTimestamp>`)
+mirrors the heuristic path's own `f"proposal-{item.id}"` convention.
+Before building a new candidate, both `trade_proposals` (pending) and
+`decisions` (resolved — CEO, auto-resolved, or expired-to-wait, since
+`expire_stale_proposals()` always produces a real decision) are checked
+for a match. This is what makes the same real bar — which can remain
+"the latest bar" for many consecutive ticks — idempotent across ticks
+and restarts, test-proven both ways.
+
+### A real, disclosed limitation
+
+A champion candidate REJECTED by the Opportunity Gatekeeper leaves no
+trace in either list (the existing architecture's own design — rejected
+candidates are never recorded), so the identical signal is honestly
+re-evaluated on the next tick rather than remembered as "already
+tried." This never produces a duplicate `TradeProposal` — a rejected
+candidate never becomes one — only a disclosed, repeated evaluation
+cost, consistent with how the heuristic path's own one-shot research
+items already behave under the same architecture.
+
+### Safety invariants confirmed, not merely asserted
+
+No change to the Opportunity Gatekeeper, Risk Contract, RiskLimits,
+Emergency Stop, position sizing, order placement, or execution code.
+Structural test confirms the adapter never calls `place_order()` or
+`open_position()`. Memecoin Sniper untouched.
+
+### Testing and live verification
+
+20 new tests (`tests/test_champion_proposal_bridge.py`): provenance
+correctness, side/entry/stop/target mapping, confidence derivation with
+and without comparison evidence, deterministic-id duplicate prevention
+(both pending and resolved cases), Emergency Stop blocking, champion-
+supersession identity, JSON round-trip, backward-compatible defaulting
+on a raw payload with no `source` key, and the structural safety check
+above. Full backend suite: 4101 passed; mypy (228 files)/ruff clean.
+
+Live-verified against the running dev stack (real save, day 178): the
+live save currently has zero promoted champions — none was fabricated
+to force a demonstration, per this directive's own explicit instruction
+against inventing evidence. The server was confirmed stable across real
+ticks with the new schema and bridge code active in the tick loop (a
+safe, cheap no-op with no champion present). The full real bridge path
+— construction, Gatekeeper entry, duplicate prevention, Emergency Stop
+blocking — is proven end-to-end by the test suite's own real
+`compare_champion_challenger()`/`promote_challenger()`/`nexus.tick()`
+fixtures (only the signal-detection function itself is monkeypatched
+for determinism; the bridge, Gatekeeper, and dedup logic are all real,
+unmodified production code).
+
+**Champion Proposal Bridge Classification: B — IMPLEMENTED WITH
+MEANINGFUL LIMITATIONS.** The bridge is real, safe, and tested end to
+end, but has never yet carried a real champion's signal through to an
+actual CEO decision on the live save (no champion exists there yet),
+and rejected candidates are not remembered (a disclosed, pre-existing
+architectural characteristic, not new). This does not change the
+company's OVERALL automation classification (still C).

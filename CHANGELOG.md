@@ -7,6 +7,91 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Champion-Sourced Trade Proposal
+  Provenance + Shadow Bridge 1.0."** The first real bridge from a
+  promoted champion's own live signal into a real `TradeProposal` —
+  narrowly scoped, per the directive's own explicit non-negotiables:
+  one proposal system, one Opportunity Gatekeeper, one Risk Contract,
+  no bypass, paper-only.
+  - **`TradeProposal` gains real, disclosed provenance** (`app/schemas.py`):
+    `source: Literal["heuristic", "champion"]` (defaults `"heuristic"`
+    for every pre-existing/old proposal — a true historical fact, since
+    no other proposal path existed before this directive, never a
+    guess) plus five `source_*` fields (`sourceChampionId`,
+    `sourceStrategyFamily`, `sourceDefinitionId`,
+    `sourceDefinitionVersion`, `sourceSignalBarTimestamp`), populated
+    only when `source == "champion"`, always the champion's own real,
+    exact identity — never fabricated.
+  - **`app/executive.py::build_champion_trade_proposal()` (new)** — the
+    one thin adapter from a `LiveSetupSignal` to a real `TradeProposal`.
+    Reuses `generate_proposal()`'s own real shape and primitives
+    (`recommended_quantity()`, the sentinel/guardian risk-warning
+    fallback, `_category_for_symbol()`, the market-intelligence
+    citation format) rather than inventing a second construction path.
+    The one real `AnalystVote` is honestly attributed to `agent_id="quant"`
+    — never `"echo"` (the heuristic path's own technical-vote
+    attribution), since Echo produced nothing here. Confidence is
+    derived from the champion's own real promotion-evidence
+    classification (`ChallengerComparison.classification`) — reusing
+    `app/confidence.py`'s own tier bands — rather than forcing fake
+    multi-agent-agreement inputs into `compute_confidence()`'s existing
+    7-factor engine, which has no honest analog for a mechanical,
+    single-vote rule signal.
+  - **Wired into `app/nexus.py::tick()` as one more candidate source,
+    never a parallel pipeline.** Champion-sourced candidates are
+    concatenated into the EXACT SAME `candidate_proposals` list the
+    heuristic path already produces, immediately before the existing,
+    completely unmodified War Room / Devil's Advocate / Opportunity
+    Gatekeeper loop — so a champion proposal passes through the
+    identical funnel a heuristic one does, gated by the same
+    `emergency_stop.active or block_new_proposals` check that already
+    zeroes out heuristic candidates.
+  - **Deterministic duplicate prevention, reusing existing identity
+    conventions.** Each candidate's id
+    (`proposal-champion-<championId>-<symbol>-<signalBarTimestamp>`)
+    mirrors `generate_proposal()`'s own `f"proposal-{item.id}"` pattern;
+    checked against both `trade_proposals` (still pending) and
+    `decisions` (already resolved — covering CEO decisions,
+    auto-resolutions, AND expired-to-wait auto-decisions, since
+    `expire_stale_proposals()` always produces one) before a new
+    candidate is built. This is what makes the same real signal —
+    which can remain "the latest bar" for many consecutive ticks —
+    idempotent across ticks, restarts, and repeated evaluation.
+  - **A real, disclosed limitation found during design, not hidden:**
+    a champion candidate REJECTED by the Opportunity Gatekeeper leaves
+    no trace in either `trade_proposals` or `decisions` (rejected
+    candidates are never recorded, by the existing architecture's own
+    design), so the identical signal is honestly re-evaluated by the
+    Gatekeeper on the next tick rather than being remembered as
+    "already tried." This never produces a duplicate `TradeProposal`
+    (a rejected candidate never becomes one) — only a repeated,
+    disclosed re-evaluation cost, and is consistent with how the
+    heuristic path's own one-shot research items already behave.
+  - **Explicitly NOT built:** any change to the Opportunity Gatekeeper,
+    Risk Contract, RiskLimits, Emergency Stop, position sizing, order
+    placement, or execution logic; no automatic champion deployment,
+    retirement, or portfolio allocation; no live trading; Memecoin
+    Sniper untouched.
+  - **Testing:** 20 new tests (`tests/test_champion_proposal_bridge.py`)
+    covering provenance correctness, side/entry/stop/target mapping,
+    honest confidence derivation (with and without comparison
+    evidence), deterministic id/duplicate-prevention (pending AND
+    resolved cases), Emergency Stop blocking (while shadow capture
+    keeps observing), champion-supersession identity correctness, JSON
+    round-trip persistence, backward-compatible defaulting on a raw
+    pre-existing proposal payload with no `source` key at all, and a
+    structural check that the adapter never places an order or opens a
+    position directly. Full backend suite: 4101 passed; mypy (228
+    files)/ruff clean. Live-verified against the running dev stack: the
+    live save currently has zero promoted champions (confirmed via
+    `GET /api/trades/system-health`) — none was fabricated to force a
+    demonstration; the server was confirmed stable across real ticks
+    with the new schema and bridge code active (a safe no-op with no
+    champion present), and the full real bridge path is proven
+    end-to-end by the test suite's own real
+    `compare_champion_challenger()`/`promote_challenger()`/`nexus.tick()`
+    fixtures, never mocks of the bridge itself.
+
 - **CEO directive "TradeTown — Autonomous Quant Operating System Ultimate
   End-State 1.0" — Champion Live Signal Shadow Capture (Phase 0 of
   "connect champion_history to live trading").** A Phase 0 forensic
