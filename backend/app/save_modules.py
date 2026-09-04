@@ -238,6 +238,10 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # lifecycle as opportunity_shadow_captures above, symmetric
         # across rejected AND approved candidates.
         "multi_timeframe_liquidity_captures",
+        # CEO directive "TradeTown — Autonomous Quant Operating System
+        # Ultimate End-State 1.0" — same real category/persistence
+        # lifecycle as multi_timeframe_liquidity_captures above.
+        "champion_live_signal_captures",
         "executive_meeting_log",
         # CEO directive "TradeTown — Memecoin Sniper Agent" — the
         # permanent, append-only paper-trade journal (Section 20). Real,

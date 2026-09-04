@@ -56,6 +56,7 @@ from app.schemas import (
     CompiledStrategyBacktestResult,
     CompiledStrategyDefinition,
     EmaPullbackTradeRecord,
+    LiveSetupSignal,
     ModelValidationReport,
     SimulationResult,
     Strategy,
@@ -690,6 +691,61 @@ def backtest_symbol_over_candles(definition: CompiledStrategyDefinition, symbol:
             )
         )
     return trades
+
+
+def detect_live_setup_at_latest_bar(definition: CompiledStrategyDefinition, symbol: str, candles: list[Candle]) -> LiveSetupSignal | None:
+    """CEO directive "TradeTown — Autonomous Quant Operating System
+    Ultimate End-State 1.0," Part XI/Phase 12 groundwork — the real,
+    live counterpart to `backtest_symbol_over_candles()` above, reusing
+    the EXACT SAME `_detect_generic_setups()`/`_resolve_stop()`/
+    `_resolve_target()` pipeline that function already trusts (never a
+    second, duplicate rule-evaluation engine). Where the backtest walks
+    every historical setup and simulates its forward exit,
+    this only asks one question: does a real setup's `entry_index` land
+    on the LAST bar of `candles` — i.e., did this definition's entry
+    trigger JUST NOW, on the most current real data available? No
+    forward-looking candles are used or required (unlike the backtest,
+    which needs `MAX_HOLD_BARS` of future bars to simulate an exit) —
+    there is nothing to simulate yet.
+
+    Returns `None`, never a guess, when: the definition isn't
+    `status == "compiled"`; there isn't enough trailing history for its
+    own indicators; no setup's `entry_index` is the latest bar; or a
+    real stop/target can't be resolved for it (identical resolution
+    rules the backtest itself already enforces — a setup with no
+    resolvable stop is never treated as tradeable there either).
+
+    SHADOW ONLY by construction: this function creates no
+    `TradeProposal`, places no order, and is never called from anywhere
+    in the trade-proposal/Gatekeeper/order pipeline — see
+    `ChampionLiveSignalCapture`'s own docstring (app/schemas.py) for
+    the one real, disclosed caller."""
+    if definition.status != "compiled":
+        return None
+    if len(candles) < MIN_BARS_ON_SIDE_BEFORE_CROSS + 60:
+        return None
+    series = _build_series_cache(candles, definition, symbol)
+    setups = _detect_generic_setups(candles, definition, series)
+    latest_index = len(candles) - 1
+    fresh_setup = next((s for s in setups if s.entry_index == latest_index), None)
+    if fresh_setup is None:
+        return None
+    atr_series_values: list[float] = []
+    if definition.stop is not None and definition.stop.method == "chandelier" and definition.stop.atr_period is not None:
+        atr_series_values = atr_series(candles, definition.stop.atr_period)
+    stop_price = _resolve_stop(definition, candles, atr_series_values, fresh_setup)
+    if stop_price is None:
+        return None
+    target_price = _resolve_target(definition, fresh_setup.entry_price, stop_price, fresh_setup.direction)
+    if target_price is None:
+        return None
+    return LiveSetupSignal(
+        direction="long" if fresh_setup.direction == "long" else "short",  # type: ignore[arg-type]
+        entryTimestamp=candles[latest_index].timestamp,
+        entryPrice=fresh_setup.entry_price,
+        stopPrice=stop_price,
+        targetPrice=round(target_price, 4),
+    )
 
 
 def run_compiled_strategy_backtest(

@@ -4907,6 +4907,26 @@ class EmaPullbackTradeRecord(CamelModel):
     bars_held: int = Field(alias="barsHeld")
 
 
+class LiveSetupSignal(CamelModel):
+    """CEO directive "TradeTown — Autonomous Quant Operating System
+    Ultimate End-State 1.0," Part XI/Phase 12 groundwork — a real entry
+    setup detected on the MOST RECENT bar of a live (mock) candle
+    window, using the exact same `_detect_generic_setups()`/
+    `_resolve_stop()`/`_resolve_target()` pipeline
+    `backtest_symbol_over_candles()` already trusts (see
+    `detect_live_setup_at_latest_bar()`, app/strategy_engine.py — never
+    a second, duplicate rule-evaluation engine). No `outcome`/`exitPrice`
+    field: unlike `EmaPullbackTradeRecord`, this describes a setup that
+    JUST triggered, not a completed historical trade — there is nothing
+    to resolve yet."""
+
+    direction: Literal["long", "short"]
+    entry_timestamp: str = Field(alias="entryTimestamp")
+    entry_price: float = Field(alias="entryPrice")
+    stop_price: float = Field(alias="stopPrice")
+    target_price: float = Field(alias="targetPrice")
+
+
 class EmaPullbackStatsBucket(CamelModel):
     """One real, honestly-sized bucket of trades — used identically for
     the R-multiple sweep, the session/regime/instrument/breakout-size
@@ -6715,7 +6735,16 @@ class ChampionRecord(CamelModel):
     the live trade-proposal/decision/order pipeline — promoting a
     champion updates this internal record only, never what TradeTown
     actually trades (a separate, larger, still-disconnected gap, see
-    that directive's own final report)."""
+    that directive's own final report).
+
+    CEO directive "TradeTown — Autonomous Quant Operating System
+    Ultimate End-State 1.0" — the FIRST real reader of this list outside
+    promotion bookkeeping: `app/nexus.py`'s tick() now also reads
+    `get_current_champion()` per family to build
+    `ChampionLiveSignalCapture` — a SHADOW-ONLY read (see that schema's
+    own docstring). This still does not touch trade-proposal/decision/
+    order code at all; it only observes whether a champion's own rules
+    would have fired on live data, and records that as evidence."""
 
     id: str
     strategy_family: str = Field(alias="strategyFamily")
@@ -9531,6 +9560,40 @@ class MultiTimeframeLiquidityCapture(CamelModel):
     rejection_id: str | None = Field(default=None, alias="rejectionId")
     proposal_id: str | None = Field(default=None, alias="proposalId")
     read: MultiTimeframeLiquidityRead
+    captured_sim_minutes: int = Field(alias="capturedSimMinutes")
+    created_at: str = Field(alias="createdAt")
+
+
+class ChampionLiveSignalCapture(CamelModel):
+    """CEO directive "TradeTown — Autonomous Quant Operating System
+    Ultimate End-State 1.0" — Phase 0 of "connect champion_history to
+    live trading" (the largest gap every audit this session
+    independently converged on). SHADOW ONLY: captured once per real
+    tick, in app/nexus.py's tick(), whenever the CURRENT champion
+    (`app/champion_challenger.py::get_current_champion()`) for a
+    strategy family has a fresh, real `LiveSetupSignal` on the latest
+    bar of a watchlist symbol (`app/strategy_engine.py::
+    detect_live_setup_at_latest_bar()`, reusing the exact same
+    setup-detection pipeline the real backtest engine already trusts —
+    never a second, duplicate rule engine). This record is NEVER read
+    by `_generate_trade_proposals()`, `resolve_proposal()`, the
+    Opportunity Gatekeeper, or any Risk Contract code — it creates no
+    `TradeProposal`, places no order, and cannot affect what TradeTown
+    actually trades. It exists purely to accumulate real evidence of
+    how often, and under what conditions, a champion strategy WOULD
+    have signaled — the honest prerequisite for ever considering
+    connecting one to real (paper) trade generation, not that
+    connection itself. See `ChampionRecord`'s own docstring for the
+    disclosure that this is the first real (shadow-only) reader of
+    `champion_history` outside promotion bookkeeping."""
+
+    id: str
+    strategy_family: str = Field(alias="strategyFamily")
+    champion_id: str = Field(alias="championId")
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    symbol: str
+    signal: LiveSetupSignal
     captured_sim_minutes: int = Field(alias="capturedSimMinutes")
     created_at: str = Field(alias="createdAt")
 
@@ -13530,6 +13593,16 @@ class GameSaveState(CamelModel):
     # optional default — no migration risk for an existing save.
     multi_timeframe_liquidity_captures: list[MultiTimeframeLiquidityCapture] = Field(
         default_factory=list, alias="multiTimeframeLiquidityCaptures"
+    )
+    # CEO directive "TradeTown — Autonomous Quant Operating System
+    # Ultimate End-State 1.0" — see ChampionLiveSignalCapture's own
+    # docstring. Capped the same way as multi_timeframe_liquidity_captures
+    # above (see app/nexus.py's MAX_CHAMPION_LIVE_SIGNAL_CAPTURES). Safe,
+    # optional default — no migration risk for an existing save. Empty
+    # on every save with no real promoted champion yet, which is honest,
+    # not a defect.
+    champion_live_signal_captures: list[ChampionLiveSignalCapture] = Field(
+        default_factory=list, alias="championLiveSignalCaptures"
     )
     # v0.7 Feature 22 — Market Environment Simulation (app/market_environment.py).
     market_environment: MarketEnvironmentState = Field(alias="marketEnvironment")

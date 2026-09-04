@@ -7,6 +7,69 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Autonomous Quant Operating System Ultimate
+  End-State 1.0" — Champion Live Signal Shadow Capture (Phase 0 of
+  "connect champion_history to live trading").** A Phase 0 forensic
+  audit (a dedicated Explore sub-agent tracing the real trade-proposal
+  path end to end) confirmed the single largest gap every audit this
+  session has independently converged on is bigger than previously
+  scoped: real `TradeProposal`s come entirely from a heuristic,
+  random-confidence research/analyst-vote system (`app/research.py`/
+  `app/executive.py`) completely decoupled from `CompiledStrategyDefinition`
+  — and, critically, **no live single-bar rule evaluator exists anywhere**
+  for a compiled strategy; `app/strategy_engine.py` only ever backtests
+  a full historical series. Building the live evaluator is therefore the
+  genuine prerequisite for connecting a champion to real trading, not a
+  wiring afterthought — and wiring an unproven new signal source
+  straight into `_generate_trade_proposals()` in the same pass it's
+  first built would be exactly the "reckless rewrite"/"no fake autonomy"
+  outcome this directive itself forbids. This pass built and shadow-
+  wired the evaluator ONLY — evidence collection, not a trading change.
+  - **`app/strategy_engine.py::detect_live_setup_at_latest_bar()`
+    (new).** Reuses the EXACT SAME `_detect_generic_setups()`/
+    `_resolve_stop()`/`_resolve_target()` pipeline
+    `backtest_symbol_over_candles()` already trusts — never a second,
+    duplicate rule engine. Asks one question: does a real setup's
+    `entry_index` land on the LAST bar of the given candle window? Test-
+    proven to reproduce, bar-for-bar, the exact same real setup
+    (direction/entry/stop/target) the real backtest engine finds when
+    given only the data up to that point — the same real edge, not a
+    reimplementation of it.
+  - **`ChampionLiveSignalCapture` (new, `app/schemas.py`) — SHADOW ONLY.**
+    Wired into `app/nexus.py`'s tick(): for each strategy family with a
+    real, currently-promoted champion (`get_current_champion()`), checks
+    every watchlist symbol for a fresh live signal and captures it if
+    found. This is the FIRST real reader of `champion_history` outside
+    promotion bookkeeping (see `ChampionRecord`'s own docstring for the
+    disclosure) — but it creates no `TradeProposal`, is never read by
+    `resolve_proposal()`/the Opportunity Gatekeeper/any Risk Contract
+    code, and cannot affect what TradeTown actually trades. A second
+    real Phase 0 finding, caught by a failing test before any product
+    code shipped: the research factory's own registry only ever gains
+    an entry for a MUTATED child, never an original seed/challenger — so
+    a champion can only be evaluated live if its definition was
+    separately REGISTERED at some point (`POST /register-strategy-version`);
+    otherwise the honest behavior is to skip it, never to fabricate a
+    definition. New read-only `GET /api/sandbox/champion-live-signal-captures`.
+  - **Explicitly NOT built this pass:** any change to `_generate_trade_proposals()`,
+    the Opportunity Gatekeeper, Risk Contract, position sizing, or order
+    placement. A champion firing a real signal here changes nothing
+    about what TradeTown trades — connecting this evidence to an actual
+    (paper) trade decision remains a distinct, larger, separately-scoped
+    milestone requiring its own governance/provenance/CEO-control design.
+  - **Testing:** 11 new tests (`tests/test_champion_live_signal.py`),
+    including a cross-check that slicing real candles up to a real
+    backtest-discovered trade's own entry bar makes the live detector
+    find the identical real setup, and a real end-to-end
+    `app/nexus.py::tick()` wiring test using a real promoted champion
+    (via the actual `compare_champion_challenger()`/`promote_challenger()`
+    pipeline, never a hand-built `ChampionRecord`). Full backend suite:
+    4081 passed. Live-verified against the running dev stack: the new
+    endpoint responds honestly empty on a save with no real champion,
+    and two real (not manufactured) champion/challenger comparisons
+    attempted live both correctly failed to clear the real evidence
+    gate — confirming the safety boundary holds, not a demo failure.
+
 - **CEO directive "TradeTown — Autonomous Research Orchestrator 1.0."**
   Phase 0 forensic audit confirmed the recommended next milestone from
   the immediately-preceding End-State 1.0 pass: `research_factory.py`'s

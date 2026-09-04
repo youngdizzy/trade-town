@@ -90,6 +90,7 @@ from app.economic_intelligence import (
 )
 from app.executive_review import generate_executive_review, record_review
 from app.board import generate_board_report, record_board_report
+from app.champion_challenger import get_current_champion
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.goals import generate_strategic_review, record_strategic_review, tick_goals
 from app.foundational_mentors import tick_employee_progress
@@ -102,6 +103,8 @@ from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
 from app.market_debate import generate_market_debate
 from app.market_environment import tick_market_environment
+from app.strategy_compiler import strategy_definition_slug
+from app.strategy_engine import detect_live_setup_at_latest_bar
 from app.market_intelligence import (
     MULTI_TIMEFRAME_LIQUIDITY_CANDLE_COUNT,
     MULTI_TIMEFRAME_LIQUIDITY_TIMEFRAME,
@@ -228,6 +231,7 @@ from app.schemas import (
     CeoOverrideEvaluation,
     PredictionRecord,
     ChallengeReport,
+    ChampionLiveSignalCapture,
     BlackSwanEventRecord,
     BlackSwanReport,
     BoardReport,
@@ -373,6 +377,16 @@ MAX_OPPORTUNITY_SHADOW_CAPTURES = 100
 # candidate reaching Opportunity Gatekeeper evaluation (rejected OR
 # approved — see that schema's own docstring), capped the same way.
 MAX_MULTI_TIMEFRAME_LIQUIDITY_CAPTURES = 100
+# CEO directive "TradeTown — Autonomous Quant Operating System Ultimate
+# End-State 1.0" — one ChampionLiveSignalCapture per real, fresh
+# `LiveSetupSignal` a current champion fires on a watchlist symbol,
+# capped the same way. `CHAMPION_LIVE_SIGNAL_CANDLE_COUNT` is real
+# backward-only history for `detect_live_setup_at_latest_bar()`'s own
+# indicator lookback (never the war room's 30-bar window — too short
+# for a 50 EMA/pullback structure to stabilize; see
+# app/strategy_engine.py's MIN_BARS_ON_SIDE_BEFORE_CROSS+60 floor).
+MAX_CHAMPION_LIVE_SIGNAL_CAPTURES = 100
+CHAMPION_LIVE_SIGNAL_CANDLE_COUNT = 300
 # v0.7 Feature 22 — one MarketEnvironmentEntry per real regime change
 # (see app/market_environment.py) — a meaningful timeline stays small on
 # its own, but still capped like every other history list here.
@@ -1429,6 +1443,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # docstring. Symmetric across both rejected AND approved candidates,
     # unlike opportunity_shadow_captures above.
     multi_timeframe_liquidity_captures: list[MultiTimeframeLiquidityCapture] = list(state.multi_timeframe_liquidity_captures)
+    # CEO directive "TradeTown — Autonomous Quant Operating System
+    # Ultimate End-State 1.0" — see ChampionLiveSignalCapture's own
+    # docstring. Read (never mutated) from state.champion_history below;
+    # this is the one, disclosed, shadow-only reader of it outside
+    # promotion bookkeeping.
+    champion_live_signal_captures: list[ChampionLiveSignalCapture] = list(state.champion_live_signal_captures)
     agent_energy = state.agent_energy
     operating_mode = state.settings.operating_mode
     executive_reviews: list[ExecutiveReview] = list(state.executive_reviews)
@@ -1590,6 +1610,65 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
 
     watchlist = tick_watchlist(watchlist, research, market_data_provider)
     prices = {w.symbol: w.last_price for w in watchlist}
+
+    # CEO directive "TradeTown — Autonomous Quant Operating System
+    # Ultimate End-State 1.0" — Phase 0 of "connect champion_history to
+    # live trading" (the single largest gap every audit this session
+    # independently converged on). SHADOW ONLY: this block creates no
+    # TradeProposal, is never read by resolve_proposal()/the Opportunity
+    # Gatekeeper/any Risk Contract code, and cannot affect what
+    # TradeTown actually trades. For each strategy family with a real,
+    # currently-promoted champion (get_current_champion()), checks
+    # whether that champion's own real compiled rules have a fresh
+    # entry setup on the LATEST bar of each watchlist symbol
+    # (detect_live_setup_at_latest_bar() — reuses the exact same
+    # setup-detection pipeline the backtest engine already trusts,
+    # never a second rule engine) and captures it if so. Real evidence
+    # of whether/how often a champion WOULD have signaled — never a
+    # trade. Empty on any save with no real promoted champion yet,
+    # which is honest, not a defect (see ChampionLiveSignalCapture's
+    # own docstring, app/schemas.py).
+    champion_families = {c.strategy_family for c in state.champion_history}
+    for family in champion_families:
+        champion = get_current_champion(state.champion_history, strategy_family=family)
+        if champion is None:
+            continue
+        family_slug = strategy_definition_slug(family)
+        champion_definition = next(
+            (
+                d
+                for d in state.compiled_strategy_versions.get(family_slug, [])
+                if d.id == champion.definition_id and d.version == champion.definition_version
+            ),
+            None,
+        )
+        if champion_definition is None or champion_definition.status != "compiled":
+            continue
+        for watchlist_entry in watchlist:
+            try:
+                champion_live_candles = market_data_provider.get_candles(
+                    watchlist_entry.symbol, champion_definition.timeframe, CHAMPION_LIVE_SIGNAL_CANDLE_COUNT
+                )
+            except ValueError:
+                continue
+            champion_live_signal = detect_live_setup_at_latest_bar(champion_definition, watchlist_entry.symbol, champion_live_candles)
+            if champion_live_signal is None:
+                continue
+            champion_live_signal_captures.append(
+                ChampionLiveSignalCapture(
+                    id=f"champion-live-signal-{champion.id}-{watchlist_entry.symbol}-{new_time.day}-{sim_minutes(new_time)}",
+                    strategyFamily=family,
+                    championId=champion.id,
+                    definitionId=champion_definition.id,
+                    definitionVersion=champion_definition.version,
+                    symbol=watchlist_entry.symbol,
+                    signal=champion_live_signal,
+                    capturedSimMinutes=sim_minutes(new_time),
+                    createdAt=_now_iso(),
+                )
+            )
+            if len(champion_live_signal_captures) > MAX_CHAMPION_LIVE_SIGNAL_CAPTURES:
+                del champion_live_signal_captures[: len(champion_live_signal_captures) - MAX_CHAMPION_LIVE_SIGNAL_CAPTURES]
 
     # --- v0.7 Feature 51: Market Intelligence Department -------------------
     # Recomputed fresh every tick, before any proposal is generated below —
@@ -3558,6 +3637,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "opportunity_rejections": opportunity_rejections,
             "opportunity_shadow_captures": opportunity_shadow_captures,
             "multi_timeframe_liquidity_captures": multi_timeframe_liquidity_captures,
+            "champion_live_signal_captures": champion_live_signal_captures,
             "market_environment": market_environment,
             "market_intelligence": market_intelligence,
             "market_intelligence_reports": market_intelligence_reports,

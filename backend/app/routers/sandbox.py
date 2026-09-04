@@ -41,6 +41,7 @@ from app.schemas import (
     BacktestSession,
     CandidacyBinning,
     ChallengerComparison,
+    ChampionLiveSignalCapture,
     ChampionRecord,
     CompiledStrategyBacktestResult,
     CompiledStrategyDefinition,
@@ -971,6 +972,24 @@ async def champion_challenger_family(strategy_family: str) -> ChampionChallenger
     history = [c for c in state.champion_history if c.strategy_family == strategy_family]
     comparisons = [c for c in state.challenger_comparisons if c.strategy_family == strategy_family]
     return ChampionChallengerFamilyRead(current=current, history=history, comparisons=comparisons)
+
+
+@router.get("/champion-live-signal-captures", response_model=list[ChampionLiveSignalCapture])
+async def champion_live_signal_captures(strategy_family: str | None = Query(default=None)) -> list[ChampionLiveSignalCapture]:
+    """CEO directive "TradeTown — Autonomous Quant Operating System
+    Ultimate End-State 1.0" — the real, permanent, capped shadow-only
+    evidence of whether/how often a current champion's own compiled
+    rules have fired on live (mock) price action (see
+    ChampionLiveSignalCapture's own docstring, app/schemas.py, for the
+    full real methodology and the explicit "never a trade" disclosure).
+    Optionally filtered to one real strategy family. Read-only. Empty
+    on any save with no real promoted champion yet — honest, not a
+    defect."""
+    state = await game_state.snapshot()
+    captures = state.champion_live_signal_captures
+    if strategy_family is not None:
+        captures = [c for c in captures if c.strategy_family == strategy_family]
+    return captures
 
 
 @router.post("/research-loop/run", response_model=ResearchLoopIterationRecord)

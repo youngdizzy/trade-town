@@ -21661,3 +21661,104 @@ only already-real inputs. This does not change the company's OVERALL
 automation classification (still C, per the immediately-preceding
 milestone) — the champion-history-to-live-trading disconnection remains
 the single largest gap, untouched by this pass.
+
+## CEO directive "TradeTown — Autonomous Quant Operating System Ultimate End-State 1.0" (Champion Live Signal Shadow Capture, Phase 0 slice)
+
+### Phase 0 — the gap is bigger than previously scoped
+
+Every prior audit this session named "connect `champion_history` to
+live trading" as the single largest remaining gap, but none had traced
+what that connection would actually require. A dedicated Explore
+sub-agent forensic pass traced the real trade-proposal path end to end
+and found: real `TradeProposal`s come entirely from a heuristic,
+random-confidence-gain research system (`app/research.py`) and a
+majority-vote analyst system (`app/executive.py::generate_analyst_votes()`)
+— neither imports `strategy_engine.py` or `CompiledStrategyDefinition`
+at all. Confirmed again by direct grep: nothing in `nexus.py`/
+`executive.py`/`strategy_engine.py` reads `champion_history`/
+`get_current_champion()`. Most importantly: **no mechanism exists
+anywhere to evaluate a compiled strategy's rules against live/current
+price data** — `app/strategy_engine.py` only ever backtests a full
+historical series (`backtest_symbol_over_candles()`,
+`run_compiled_strategy_backtest()`). Building that live evaluator is
+therefore the real, honest prerequisite — not a wiring afterthought —
+and this directive's own "no reckless rewrite"/"no fake autonomy"
+principles rule out wiring an unproven new signal source straight into
+live trade generation in the same pass it is first built. This pass
+built and shadow-wired the evaluator only.
+
+### What was built
+
+- **`app/strategy_engine.py::detect_live_setup_at_latest_bar()`.**
+  Reuses the exact same `_detect_generic_setups()`/`_resolve_stop()`/
+  `_resolve_target()` pipeline `backtest_symbol_over_candles()` already
+  trusts — never a second, duplicate rule engine. Asks whether a real
+  setup's `entry_index` lands on the LAST bar of the given candle
+  window. Test-proven (`TestDetectLiveSetupAtLatestBar::
+  test_reproduces_the_exact_same_real_setup_the_backtest_engine_finds`)
+  to reproduce, bar-for-bar, the identical real setup the backtest
+  engine finds when given only the data up to that point.
+- **`ChampionLiveSignalCapture`** (`app/schemas.py`) — SHADOW ONLY,
+  wired into `app/nexus.py::tick()`: for each strategy family with a
+  real, currently-promoted champion, checks every watchlist symbol for
+  a fresh signal and captures it if found. The first real reader of
+  `champion_history` outside promotion bookkeeping (disclosed in
+  `ChampionRecord`'s own updated docstring) — but never read by
+  `_generate_trade_proposals()`/`resolve_proposal()`/the Gatekeeper/any
+  Risk Contract code, and creates no `TradeProposal`.
+- **A second real Phase 0 finding, caught by a failing test before any
+  product code shipped:** the research factory's own registry
+  (`compiled_strategy_versions`) only ever gains an entry for a MUTATED
+  child (`register_strategy_version()`), never an original seed or
+  challenger definition. A champion can therefore only be evaluated
+  live if its own definition was separately registered
+  (`POST /register-strategy-version`) at some point; otherwise the
+  correct, disclosed behavior is to skip it — never to fabricate or
+  guess a definition.
+- New read-only `GET /api/sandbox/champion-live-signal-captures`,
+  optionally filtered by strategy family.
+
+### Explicitly NOT built this pass
+
+Any change to `_generate_trade_proposals()`, the Opportunity
+Gatekeeper, Risk Contract, position sizing, or order placement. A
+champion firing a real live signal changes nothing about what
+TradeTown actually trades today — turning this evidence into an actual
+paper-trade decision is a distinct, larger, separately-scoped milestone
+requiring its own governance/provenance/CEO-control design (a
+`TradeProposal` has no source-provenance field today; adding
+champion-sourced proposals would need one).
+
+### Testing and live verification
+
+11 new tests (`tests/test_champion_live_signal.py`): the real-backtest
+cross-check above, bar-specificity, non-compiled/insufficient-history
+honesty, input-immutability, and a full real `app/nexus.py::tick()`
+wiring suite using a real promoted champion built via the actual
+`compare_champion_challenger()`/`promote_challenger()` pipeline (never
+a hand-built `ChampionRecord`) — including graceful skip of an
+unregistered champion, capture capping, and correct resolution of the
+MOST RECENT champion when a family has been superseded. Full backend
+suite: 4081 passed; mypy (228 files)/ruff clean.
+
+Live-verified against the running dev stack (real save, day 172): the
+new endpoint responded honestly empty with no real champion present.
+Two real (not manufactured) champion/challenger comparisons attempted
+live — a strong EMA breakout strategy against two different genuinely
+weak seeds — both correctly returned `champion_retained`/
+`insufficient_evidence` rather than a fabricated promotion; the real
+evidence gate held under live conditions exactly as designed. This
+confirms the safety boundary, not a demo failure — the positive
+signal-detection case is proven deterministically by the backtest
+cross-check test instead, which does not depend on hunting for a lucky
+real promotion.
+
+**Champion Live Signal Classification: D — READ-ONLY / ANALYTICAL.** A
+real, tested, live-verified capability now exists to observe whether a
+champion's own rules would fire on current price action — genuine new
+evidence-collection infrastructure — but it is deliberately
+disconnected from any trading decision. This does not change the
+company's OVERALL automation classification (still C) or the
+champion-history-to-live-trading disconnection itself, which remains
+real and unresolved — this pass built its prerequisite, not its
+resolution.
