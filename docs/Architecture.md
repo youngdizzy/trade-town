@@ -21519,3 +21519,145 @@ research/validation cycles, and the complete disconnection between
 validated strategies and live trade generation, both remain — exactly
 the two findings this and every other audit this session converged on
 independently.
+
+## CEO directive "TradeTown — Autonomous Research Orchestrator 1.0"
+
+Took the immediately-preceding milestone's own single recommended next
+step — the recurring human-trigger boundary at the START of research
+cycles — and closed it, narrowly. Nothing else about the company's
+automation surface changed.
+
+### Phase 0 — forensic audit of the real invocation path
+
+Traced the complete real chain before writing any code:
+`run_research_factory_cycle()` (`app/research_factory.py`) is a real,
+pure, bounded, multi-generation loop, fully automatic once started, but
+requires a caller to already hold a real `StrategyHypothesis` AND a
+real, already-compiled `CompiledStrategyDefinition` — it generates
+neither. The only production entry point,
+`GameState.submit_research_factory_run()`, is called from exactly one
+place: `POST /api/sandbox/research-factory/run` — confirmed by grep,
+zero references anywhere in `app/nexus.py`'s tick loop. There is no
+automated hypothesis-generation loop anywhere in this codebase
+(`StrategyHypothesis`'s own docstring already discloses this) — a
+genuinely NEW research question cannot be conjured without fabricating
+one.
+
+The audit also found the real, existing simulation-time cadence
+concept to reuse: `nexus.WEEKLY_INTERVAL_DAYS`, already driving the
+weekly evening-report cadence. At default sim speed
+(`GAME_MINUTES_PER_TICK=5` sim-minutes per `TICK_INTERVAL_SECONDS=2.0`
+real seconds), one simulated week is ~67 real minutes.
+
+A second, real finding, discovered while designing the seed-selection
+logic and confirmed by a failing test before any product code changed:
+the factory's own `compiled_strategy_registry` only ever gains an entry
+for a MUTATED child (`register_strategy_version()`, called only when a
+generation actually mutates) — the ORIGINAL seed definition is never
+added to it. This means the orchestrator can only reliably continue
+research on a family whose seed was separately REGISTERED (`POST
+/register-strategy-version`) at some point — the same real, disclosed
+boundary a human re-running their own research would already need to
+respect. When it isn't (an ad-hoc, never-registered `CompiledStrategyDefinition`
+used once via `/compile-strategy` preview), the honest, correct
+behavior is `NO_RESEARCH_INPUT`, not a fabricated reconstruction.
+
+### What was built
+
+- **`app/research_orchestrator.py` (new, pure).** `decide_research_orchestration()`
+  answers exactly one question — should a factory cycle start right
+  now? — with precedence `FACTORY_ALREADY_RUNNING` >
+  `EMERGENCY_STOP` > `NO_RESEARCH_INPUT` > `FIRST_AUTONOMOUS_RUN` >
+  `SCHEDULED_CADENCE` > `NOT_DUE`. `find_research_seed()` resolves a
+  real, already-authored `(hypothesis, definition)` pair to continue —
+  most-recently-created among every `FactoryRunRecord` generation-0
+  candidate and every `ResearchLoopIterationRecord`, resolved against
+  that family's current best REGISTERED compiled version. Only two
+  triggers are implemented, per the directive's own "smallest safe
+  trigger set" instruction: a deterministic scheduled cadence, and a
+  first-run rule. Evidence-driven triggers (a detected research stall,
+  etc.) are explicitly deferred to a future milestone.
+- **New `FactoryRunRecord.sim_day: int | None` field** (`app/schemas.py`,
+  additive, `None` for every pre-existing run, zero migration risk) —
+  gives the orchestrator a real simulation-time cadence baseline;
+  `created_at` alone is wall-clock and cannot answer "how many
+  simulated days since the last run."
+- **Wired into the real background sim loop, never a new scheduler.**
+  `app/sim.py::run_sim_loop()` calls the new
+  `GameState.maybe_orchestrate_research()` once per real-time tick,
+  right after the existing `game_state.tick()`. The decision is cheap
+  and synchronous; when due, it schedules the SAME, unmodified
+  `submit_research_factory_run()` a human `POST` already uses, as a
+  background `asyncio.create_task()` — never awaited inline, so a
+  factory cycle (up to `MAX_RUNTIME_SECONDS=300` real seconds) never
+  blocks the caller.
+- **Concurrency/idempotency/restart/crash safety — deliberately
+  in-memory only.** `GameState._research_orchestrator_task` (the
+  "already running" guard) and `_research_orchestrator_last_attempt_sim_day`
+  (bounded-retry cadence tracker, folding in-flight/failed attempts
+  into the same cadence window a real success would occupy) live ONLY
+  as runtime attributes on the process, never persisted — a restart
+  always resets to an honest "nothing in flight" state, never a stuck
+  one. A real failure from `submit_research_factory_run()` is caught,
+  logged, and recorded as real telemetry
+  (`GameState._research_orchestrator_last_outcome`) — never silently
+  swallowed, never recorded as a fabricated success.
+- **New `GET /api/sandbox/research-orchestrator/status`** —
+  `ResearchOrchestratorStatus` (`app/schemas.py`): an auditable "is the
+  factory due right now, and why (not)?", read-only, combining a fresh
+  state-derived decision with the live process's in-memory outcome
+  telemetry.
+
+### Explicitly NOT built this pass
+
+Per the directive's own exclusion list: any change to
+`champion_history` → live trading, the Opportunity Gatekeeper, Risk
+Contract, position sizing, execution/exit logic, Evidence Maturity, the
+Strategy Diversity Engine, or automatic staged SHADOW→PAPER deployment.
+No frontend surface (Part XVI: "avoid unnecessary frontend work unless
+required — backend observability is sufficient for this milestone").
+
+### A real limitation found and disclosed, not hidden
+
+`run_research_factory_cycle()` is synchronous, CPU-bound Python with no
+`await` points. `asyncio.create_task()` prevents the ORCHESTRATOR's own
+caller from blocking waiting for the run to be *scheduled*, but once
+that task actually starts executing, it still monopolizes the single-
+threaded event loop for its real duration — live-verified at ~2 minutes
+for a real 5-generation/10-backtest run, during which no other HTTP
+request was served. A human-triggered run via `POST
+/research-factory/run` already has this exact same cost today; this
+pass triggers the same real cost autonomously rather than introducing a
+new one. Moving the factory to a worker thread/process is a distinct,
+separately-scoped reliability milestone.
+
+### Testing and live verification
+
+27 new tests (`tests/test_research_orchestrator.py`), every fixture
+built via the real `run_research_factory_cycle()`/
+`run_research_loop_iteration()`/`register_strategy_version()` entry
+points (never hand-built records): honest no-seed state, first-run vs.
+cadence-boundary vs. not-due decisions, Emergency Stop precedence,
+bounded retry after a simulated failure, restart safety, and real
+concurrency (a second evaluation issued immediately after the first
+correctly observes `FACTORY_ALREADY_RUNNING` via genuine
+`asyncio.create_task()` scheduling semantics — no mocks). Full backend
+suite: 4070 passed. mypy/ruff clean on every touched file.
+
+Live-verified against the running dev stack (real save, day 162): a
+real research-loop iteration was submitted once by hand (`POST
+/research-loop/run`, a real registered strategy + a real hypothesis) —
+the orchestrator then autonomously started and completed a full, real
+5-generation factory cycle on a later tick with no further human
+action, visible permanently at `GET
+/api/sandbox/research-factory/runs` and reflected honestly in both
+`GET /api/trades/system-health` (`factoryEverRun` flipped `true`) and
+the new `GET /api/sandbox/research-orchestrator/status` endpoint.
+
+**Research-Cycle-Triggering Classification: A — GENUINELY IMPLEMENTED
+AND EVIDENCED.** The company now starts its own research cycles on a
+real simulation-time cadence without a human pressing "start," using
+only already-real inputs. This does not change the company's OVERALL
+automation classification (still C, per the immediately-preceding
+milestone) — the champion-history-to-live-trading disconnection remains
+the single largest gap, untouched by this pass.

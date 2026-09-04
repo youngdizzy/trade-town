@@ -14719,6 +14719,48 @@ class FactoryRunRecord(CamelModel):
     # app/research_pareto.py). Empty for every pre-existing persisted run
     # (computed fresh going forward, never backfilled).
     pareto_frontier: list[ParetoFrontierEntry] = Field(default_factory=list, alias="paretoFrontier")
+    # CEO directive "TradeTown — Autonomous Research Orchestrator 1.0" —
+    # the real SIMULATION day this run was created on, so cadence can be
+    # evaluated in simulation time (the same clock WEEKLY_INTERVAL_DAYS/
+    # SystemHealthSnapshot.simDay already use) rather than wall-clock
+    # time. `created_at` above is real wall-clock and cannot answer "how
+    # many simulated days since the last run" — this is a genuinely new,
+    # minimal, additive field to close that gap, not a duplicate of
+    # `created_at`. `None` for every pre-existing persisted run (never
+    # backfilled/guessed) — see app/research_orchestrator.py's own
+    # module docstring for how a `None` cadence baseline is handled.
+    sim_day: int | None = Field(default=None, alias="simDay")
+
+
+class ResearchOrchestratorStatus(CamelModel):
+    """CEO directive "TradeTown — Autonomous Research Orchestrator 1.0,"
+    Part XVI (Observability)/Part XXXII — an auditable answer to "is the
+    factory due, and why (not)?" Mostly computed fresh from
+    `GameSaveState` (`sim_day`/`last_factory_run_sim_day`/
+    `next_eligible_sim_day`/`would_run_now`/`reason`/`seed_strategy_family`,
+    same CAGS convention as `SystemHealthSnapshot`), but
+    `factory_currently_running` and every `last_outcome_*` field reflect
+    the live `GameState` process's own in-memory runtime state (Part
+    IX/X — deliberately not persisted; see app/state.py::GameState's own
+    docstring), so they are honestly `False`/`None` immediately after a
+    backend restart even if a run completed before that restart — the
+    real, permanent record of that run remains `GET
+    /api/sandbox/research-factory/runs`, never duplicated here."""
+
+    evaluated_at: str = Field(alias="evaluatedAt")
+    sim_day: int = Field(alias="simDay")
+    research_cadence_sim_days: int = Field(alias="researchCadenceSimDays")
+    last_factory_run_sim_day: int | None = Field(default=None, alias="lastFactoryRunSimDay")
+    next_eligible_sim_day: int | None = Field(default=None, alias="nextEligibleSimDay")
+    factory_currently_running: bool = Field(alias="factoryCurrentlyRunning")
+    would_run_now: bool = Field(alias="wouldRunNow")
+    reason: str
+    seed_strategy_family: str | None = Field(default=None, alias="seedStrategyFamily")
+    last_outcome_triggered_at: str | None = Field(default=None, alias="lastOutcomeTriggeredAt")
+    last_outcome_strategy_family: str | None = Field(default=None, alias="lastOutcomeStrategyFamily")
+    last_outcome_succeeded: bool | None = Field(default=None, alias="lastOutcomeSucceeded")
+    last_outcome_factory_run_id: str | None = Field(default=None, alias="lastOutcomeFactoryRunId")
+    last_outcome_detail: str | None = Field(default=None, alias="lastOutcomeDetail")
 
 
 class LessonEvidenceSummary(CamelModel):

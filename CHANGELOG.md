@@ -7,6 +7,105 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Autonomous Research Orchestrator 1.0."**
+  Phase 0 forensic audit confirmed the recommended next milestone from
+  the immediately-preceding End-State 1.0 pass: `research_factory.py`'s
+  own real, closed loop is fully automatic once started, but starting it
+  always required a human/API call (`POST /research-factory/run`) — zero
+  references anywhere in `app/nexus.py`'s tick loop. This pass closed
+  that one gap, narrowly: research now starts itself, on a real
+  simulation-time cadence, using only already-real, already-authored
+  research inputs — nothing else about the company's automation surface
+  (promotion, deployment, risk, live trading) changed.
+  - **`app/research_orchestrator.py` (new).** A thin, pure decision
+    module answering exactly one question — `decide_research_orchestration()`
+    — "should a research factory cycle start right now?" Reuses the
+    existing simulation-time weekly cadence concept (`nexus.WEEKLY_INTERVAL_DAYS`,
+    already used for the weekly evening-report cadence) as the default
+    `RESEARCH_CADENCE_SIM_DAYS` (~67 real minutes at default sim speed —
+    frequent enough to visibly research in the background, rare enough
+    that each bounded run, up to 10 backtests / 300 real seconds, never
+    competes with itself). `find_research_seed()` resolves a real,
+    already-authored `(hypothesis, definition)` pair to continue — drawn
+    from the most recently created source among every persisted
+    `FactoryRunRecord` generation-0 candidate and every
+    `ResearchLoopIterationRecord`, resolved against that family's
+    current best REGISTERED compiled version — never a fabricated
+    hypothesis (this codebase has no automated hypothesis-generation
+    loop, and none was added here). Only two triggers are implemented
+    (Part IV's own "smallest safe trigger set"): a deterministic
+    scheduled cadence, and a first-run rule for when no cadence baseline
+    exists. Evidence-driven triggers (a detected research stall, etc.)
+    are explicitly deferred — a separate milestone.
+  - **Wired into the real background sim loop, not a new scheduler.**
+    `app/sim.py::run_sim_loop()` calls the new
+    `GameState.maybe_orchestrate_research()` once per real-time tick,
+    immediately after the existing `game_state.tick()` call — no second
+    scheduler, no duplicate cadence concept. The decision itself is
+    cheap and synchronous; when due, it schedules the SAME, unmodified
+    `submit_research_factory_run()` a human `POST` already uses as a
+    background `asyncio.create_task()`, so a factory cycle (up to 300
+    real seconds) never blocks the sim loop's own persistence/broadcast
+    cadence waiting for it to be scheduled — see the Known Limitation
+    below for the one real cost this doesn't remove.
+  - **Concurrency, idempotency, restart/crash safety — in-memory by
+    design.** A new `sim_day: int | None` field on `FactoryRunRecord`
+    (additive, `None` for every pre-existing run, zero migration risk)
+    gives the orchestrator a real simulation-time cadence baseline
+    instead of wall-clock `created_at`. The "is a cycle already running"
+    guard and the bounded-retry cadence tracker both live ONLY in
+    `GameState`'s own in-memory attributes (`_research_orchestrator_task`,
+    `_research_orchestrator_last_attempt_sim_day`) — never persisted, so
+    a restart always resets to an honest "nothing in flight" state
+    rather than ever getting stuck. A failed attempt (an exception from
+    `submit_research_factory_run()`) is caught, logged, and recorded as
+    real failure telemetry (`GameState._research_orchestrator_last_outcome`)
+    — never silently swallowed, never recorded as a fabricated success —
+    and still consumes that cadence window, so a persistently-failing
+    seed cannot retry every tick.
+  - **New read-only endpoint:** `GET /api/sandbox/research-orchestrator/status`
+    (`ResearchOrchestratorStatus`, `app/schemas.py`) — an auditable
+    "is the factory due right now, and why (not)?", combining a fresh
+    state-derived decision with the live process's own in-memory outcome
+    telemetry. Never triggers anything itself.
+  - **Explicitly NOT built this pass** (per the directive's own explicit
+    exclusion list): any change to `champion_history` → live trading,
+    Gatekeeper/Risk Contract/position-sizing/execution logic, Evidence
+    Maturity, the Strategy Diversity Engine, or automatic staged
+    SHADOW→PAPER deployment. Research orchestration only.
+  - **Known limitation, found and disclosed during live verification, not
+    a regression this pass introduced:** `run_research_factory_cycle()`
+    is synchronous, CPU-bound Python with no `await` points. Running it
+    inside `asyncio.create_task()` means the caller of
+    `maybe_orchestrate_research()` never blocks waiting for it to be
+    scheduled — but once that task actually starts executing, it still
+    monopolizes the single-threaded event loop for its full real
+    duration (observed ~2 minutes for a real 5-generation/10-backtest
+    run against the live save), during which no other HTTP request is
+    served. A human-triggered run via `POST /research-factory/run`
+    already has this exact same cost today; this pass does not change
+    or worsen it, only triggers the same real cost autonomously instead
+    of on a human's click. Solving it (e.g. running the factory in a
+    worker thread/process) is a distinct, separately-scoped reliability
+    milestone, not attempted here.
+  - **Testing:** 27 new tests (`tests/test_research_orchestrator.py`) —
+    every fixture built via the real `run_research_factory_cycle()`/
+    `run_research_loop_iteration()`/`register_strategy_version()` entry
+    points, never hand-built records. Covers: no-seed honesty on a fresh
+    save, first-run vs. cadence-boundary vs. not-due decisions, Emergency
+    Stop / factory-already-running precedence, bounded retry after a
+    simulated failure, restart safety (a fresh `GameState` deriving
+    cadence purely from persisted data), and real concurrency (a second
+    evaluation issued immediately after the first correctly sees
+    `FACTORY_ALREADY_RUNNING`, using real `asyncio.create_task()`
+    scheduling semantics, no mocks). Full backend suite: 4070 passed.
+    Live-verified against the running dev stack: a real research-loop
+    iteration was submitted once by hand, and the orchestrator then
+    autonomously started and completed a full, real 5-generation factory
+    cycle on its own on a later tick — persisted, visible at
+    `GET /api/sandbox/research-factory/runs`, with no further human
+    action.
+
 - **CEO directive "TradeTown — Autonomous Quant Company End-State 1.0"
   (Phase 21 slice: Self-Monitoring).** A consolidated Phase 0 forensic
   audit — building on every prior audit this session (Pipeline Stall

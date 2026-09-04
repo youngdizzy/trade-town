@@ -19,6 +19,7 @@ and write one run's data into another's slot."""
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Callable, Literal
@@ -133,6 +134,7 @@ from app.schemas import (
     FactoryRunRecord,
     ResearchDiscoveryCycleRecord,
     ResearchLoopIterationRecord,
+    ResearchOrchestratorStatus,
     StrategyHypothesis,
     ClientSaveRequest,
     CompiledStrategyDefinition,
@@ -193,6 +195,7 @@ from app.research_factory import (
     run_research_factory_cycle,
 )
 from app.research_discovery import run_research_discovery_cycle
+from app.research_orchestrator import ResearchOrchestratorDecision, ResearchOrchestratorOutcome, ResearchOrchestratorSeed, decide_research_orchestration
 from app.strategy_families import SUPPORTED_FAMILIES
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 from app.strategy_compiler import strategy_definition_slug
@@ -526,6 +529,19 @@ class GameState:
     def __init__(self) -> None:
         self.data: GameSaveState = default_state()
         self.lock = asyncio.Lock()
+        # CEO directive "TradeTown — Autonomous Research Orchestrator
+        # 1.0" — in-memory-only runtime state for the orchestrator's own
+        # concurrency guard (Part VII) and bounded-retry cadence tracker
+        # (Part XII). Deliberately NOT part of GameSaveState/persisted:
+        # it resets to a clean "nothing in flight" state on every
+        # restart, which is exactly the crash-safe behavior Part X asks
+        # for — there is no persisted "stuck FACTORY_RUNNING" state to
+        # ever get stuck in. See app/research_orchestrator.py's own
+        # module docstring for the full real methodology.
+        self._research_orchestrator_task: asyncio.Task[None] | None = None
+        self._research_orchestrator_last_attempt_sim_day: int | None = None
+        self._research_orchestrator_last_decision: ResearchOrchestratorDecision | None = None
+        self._research_orchestrator_last_outcome: ResearchOrchestratorOutcome | None = None
 
     async def apply_client_save(self, incoming: ClientSaveRequest) -> GameSaveState:
         """Merge a client-submitted save. Player position/settings/dialogue come from
@@ -3355,6 +3371,7 @@ class GameState:
             champion_history = self.data.champion_history
             risk_per_trade_pct = self.data.risk_limits.risk_per_trade_pct
             registry_snapshot = self.data.compiled_strategy_versions
+            started_sim_day = self.data.time.day
         resolved_max_generations = max_generations if max_generations is not None else MAX_GENERATIONS_PER_FACTORY_RUN
         resolved_max_total_backtests = max_total_backtests if max_total_backtests is not None else MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN
         # CEO directive "TradeTown — Phase 9: Full Autonomous Quant
@@ -3386,6 +3403,11 @@ class GameState:
             max_children_per_parent=resolved_max_children_per_parent,
             max_runtime_seconds=resolved_max_runtime_seconds,
         )
+        # CEO directive "TradeTown — Autonomous Research Orchestrator
+        # 1.0" — real simulation-time cadence field, populated the exact
+        # same way regardless of whether a human or the new orchestrator
+        # triggered this run.
+        run_record = run_record.model_copy(update={"sim_day": started_sim_day})
         new_iterations = all_iterations[len(research_iterations_snapshot):]
         new_lessons = all_lessons[len(research_lessons_snapshot):]
         family_slug = strategy_definition_slug(definition.name)
@@ -3510,6 +3532,96 @@ class GameState:
         async with self.lock:
             self._advance_once(minutes)
             return self.data
+
+    async def maybe_orchestrate_research(self) -> ResearchOrchestratorDecision:
+        """CEO directive "TradeTown — Autonomous Research Orchestrator
+        1.0" — called by app/sim.py's real background sim loop once per
+        real-time tick, AFTER `tick()` above has already returned and
+        released `self.lock`. Deliberately never called from inside
+        `_advance_once()`/`tick()`'s own lock: a factory cycle can take
+        up to `MAX_RUNTIME_SECONDS` (300) real seconds, and awaiting
+        that under `self.lock` would freeze every other read/write in
+        the whole simulation for up to five real minutes (Part
+        XXVII/XXVIII). The decision itself
+        (`decide_research_orchestration()`, `app/research_orchestrator.py`)
+        is pure and cheap; only a state snapshot is taken under the
+        lock. If due, this schedules the existing, unmodified
+        `submit_research_factory_run()` as a background task and
+        returns immediately — never blocks the caller."""
+        async with self.lock:
+            state_snapshot = self.data
+        factory_currently_running = self._research_orchestrator_task is not None and not self._research_orchestrator_task.done()
+        decision = decide_research_orchestration(
+            state_snapshot,
+            factory_currently_running=factory_currently_running,
+            last_orchestrator_attempt_sim_day=self._research_orchestrator_last_attempt_sim_day,
+        )
+        self._research_orchestrator_last_decision = decision
+        if decision.should_run and decision.seed is not None:
+            # Part XII (bounded retry) — recorded the moment an attempt
+            # STARTS, regardless of eventual success/failure, so a
+            # persistently-failing seed cannot retry every tick; only
+            # once per RESEARCH_CADENCE_SIM_DAYS, same as a real success.
+            self._research_orchestrator_last_attempt_sim_day = decision.sim_day
+            self._research_orchestrator_task = asyncio.create_task(self._run_orchestrated_research_cycle(decision.seed))
+        return decision
+
+    async def _run_orchestrated_research_cycle(self, seed: ResearchOrchestratorSeed) -> None:
+        """Runs the exact same, unmodified `submit_research_factory_run()`
+        a human `POST /research-factory/run` call already uses (Part XX
+        — no second research engine). Part XI: a real failure here is
+        captured as real evidence and logged, never silently swallowed
+        and never recorded as a fabricated success; `asyncio.create_task()`
+        already isolates this coroutine's own exceptions from
+        app/sim.py's run_sim_loop(), so this method's own try/except
+        exists only to turn that isolation into real, inspectable
+        outcome telemetry (`GameState._research_orchestrator_last_outcome`)
+        instead of a bare, unretrieved-task-exception log line."""
+        logger = logging.getLogger("tradetown.research_orchestrator")
+        try:
+            _state, run_record = await self.submit_research_factory_run(seed.hypothesis, seed.definition)
+            self._research_orchestrator_last_outcome = ResearchOrchestratorOutcome(
+                triggered_at=_now_iso(), strategy_family=seed.strategy_family, succeeded=True, factory_run_id=run_record.id, detail=None
+            )
+        except Exception as exc:
+            logger.exception("Autonomous research orchestrator: factory cycle for %r failed", seed.strategy_family)
+            self._research_orchestrator_last_outcome = ResearchOrchestratorOutcome(
+                triggered_at=_now_iso(), strategy_family=seed.strategy_family, succeeded=False, factory_run_id=None, detail=str(exc)
+            )
+
+    async def describe_research_orchestrator_status(self) -> ResearchOrchestratorStatus:
+        """Read-only — computes the SAME real decision
+        `maybe_orchestrate_research()` would make right now, without
+        triggering anything, plus the live process's own in-memory
+        outcome telemetry. See `ResearchOrchestratorStatus`'s own
+        docstring (app/schemas.py) for exactly which fields are
+        state-derived vs. in-memory-only."""
+        async with self.lock:
+            state_snapshot = self.data
+        factory_currently_running = self._research_orchestrator_task is not None and not self._research_orchestrator_task.done()
+        decision = decide_research_orchestration(
+            state_snapshot,
+            factory_currently_running=factory_currently_running,
+            last_orchestrator_attempt_sim_day=self._research_orchestrator_last_attempt_sim_day,
+        )
+        next_eligible_sim_day = None if decision.last_factory_run_sim_day is None else decision.last_factory_run_sim_day + decision.research_cadence_sim_days
+        outcome = self._research_orchestrator_last_outcome
+        return ResearchOrchestratorStatus(
+            evaluatedAt=_now_iso(),
+            simDay=decision.sim_day,
+            researchCadenceSimDays=decision.research_cadence_sim_days,
+            lastFactoryRunSimDay=decision.last_factory_run_sim_day,
+            nextEligibleSimDay=next_eligible_sim_day,
+            factoryCurrentlyRunning=factory_currently_running,
+            wouldRunNow=decision.should_run,
+            reason=decision.reason,
+            seedStrategyFamily=decision.seed.strategy_family if decision.seed is not None else None,
+            lastOutcomeTriggeredAt=outcome.triggered_at if outcome is not None else None,
+            lastOutcomeStrategyFamily=outcome.strategy_family if outcome is not None else None,
+            lastOutcomeSucceeded=outcome.succeeded if outcome is not None else None,
+            lastOutcomeFactoryRunId=outcome.factory_run_id if outcome is not None else None,
+            lastOutcomeDetail=outcome.detail if outcome is not None else None,
+        )
 
     async def advance_time(self, target: TimeAdvanceTarget, hours: int | None) -> tuple[GameSaveState, str | None]:
         """v0.7 Feature 34 — CEO time controls (End Workday/Week/Month, or

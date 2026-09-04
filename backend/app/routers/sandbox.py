@@ -66,6 +66,7 @@ from app.schemas import (
     ResearchDiscoveryCycleRecord,
     ResearchLessonRecord,
     ResearchLoopIterationRecord,
+    ResearchOrchestratorStatus,
     RiskProfileTemplate,
     RiskSurvivalScorecard,
     StrategyFamily,
@@ -1103,6 +1104,17 @@ async def research_factory_run_detail(run_id: str) -> FactoryRunRecord:
     if run is None:
         raise HTTPException(status_code=404, detail=f"No real factory run found with id '{run_id}'.")
     return run
+
+
+@router.get("/research-orchestrator/status", response_model=ResearchOrchestratorStatus)
+async def research_orchestrator_status() -> ResearchOrchestratorStatus:
+    """CEO directive "TradeTown — Autonomous Research Orchestrator 1.0"
+    — an auditable answer to "is the research factory due right now, and
+    why (not)?" See `ResearchOrchestratorStatus`'s own docstring
+    (app/schemas.py) for exactly which fields are computed fresh from
+    persisted state vs. reflect the live process's own in-memory
+    runtime status. Read-only — never triggers a factory cycle itself."""
+    return await game_state.describe_research_orchestrator_status()
 
 
 @router.get("/research-factory/lineage/{strategy_family}", response_model=list[ResearchLoopIterationRecord])

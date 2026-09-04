@@ -22,6 +22,14 @@ async def run_sim_loop() -> None:
         while True:
             await asyncio.sleep(settings.tick_interval_seconds)
             state = await game_state.tick(settings.game_minutes_per_tick)
+            # CEO directive "TradeTown — Autonomous Research Orchestrator
+            # 1.0" — the real autonomous research heartbeat. Cheap on
+            # every tick that isn't due (a handful of int/date compares);
+            # when due, schedules the existing research_factory.py cycle
+            # as its own background task rather than awaiting it here,
+            # so a research cycle (up to 5 real minutes) never delays
+            # this loop's own persistence/broadcast cadence.
+            await game_state.maybe_orchestrate_research()
 
             tick_count += 1
             trade_count = len(state.paper_portfolio.trade_history)
