@@ -129,6 +129,7 @@ from app.institutional_memory import (
     promote_risk_event,
     record_and_link_institutional_memory,
 )
+from app.collaboration_intelligence import average_collaboration_case_score, compute_collaboration_case_summaries
 from app.knowledge_sharing import (
     lesson_confirmed_event,
     lesson_created_event,
@@ -3122,6 +3123,16 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 black_swan_events=black_swan_events,
                 accounts=state.accounts,
                 current_sim_day=new_time.day,
+            ),
+            decisions=decisions,
+            ceo_decisions=ceo_decisions,
+            debates=debates,
+            # "TradeTown — Department Debate & Collaboration Intelligence
+            # 1.0" — computed fresh from this tick's own real,
+            # already-permanent executive_meeting_log/challenge_reports
+            # (never a second computation elsewhere; never persisted).
+            collaboration_case_score=average_collaboration_case_score(
+                compute_collaboration_case_summaries(meeting_log, challenge_reports)
             ),
         )
         cadence: ReflectionCadence = "monthly" if new_time.day % MONTHLY_INTERVAL_DAYS == 0 else "weekly"

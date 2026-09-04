@@ -3661,6 +3661,50 @@ class ExecutiveMeetingLogEntry(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# "TradeTown — Department Debate & Collaboration Intelligence 1.0."
+# Computed fresh over already-permanent state (ExecutiveMeetingLogEntry's
+# own persisted `opinions`, joined to a ChallengeReport by `proposal_id`
+# when one exists) — never persisted itself, the same "no permanence
+# requirement, every input already lives somewhere permanent" convention
+# ExecutiveRecommendation above already established. See
+# app/collaboration_intelligence.py for the real, deterministic formulas
+# behind every field here — none of them are invented per-request.
+class CollaborationCaseSummary(CamelModel):
+    id: str
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    sim_day: int = Field(alias="simDay")
+    department_count: int = Field(alias="departmentCount")
+    # Real count of distinct ExecutiveStance values among this case's
+    # own real DepartmentOpinion.stance fields — never inferred from a
+    # raw confidence-number difference (see
+    # app/collaboration_intelligence.py's own module docstring for why).
+    distinct_stance_count: int = Field(alias="distinctStanceCount")
+    # Reuses app/executive_intelligence.py's own real, already-generated
+    # `_build_disagreement_summary()` — never a second, differently-
+    # shaped narrative.
+    consensus_summary: str = Field(alias="consensusSummary")
+    # Real cross-department word-overlap pairs found between two real
+    # DepartmentOpinion.evidence lists — see _evidence_overlap_pairs()'s
+    # own docstring for the exact real threshold.
+    evidence_reuse_count: int = Field(alias="evidenceReuseCount")
+    evidence_reuse_pairs: list[str] = Field(default_factory=list, alias="evidenceReusePairs")
+    challenge_severity: ChallengeSeverity | None = Field(default=None, alias="challengeSeverity")
+    # True only when a real ChallengeReport's own real severity is not
+    # "none_found" AND this case's own real recommended_action already
+    # departed from "trade_normally" — i.e. the Executive Intelligence
+    # Network's OWN existing synthesis (app/executive_intelligence.py's
+    # compute_executive_recommendation(), lines checking devils_advocate/
+    # risk stances) already changed course because of this real
+    # challenge. Never a new heuristic — exposing a relationship this
+    # codebase already computes.
+    challenge_heeded: bool = Field(alias="challengeHeeded")
+    recommended_action: ExecutiveAction = Field(alias="recommendedAction")
+    ceo_decision: AnalystChoice = Field(alias="ceoDecision")
+    network_agreed: bool = Field(alias="networkAgreed")
+    created_at: str = Field(alias="createdAt")
+
+
 class DepartmentSelfEvaluation(CamelModel):
     """v0.7 Feature 50 (Part 2/3) — Weekly Self-Evaluation. Generated on
     the same real weekly cadence as app/wisdom.py's ReflectionSession

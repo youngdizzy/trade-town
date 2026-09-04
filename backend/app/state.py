@@ -333,6 +333,10 @@ def default_state() -> GameSaveState:
         institutional_memory=[],
         knowledge_events=[],
         audit_entries=[],
+        decisions=[],
+        ceo_decisions=[],
+        debates=[],
+        collaboration_case_score=None,
     )
     default_foundational_mentors = default_foundational_mentor_state()
     # CEO directive "Strategy Intelligence + Live Strategy Attribution,"

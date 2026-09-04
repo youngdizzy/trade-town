@@ -81,6 +81,8 @@ from app.schemas import (
     AuditEntry,
     CaseStudy,
     CaseStudyCategory,
+    CeoDecisionRecord,
+    Debate,
     DisciplineReview,
     ExecutiveReview,
     GatekeeperRejection,
@@ -97,6 +99,7 @@ from app.schemas import (
     ResearchItem,
     RiskWarning,
     TimeState,
+    TradeDecision,
     WisdomFactor,
     WisdomFactorId,
     WisdomState,
@@ -313,12 +316,32 @@ def _journal_fields(
     return key_discoveries, lessons_learned, important_questions, recommended_future_projects
 
 
-def _learn_from_experience(discipline_reviews: list[DisciplineReview]) -> float:
-    if len(discipline_reviews) < 4:
+def _learn_from_experience(discipline_reviews: list[DisciplineReview], decisions: list[TradeDecision]) -> float:
+    """"TradeTown — Learning Organization 1.0" — the real DisciplineReview
+    trend needs a real closed trade to exist at all (DisciplineReview is
+    only ever built post-close), so it stays the primary read once there
+    are enough (unchanged formula/threshold). Below that, this falls
+    back to the exact same trend-of-a-real-process-quality-score shape
+    applied to `TradeDecision.decision_grade_score` — a real, disclosed,
+    decision-TIME score (app/executive.py's compute_decision_grade: 50%
+    Decision Confidence Engine, 25% analyst agreement, 25% Gatekeeper
+    approval) set the moment the CEO resolves a proposal, never waiting
+    for that trade to eventually close. Not the same measurement as the
+    real DisciplineReview trend — disclosed here, not conflated — but a
+    real answer to the same question ("is the desk's own process
+    trending better over time") that doesn't require a closed trade to
+    exist yet."""
+    if len(discipline_reviews) >= 4:
+        midpoint = len(discipline_reviews) // 2
+        earlier_avg = sum(r.score for r in discipline_reviews[:midpoint]) / midpoint
+        later_avg = sum(r.score for r in discipline_reviews[midpoint:]) / (len(discipline_reviews) - midpoint)
+        return round(max(0.0, min(100.0, 50.0 + (later_avg - earlier_avg))), 1)
+    graded = [d.decision_grade_score for d in decisions if d.decision_grade_score is not None]
+    if len(graded) < 4:
         return 30.0
-    midpoint = len(discipline_reviews) // 2
-    earlier_avg = sum(r.score for r in discipline_reviews[:midpoint]) / midpoint
-    later_avg = sum(r.score for r in discipline_reviews[midpoint:]) / (len(discipline_reviews) - midpoint)
+    midpoint = len(graded) // 2
+    earlier_avg = sum(graded[:midpoint]) / midpoint
+    later_avg = sum(graded[midpoint:]) / (len(graded) - midpoint)
     return round(max(0.0, min(100.0, 50.0 + (later_avg - earlier_avg))), 1)
 
 
@@ -355,11 +378,55 @@ def _follow_principles(
     return round(len(trade_history) / total * 100.0, 1)
 
 
-def _improve_communication(discipline_reviews: list[DisciplineReview]) -> float:
+def _decision_viewpoint_and_cross_exam_scores(
+    decisions: list[TradeDecision],
+    ceo_decisions: list[CeoDecisionRecord],
+    debates: list[Debate],
+) -> tuple[list[float], list[float]]:
+    """"TradeTown — Learning Organization 1.0" — real, decision-TIME
+    analogues of app/discipline.py's own viewpoint_diversity/cross_
+    examination DisciplineFactor formulas, reused verbatim (same
+    thresholds, same tiers), just read the moment the CEO resolves a
+    proposal (buy/sell/wait — TradeDecision/CeoDecisionRecord are both
+    built then) instead of waiting for that trade to eventually close
+    and get a DisciplineReview. Joins each real TradeDecision to its own
+    real CeoDecisionRecord (matching id/decisionId) for the real
+    proposal_id, then to the real Debate with that same proposal_id, if
+    one exists — the exact same real signals compute_discipline_score()
+    reads, never a second, differently-shaped proxy."""
+    proposal_id_by_decision_id = {cd.decision_id: cd.proposal_id for cd in ceo_decisions if cd.decision_id is not None}
+    turn_count_by_proposal_id = {d.proposal_id: len(d.turns) for d in debates}
+    viewpoint_scores: list[float] = []
+    cross_exam_scores: list[float] = []
+    for decision in decisions:
+        distinct_choices = len({v.choice for v in decision.votes}) if decision.votes else 1
+        viewpoint_scores.append(100.0 if distinct_choices >= 3 else 65.0 if distinct_choices == 2 else 35.0)
+
+        proposal_id = proposal_id_by_decision_id.get(decision.id)
+        analyst_count = len(decision.votes) or 6
+        turn_count = turn_count_by_proposal_id.get(proposal_id) if proposal_id is not None else None
+        if turn_count is None:
+            cross_exam_scores.append(0.0)
+        elif turn_count <= analyst_count:
+            cross_exam_scores.append(30.0)
+        else:
+            cross_exam_scores.append(100.0)
+    return viewpoint_scores, cross_exam_scores
+
+
+def _improve_communication(discipline_reviews: list[DisciplineReview], decision_cross_exam_scores: list[float]) -> float:
+    """"TradeTown — Learning Organization 1.0" — the real DisciplineReview
+    average stays primary once real closed-trade reviews exist
+    (unchanged formula). Below that, falls back to the real decision-
+    time cross-examination analogue (see
+    _decision_viewpoint_and_cross_exam_scores()) instead of the bare
+    30.0 default."""
     scores = _factor_scores(discipline_reviews, "cross_examination")
-    if not scores:
+    if scores:
+        return round(sum(scores) / len(scores), 1)
+    if not decision_cross_exam_scores:
         return 30.0
-    return round(sum(scores) / len(scores), 1)
+    return round(sum(decision_cross_exam_scores) / len(decision_cross_exam_scores), 1)
 
 
 def _document_lessons(
@@ -420,11 +487,37 @@ def _complete_research(research: list[ResearchItem]) -> float:
     return round(completed / len(research) * 100.0, 1)
 
 
-def _support_collaboration(discipline_reviews: list[DisciplineReview]) -> float:
+def _support_collaboration(
+    discipline_reviews: list[DisciplineReview],
+    collaboration_case_score: float | None,
+    decision_viewpoint_scores: list[float],
+) -> float:
+    """"TradeTown — Department Debate & Collaboration Intelligence 1.0"
+    layered this on top of "Learning Organization 1.0"'s own earlier
+    fallback (never replacing it, since analyst-vote viewpoint diversity
+    is still real evidence when nothing richer exists yet):
+
+    1. The real DisciplineReview average stays primary, unchanged, once
+       real closed-trade reviews exist.
+    2. Below that, the real department-level collaboration-case score
+       (app/collaboration_intelligence.py's `average_collaboration_
+       case_score()` — real cross-department stance diversity + real
+       evidence-reuse, over already-permanent ExecutiveMeetingLogEntry/
+       ChallengeReport data) is a strictly more apt "is the company
+       collaborating" signal than analyst-vote diversity, and is
+       available at the exact same real gate (a resolved decision) — so
+       it's tried next.
+    3. Only when NEITHER real signal exists yet does this fall further
+       back to "Learning Organization 1.0"'s original decision-time
+       analyst-vote analogue, then finally the disclosed 30.0 baseline."""
     scores = _factor_scores(discipline_reviews, "viewpoint_diversity")
-    if not scores:
+    if scores:
+        return round(sum(scores) / len(scores), 1)
+    if collaboration_case_score is not None:
+        return collaboration_case_score
+    if not decision_viewpoint_scores:
         return 30.0
-    return round(sum(scores) / len(scores), 1)
+    return round(sum(decision_viewpoint_scores) / len(decision_viewpoint_scores), 1)
 
 
 def compute_wisdom_score(
@@ -439,26 +532,49 @@ def compute_wisdom_score(
     institutional_memory: list[InstitutionalMemoryEntry],
     knowledge_events: list[KnowledgeEvent],
     audit_entries: list[AuditEntry],
+    decisions: list[TradeDecision],
+    ceo_decisions: list[CeoDecisionRecord],
+    debates: list[Debate],
+    collaboration_case_score: float | None,
 ) -> WisdomState:
-    """"TradeTown — Learning Organization 1.0" added the last three
-    params — real evidence from app/institutional_memory.py,
-    app/knowledge_sharing.py, and app/audit_log.py respectively — so
-    four of these eight factors (share_knowledge, document_lessons,
-    avoid_repeating_mistakes, follow_principles) draw on real evidence
-    that doesn't require a trade to have closed yet, alongside the four
-    left unchanged this milestone (learn_from_experience,
-    improve_communication, complete_research, support_collaboration —
-    see CHANGELOG.md for why those four are a disclosed scope cut, not
-    an oversight)."""
+    """"TradeTown — Learning Organization 1.0" added `institutional_
+    memory`/`knowledge_events`/`audit_entries` (real evidence from
+    app/institutional_memory.py, app/knowledge_sharing.py, and
+    app/audit_log.py) so share_knowledge/document_lessons/avoid_
+    repeating_mistakes/follow_principles draw on real evidence that
+    doesn't require a trade to have closed yet; then `decisions`/
+    `ceo_decisions`/`debates` (real evidence from app/executive.py and
+    app/debate.py, already permanent and built the moment the CEO
+    resolves a proposal, never gated behind that trade eventually
+    closing) so learn_from_experience/improve_communication/support_
+    collaboration get the same real, disclosed treatment. "TradeTown —
+    Department Debate & Collaboration Intelligence 1.0" then added
+    `collaboration_case_score` — app/collaboration_intelligence.py's
+    real, department-level collaboration-case average (computed by the
+    caller from `ceo_decisions`'/`decisions`' own real `executive_
+    meeting_log`/`challenge_reports`, never recomputed twice) — as a
+    richer, more apt fallback for support_collaboration specifically,
+    layered ABOVE (never replacing) the decision-time analyst-vote
+    fallback the prior milestone already built. See each function's own
+    docstring for exactly which real signal backs it, and CHANGELOG.md
+    for why `complete_research` is the one factor with no real trade-
+    closure-gating problem to fix in the first place (it already reads
+    a real completed/total ratio with no data-availability gate)."""
+    decision_viewpoint_scores, decision_cross_exam_scores = _decision_viewpoint_and_cross_exam_scores(decisions, ceo_decisions, debates)
     readings: list[tuple[WisdomFactorId, str, float, str]] = [
-        ("learn_from_experience", "Learning From Experience", _learn_from_experience(discipline_reviews), "Whether recent Discipline Scores are trending up against the desk's own earlier record."),
+        ("learn_from_experience", "Learning From Experience", _learn_from_experience(discipline_reviews, decisions), "Whether recent Discipline Scores are trending up against the desk's own earlier record, or the real decision-time Decision Grade trend before enough closed trades exist."),
         ("share_knowledge", "Sharing Knowledge", _share_knowledge(memory, knowledge_events), "Real mentorship sessions plus real lesson-sharing events (Institutional Memory → relevant agents)."),
         ("follow_principles", "Following Principles", _follow_principles(trade_history, gatekeeper_rejections, audit_entries), "Share of trades that cleared the Trade Gatekeeper's real configured limits without a block, or the real Audit Log compliance score before any trade exists."),
-        ("improve_communication", "Improving Communication", _improve_communication(discipline_reviews), "Average real Cross-Examination factor across recent Discipline Reviews."),
+        ("improve_communication", "Improving Communication", _improve_communication(discipline_reviews, decision_cross_exam_scores), "Average real Cross-Examination factor across recent Discipline Reviews, or the same real signal read at decision time before enough closed trades exist."),
         ("document_lessons", "Documenting Lessons", _document_lessons(discipline_reviews, case_studies, reasoning_challenges, institutional_memory), "Real Discipline Reviews, Case Studies, Reasoning Challenges, and documented Institutional Memory lessons filed to date."),
         ("avoid_repeating_mistakes", "Avoiding Repeated Mistakes", _avoid_repeating_mistakes(case_studies, knowledge_events, institutional_memory), "How diversified the Library of Mistakes' real categories are, or whether new evidence keeps confirming the same standing mistake/risk pattern."),
         ("complete_research", "Completing Research", _complete_research(research), "Share of the research queue that has actually reached completed status."),
-        ("support_collaboration", "Supporting Collaboration", _support_collaboration(discipline_reviews), "Average real Viewpoint Diversity factor across recent Discipline Reviews."),
+        (
+            "support_collaboration",
+            "Supporting Collaboration",
+            _support_collaboration(discipline_reviews, collaboration_case_score, decision_viewpoint_scores),
+            "Average real Viewpoint Diversity factor across recent Discipline Reviews, or real cross-department collaboration-case evidence (stance diversity + evidence reuse) at decision time before enough closed trades exist.",
+        ),
     ]
     factors = [WisdomFactor(id=fid, name=name, score=score, weight=round(1.0 / len(readings), 3), detail=detail) for fid, name, score, detail in readings]
     total = sum(f.score for f in factors) / len(factors)

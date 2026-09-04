@@ -7,6 +7,112 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Department Debate & Collaboration
+  Intelligence 1.0."** CEO instruction: measure whether departments
+  genuinely reason together, exchange useful evidence, challenge weak
+  conclusions, and incorporate relevant expertise — never activity
+  volume as a proxy. A dedicated Phase 0 forensic audit found the real
+  "candidate → department opinions → disagreement → challenge →
+  synthesis" loop already ~90% built and real, just never exposed as
+  one addressable read:
+  - `app/executive_intelligence.py::ExecutiveMeetingLogEntry` was
+    already the real, permanent (capped at 200), decision-time record
+    of one Executive Intelligence Network synthesis — real
+    `DepartmentOpinion`s (9 departments, real `agent_id` attribution,
+    real `ExecutiveStance` values, real evidence/concerns/benefits),
+    the network's own real recommended action, and the CEO's real
+    decision — generated for every resolved proposal (buy, sell, OR
+    wait), never gated behind that trade eventually closing.
+  - Genuine disagreement was already computed from real `ExecutiveStance`
+    values (never a raw confidence-number difference) by
+    `compute_executive_recommendation()`'s own `supporting`/`opposing`
+    split — this milestone never recomputes that split from scratch.
+  - Real challenge/rebuttal already existed via `app/devils_advocate.py`'s
+    `ChallengeReport`, already joined to its meeting-log entry by the
+    same real `proposal_id` both carry.
+  - "Research Council" — the directive's own suggested name — turned
+    out to already name a real, unrelated existing system
+    (`app/research_council.py`, Strategy Factory candidate research);
+    this milestone avoids that name and does not touch that module.
+  - **What was genuinely new: new `app/collaboration_intelligence.py`**
+    — a pure, computed-fresh bridge (zero new persisted state, zero
+    migration risk — the same "no permanence requirement, every input
+    already lives somewhere permanent" convention `ExecutiveRecommendation`
+    already established). Adds exactly the one real detection this
+    codebase didn't have: cross-department evidence reuse, via real
+    significant-word overlap between two different departments' own
+    real `evidence` bullets (reusing `app/constitution.py`'s existing
+    word-overlap primitive, already reused cross-module by
+    `app/institutional_memory.py`, rather than a second text-similarity
+    heuristic). `build_collaboration_case_summary()`/`compute_
+    collaboration_case_summaries()` join a real `ExecutiveMeetingLogEntry`
+    to its real `ChallengeReport` (by `proposal_id`) into one real
+    "collaboration case" read answering the directive's own synthesis
+    questions — which departments contributed, where they agreed/
+    disagreed, what evidence was considered, whether a real challenge
+    changed the network's own recommendation (`challenge_heeded` —
+    exposing a relationship `compute_executive_recommendation()` already
+    computes, never a new heuristic).
+  - **Score, not activity volume.** `average_collaboration_case_score()`
+    reuses two formula shapes already established elsewhere in this
+    codebase rather than inventing a new weighting scheme:
+    `app/discipline.py`'s own 3-tier `viewpoint_diversity` threshold
+    (>=3/2/1 distinct real stances -> 100/65/35) plus a small capped
+    bonus in the same shape as its own `assumptions_challenged` factor
+    for real cross-department evidence reuse.
+  - **Wired into `wisdom.py`'s `support_collaboration`** as a new,
+    richer fallback layer above (never replacing) "Learning
+    Organization 1.0"'s own earlier decision-time analyst-vote
+    fallback — both real, both available at the same gate (a resolved
+    decision), the department-level one simply being a more apt signal
+    for "collaboration" specifically. The real `DisciplineReview`
+    average still wins whenever it exists, completely unchanged.
+  - **`improve_communication` left untouched, as instructed.** Its real
+    3-tier cross-examination formula was already confirmed evidence-
+    backed in the immediately-preceding Learning Organization 1.1 pass
+    (a real decision-time fallback, not a score change) — this
+    milestone's own Part X instruction to leave a legitimate score
+    alone is already satisfied, so nothing further changed here.
+  - **New read-only `GET /api/collaboration/cases` and `/api/
+    collaboration/score`**, mirroring `routers/institutional_memory.py`'s
+    own "computed fresh every call, mutates nothing" convention.
+  - **Frontend**: `ReflectionPanel.tsx`'s Supporting Collaboration row
+    now fetches real collaboration cases on-demand when expanded
+    (mirroring `CompliancePanel.tsx`'s own on-demand-fetch pattern),
+    showing real counts (cases on file, multi-department cases,
+    evidence-reuse cases, challenges that changed the recommendation)
+    or the honest prior-milestone fallback text when none exist yet.
+  - **Live verification found a genuine, pre-existing pipeline stall**
+    (real research completes — 96 of 100 items — but zero real trade
+    proposals were ever generated in either the isolated test save or
+    the real burn-in save) — disclosed as an out-of-scope discovery,
+    per this directive's own explicit "if the audit finds a dependency,
+    STOP and report it" instruction; not fixed here. Despite that, a
+    real collaboration case DID appear from a genuine `wait` decision
+    that never became an executed trade (9 departments, 4 distinct real
+    stances, a real major-severity challenge that changed the network's
+    recommendation to `reduce_risk`) — direct, live proof that
+    collaboration cases work without trade execution, exactly as this
+    milestone required.
+  - **Regression safety.** Zero changes to trading thresholds, strategy
+    selection, risk sizing, entry/exit rules, Gatekeeper behavior, paper
+    execution, Emergency Stop, Risk Contract/RiskLimits/dynamic risk
+    scaling, or the Memecoin Sniper. No live trading, no broker
+    integration, no Schwab OAuth — untouched.
+  - **Testing.** 22 new tests (19 in new `tests/test_collaboration_
+    intelligence.py`, 3 new fallback-ordering tests in
+    `tests/test_wisdom.py`) — confidence-difference-alone-is-never-
+    disagreement, unrelated-evidence-is-never-falsely-linked, empty-
+    case-is-honest, challenge-heeded-requires-both-real-severity-and-a-
+    real-recommendation-change, score-never-exceeds-100, the richer
+    fallback wins over the prior milestone's analyst-vote one, and the
+    real DisciplineReview average still wins over both. Full backend
+    suite (3997, up from 3966 + 9 Learning Org 1.1 tests, zero
+    regressions), mypy (225 files), and ruff all clean. Frontend `tsc`,
+    ESLint, and `vite build` all clean. Live-verified against the real
+    running stack (isolated per-test database) with a screenshot
+    confirming real evidence renders correctly.
+
 - **CEO directive "TradeTown — Learning Organization 1.0" (backend
   slice).** A Phase 0 forensic audit (four parallel research passes over
   Institutional Memory, the Discipline Chamber, agent-collaboration
@@ -116,13 +222,9 @@ development milestones, not semver releases.
     plus a real restart round-trip proof for the new `knowledge_events`
     field (`tests/test_persistence.py`). Full backend suite, mypy, and
     ruff clean.
-  - **Next milestone (disclosed, not started this pass):** decouple
-    `improve_communication`/`support_collaboration`/`learn_from_
-    experience` from `DisciplineReview`-only evidence (currently 100%
-    gated behind a real closed trade) using the real, already-computed,
-    per-candidate `Debate`/`DepartmentOpinion` signals that exist
-    regardless of trade outcome — a materially larger design problem
-    than the four bridged this pass, deliberately not rushed.
+  - **Next milestone, flagged here, completed in the follow-up pass
+    below:** decoupling `improve_communication`/`support_collaboration`/
+    `learn_from_experience` from `DisciplineReview`-only evidence.
   - **Frontend explainability, no redesign.** `ReflectionPanel.tsx`'s
     Company Wisdom factor list is now click-to-expand (reusing the same
     single-expand pattern the panel's own Reflection Journal rows
@@ -142,6 +244,49 @@ development milestones, not semver releases.
     Test-Isolation Hardening" safeguard) — screenshots confirm both
     expand/collapse and the real evidence lines render correctly.
     Frontend `tsc`, ESLint, and `vite build` all clean.
+  - **Follow-up pass: the remaining three metrics.** CEO instruction:
+    "Make the underlying behavior measurable and evidence-backed; the
+    scores must move wherever the evidence warrants." `learn_from_
+    experience`, `improve_communication`, and `support_collaboration`
+    were still on trade-closure-gated bare defaults (30.0) because
+    their real source, `DisciplineReview`, only exists post-close.
+    Investigation found real, permanent, decision-TIME evidence for all
+    three — built the moment the CEO resolves a proposal (buy/sell/
+    wait), never gated behind that trade eventually closing:
+    - `improve_communication`/`support_collaboration`: new
+      `_decision_viewpoint_and_cross_exam_scores()` in `app/wisdom.py`
+      reuses `app/discipline.py`'s own `viewpoint_diversity`/`cross_
+      examination` formulas **verbatim** (same thresholds, same tiers —
+      byte-identical output confirmed against `compute_discipline_
+      score()` directly), just reading `TradeDecision.votes` and the
+      matching `Debate.turns` (joined via `CeoDecisionRecord.decision_
+      id`/`proposal_id`, both real and permanent) instead of a post-
+      close `DisciplineReview`.
+    - `learn_from_experience`: falls back to the same trend-of-a-
+      process-quality-score shape (50 + delta, clamped, >=4-sample
+      gate — unchanged), applied to `TradeDecision.decision_grade_
+      score` — a real, disclosed, decision-time score (`app/
+      executive.py`'s `compute_decision_grade`: confidence engine +
+      analyst agreement + Gatekeeper approval) instead of `Discipline-
+      Review.score`. Disclosed as a different real measurement
+      answering the same question, not conflated with the original.
+    - All three: the original DisciplineReview-based formula is the
+      primary read and takes over completely unchanged the moment
+      enough real closed-trade evidence exists (same `>=4`/non-empty
+      gates as before) — this is a fallback for "not enough evidence
+      yet," never a replacement.
+    - **Testing.** 9 new tests in `tests/test_wisdom.py` (old-formula-
+      unchanged-once-evidence-exists for all three, fallback-moves-with-
+      real-evidence for all three, disclosed-baseline-when-no-evidence-
+      at-all for all three), plus a direct cross-check proving the new
+      fallback formula produces byte-identical output to `app/
+      discipline.py`'s own real `compute_discipline_score()` given the
+      same underlying votes/debate. Full backend suite, mypy, and ruff
+      clean.
+    - `complete_research` was left out of this pass — it already reads
+      a real completed/total research-queue ratio with no data-
+      availability gate, so it had no trade-closure-gating problem to
+      fix in the first place.
 
 - **CEO directive "Auto-Resolution Risk Decision Audit Trail 1.0."** A
   bounded auditability fix, not a risk-model change — closes the one
