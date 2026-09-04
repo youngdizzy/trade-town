@@ -7,6 +7,81 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Champion → Live Signal → TradeProposal /
+  Forensic Architecture Gate + Safe Production Bridge 1.0."** A fresh,
+  adversarial Phase 0 re-audit of the Champion-Sourced Trade Proposal
+  bridge shipped immediately below — re-verified from source and
+  runtime, never from the prior directive's own report. Findings:
+  - **Trust boundary: structurally, not just conventionally, safe.**
+    Grepping the whole backend confirms exactly two `TradeProposal(`
+    construction sites in the entire codebase, both in
+    `app/executive.py`; every mutating executive endpoint (`/decide`,
+    `/hold`, `/modify`, `/debate/regenerate`, `/challenge/regenerate`)
+    accepts only a `proposal_id` plus a narrow typed field, never a
+    `source` or `source_*` field, never a `TradeProposal` body. There is
+    no code path by which client input can reach `TradeProposal.source`
+    — spoofing `source="champion"` is not merely prevented, there is no
+    parameter for it to travel through.
+  - **TOCTOU: proven void, not merely assumed safe.** Traced the full
+    call chain: `GameState.tick()` holds `self.lock` for its entire,
+    synchronous `_advance_once()`/`nexus.tick()` call (zero `await`
+    points anywhere in `app/nexus.py`), and `promote_champion_challenger()`
+    — the only method that ever appends to `champion_history` — requires
+    that same non-reentrant lock. No other coroutine can run between a
+    champion's identity being read and a signal/proposal being built
+    from it, by construction of (lock + zero awaits + copy-on-write
+    state), not by convention.
+  - **Live/backtest parity and lookahead: real evidence, now a
+    differential sweep instead of one case.** `detect_live_setup_at_latest_bar()`
+    reuses the exact same private setup-detection helpers the backtest
+    engine already trusts. The existing cross-check test
+    (`tests/test_champion_live_signal.py`) is expanded to iterate over
+    EVERY real historical trade the strategy finds, not just the first —
+    and, since the backtest side sees hundreds/thousands of real future
+    bars past each trade's entry while the live side sees none at all,
+    asserting stop/target equality across every one of these
+    independently-truncated computations doubles as a genuine empirical
+    no-lookahead proof, not merely a parity check. `_resolve_stop()`/
+    `_resolve_target()` were also read directly and confirmed to only
+    ever reference `setup.entry_index` and backward-looking data — never
+    an index past entry.
+  - **Signal disposition: the one genuine gap found, now closed.** Every
+    pre-Gatekeeper outcome for a real champion signal was previously a
+    bare, unrecorded `continue` in `app/nexus.py`'s tick(). Added
+    `ChampionSignalDisposition` (`app/schemas.py`) — a real, exhaustive
+    Literal (`created_proposal_candidate`, `duplicate_pending`,
+    `duplicate_resolved`, `blocked_trading_restriction`,
+    `no_price_available`, `zero_quantity_sizing`) — and a new
+    `disposition` field on `ChampionLiveSignalCapture`, set once, at
+    capture time, from the same real branching logic the bridge already
+    ran (never a second, parallel decision path). Deliberately does NOT
+    duplicate post-Gatekeeper outcome tracking: `app/opportunity_gatekeeper.py`
+    already keeps a permanent, correctly-linked record for every
+    candidate (heuristic or champion) by the proposal's own
+    deterministic id — `oppreject-<id>` in `opportunity_rejections` for
+    a gate rejection, the id itself in `trade_proposals` while pending,
+    `decision-<id>` in `decisions` once resolved — documented as the
+    real, disclosed cross-reference rather than rebuilt.
+  - **Testing:** 7 new tests (one per `ChampionSignalDisposition` value,
+    all through real `nexus.tick()` wiring, plus a structural check that
+    the tested set exactly matches the schema's own declared set), plus
+    the expanded differential/lookahead sweep. Full backend suite:
+    4108 passed; mypy (228 files)/ruff clean.
+  - **Explicitly NOT built:** no new proposal-construction path, no
+    change to the Opportunity Gatekeeper/Risk Contract/RiskLimits/
+    Emergency Stop, no post-Gatekeeper outcome tracker (the existing
+    `opportunity_rejections`/`trade_proposals`/`decisions` records
+    already answer that honestly by id), no concurrency/locking change
+    (the existing lock discipline was already sufficient — this
+    directive only proved it, never modified it).
+  - **Final classification: A — PROVEN SAFE FOR PAPER BRIDGE.**
+    Recommended next milestone: unchanged from the prior directive — stop
+    coding on this bridge and let the already-shipped Autonomous Research
+    Orchestrator keep running in the background until a real champion is
+    organically promoted, then observe the full bridge (proposal
+    construction, disposition capture, and Gatekeeper outcome) end-to-end
+    on the live save.
+
 - **CEO directive "TradeTown — Champion-Sourced Trade Proposal
   Provenance + Shadow Bridge 1.0."** The first real bridge from a
   promoted champion's own live signal into a real `TradeProposal` —

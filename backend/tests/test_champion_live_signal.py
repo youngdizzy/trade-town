@@ -65,28 +65,47 @@ class TestDetectLiveSetupAtLatestBar:
         assert candles == before
 
     def test_reproduces_the_exact_same_real_setup_the_backtest_engine_finds(self) -> None:
-        """The core honesty proof: slicing real candles up to and
-        including a real backtest-discovered trade's own entry bar must
-        make the live detector find THE SAME real setup — direction,
-        entry price, stop, and target all matching — because it is
-        calling the exact same underlying detection code, not a
-        reimplementation."""
+        """The core honesty proof, over EVERY real historical setup this
+        strategy finds (a differential sweep, not one hand-picked case):
+        slicing real candles up to and including a real backtest-
+        discovered trade's own entry bar must make the live detector find
+        THE SAME real setup — direction, entry price, stop, and target
+        all matching — because it is calling the exact same underlying
+        detection code, not a reimplementation.
+
+        This is ALSO the live evaluator's real lookahead/leakage proof,
+        for every one of these cases at once: `trades` was computed by
+        `backtest_symbol_over_candles()` over the FULL 6000-candle series
+        — every trade's stop/target was resolved with hundreds or
+        thousands of real future bars sitting in `candles` past its own
+        entry_index. `live_signal` for the identical entry is computed
+        from `candles[: entry_index + 1]` — ZERO bars past entry exist in
+        that array at all. If `_resolve_stop()`/`_resolve_target()` (or
+        the setup detection feeding them) ever consulted a bar after
+        `entry_index`, these two independently-truncated computations
+        would have no reason to agree; asserting equality below across
+        every discovered trade is a genuine empirical no-lookahead proof,
+        not merely a parity check."""
         definition = compile_strategy_text(name="Live Signal Cross-Check", source_text=_EMA_TEXT)
         candles = market_data_provider.get_candles("AAPL", "1h", 6000)
         trades = backtest_symbol_over_candles(definition, "AAPL", candles)
         assert trades, "sanity: the real strategy must find at least one real historical setup"
-        trade = trades[0]
-        entry_index = next(i for i, c in enumerate(candles) if c.timestamp == trade.entry_timestamp)
-        assert entry_index >= 60  # sanity: enough real trailing history for indicators
+        checked = 0
+        for trade in trades:
+            entry_index = next(i for i, c in enumerate(candles) if c.timestamp == trade.entry_timestamp)
+            if entry_index < 60:
+                continue  # sanity: skip trades with too little real trailing history for indicators
+            checked += 1
 
-        live_signal = detect_live_setup_at_latest_bar(definition, "AAPL", candles[: entry_index + 1])
+            live_signal = detect_live_setup_at_latest_bar(definition, "AAPL", candles[: entry_index + 1])
 
-        assert live_signal is not None
-        assert live_signal.direction == trade.direction
-        assert live_signal.entry_price == trade.entry_price
-        assert live_signal.stop_price == trade.stop_price
-        assert live_signal.target_price == trade.target_price
-        assert live_signal.entry_timestamp == trade.entry_timestamp
+            assert live_signal is not None, f"trade at entry {trade.entry_timestamp} was not reproduced live"
+            assert live_signal.direction == trade.direction
+            assert live_signal.entry_price == trade.entry_price
+            assert live_signal.stop_price == trade.stop_price
+            assert live_signal.target_price == trade.target_price
+            assert live_signal.entry_timestamp == trade.entry_timestamp
+        assert checked > 1, "sanity: the differential sweep needs more than one real historical trade to be meaningful"
 
     def test_is_bar_specific_not_a_stale_match(self) -> None:
         """One bar earlier, the same real setup's own entry has not

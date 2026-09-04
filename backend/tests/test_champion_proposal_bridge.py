@@ -367,3 +367,127 @@ class TestChampionProposalBridgeWiring:
         assert "place_order(" not in source
         assert "open_position(" not in source
         assert "PaperPosition(" not in source
+
+
+class TestChampionSignalDisposition:
+    """CEO directive "TradeTown — Champion → Live Signal → TradeProposal
+    / Forensic Architecture Gate + Safe Production Bridge 1.0" — every
+    real fresh signal must resolve to an observable
+    `ChampionLiveSignalCapture.disposition` (app/schemas.py's
+    `ChampionSignalDisposition`), never a bare, unrecorded `continue` in
+    app/nexus.py's tick(). One test per disposition value, all through
+    the real, unmodified `nexus.tick()` wiring — never asserting on a
+    hand-built capture."""
+
+    def _wire_forced_signal(self, monkeypatch, family: str, **state_overrides):  # type: ignore[no-untyped-def]
+        import app.nexus as nexus_module
+
+        record, definition, comparison = _promote_real_champion(family)
+        forced_signal = LiveSetupSignal(direction="long", entryTimestamp="2024-06-01T09:00:00+00:00", entryPrice=50.0, stopPrice=45.0, targetPrice=60.0)
+        monkeypatch.setattr(nexus_module, "detect_live_setup_at_latest_bar", lambda definition, symbol, candles: forced_signal)
+        slug = strategy_definition_slug(family)
+        update = {"champion_history": [record], "compiled_strategy_versions": {slug: [definition]}, "challenger_comparisons": [comparison]}
+        update.update(state_overrides)
+        state = default_state().model_copy(update=update)
+        return state, record, definition, forced_signal
+
+    def test_created_proposal_candidate_disposition(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        state, record, _definition, forced_signal = self._wire_forced_signal(monkeypatch, "Disposition Created Family")
+        result = nexus_tick(state, TimeState(day=2, hour=0, minute=0), 5)
+        candidate_id = f"proposal-champion-{record.id}-AAPL-{forced_signal.entry_timestamp}"
+        captures = [c for c in result.champion_live_signal_captures if c.champion_id == record.id and c.symbol == "AAPL"]
+        assert captures and all(c.disposition == "created_proposal_candidate" for c in captures)
+        assert any(p.id == candidate_id for p in result.trade_proposals) or any(r.id == f"oppreject-{candidate_id}" for r in result.opportunity_rejections)
+
+    def test_duplicate_pending_disposition(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        state, record, definition, forced_signal = self._wire_forced_signal(monkeypatch, "Disposition Duplicate Pending Family")
+        comparison = state.challenger_comparisons[0]
+        existing_proposal = build_champion_trade_proposal(
+            record, definition, forced_signal, "AAPL", price=50.0, comparison=comparison, research=[],
+            sentinel_warning=None, guardian_warning=None, now_sim_minutes=0, portfolio=default_portfolio(),
+            risk_limits=RiskLimits(), market_intelligence=default_market_intelligence_state(),
+        )
+        assert existing_proposal is not None
+        state = state.model_copy(update={"trade_proposals": [existing_proposal]})
+        result = nexus_tick(state, TimeState(day=2, hour=0, minute=0), 5)
+        captures = [c for c in result.champion_live_signal_captures if c.champion_id == record.id and c.symbol == "AAPL"]
+        assert captures and all(c.disposition == "duplicate_pending" for c in captures)
+
+    def test_duplicate_resolved_disposition(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        from app.schemas import TradeDecision
+
+        state, record, _definition, forced_signal = self._wire_forced_signal(monkeypatch, "Disposition Duplicate Resolved Family")
+        candidate_id = f"proposal-champion-{record.id}-AAPL-{forced_signal.entry_timestamp}"
+        resolved_decision = TradeDecision(
+            id=f"decision-{candidate_id}", symbol="AAPL", outcome="no_trade", votes=[], researchSummary="x",
+            technicalSummary="x", fundamentalSummary="x", riskSummary="x", supportingAgents=[], opposingAgents=[],
+            confidence=58.0, finalReasoning="x", createdAt=_CREATED_AT,
+        )
+        state = state.model_copy(update={"decisions": [resolved_decision]})
+        result = nexus_tick(state, TimeState(day=2, hour=0, minute=0), 5)
+        captures = [c for c in result.champion_live_signal_captures if c.champion_id == record.id and c.symbol == "AAPL"]
+        assert captures and all(c.disposition == "duplicate_resolved" for c in captures)
+
+    def test_blocked_trading_restriction_disposition(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        from app.schemas import TradingRestriction
+
+        restriction = TradingRestriction(id="restrict-aapl", scope="symbol", target="AAPL", reason="test", activatedAt=_CREATED_AT)
+        state, record, _definition, _forced_signal = self._wire_forced_signal(
+            monkeypatch, "Disposition Restricted Family", trading_restrictions=[restriction]
+        )
+        result = nexus_tick(state, TimeState(day=2, hour=0, minute=0), 5)
+        captures = [c for c in result.champion_live_signal_captures if c.champion_id == record.id and c.symbol == "AAPL"]
+        assert captures and all(c.disposition == "blocked_trading_restriction" for c in captures)
+
+    def test_no_price_available_disposition(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        """`tick_watchlist()` (real, unmodified) refreshes every symbol's
+        `last_price` from the real market data provider EARLY in tick(),
+        before the champion block ever runs — a zeroed `last_price` set
+        on the incoming state is always overwritten by a real positive
+        price before `prices` is built. That refresh has to be
+        monkeypatched directly to exercise this branch at all, which is
+        itself real, disclosed evidence that `no_price_available` is not
+        reachable in today's actual production data path (the mock
+        provider never returns a non-positive price) — kept as an honest
+        fail-safe for a future real-data provider outage, not a
+        currently-exercised production case."""
+        import app.nexus as nexus_module
+
+        state, record, _definition, _forced_signal = self._wire_forced_signal(monkeypatch, "Disposition No Price Family")
+
+        def _zeroed_tick_watchlist(watchlist, research, provider):  # type: ignore[no-untyped-def]
+            return [w.model_copy(update={"last_price": 0.0}) if w.symbol == "AAPL" else w for w in watchlist]
+
+        monkeypatch.setattr(nexus_module, "tick_watchlist", _zeroed_tick_watchlist)
+        result = nexus_tick(state, TimeState(day=2, hour=0, minute=0), 5)
+        captures = [c for c in result.champion_live_signal_captures if c.champion_id == record.id and c.symbol == "AAPL"]
+        assert captures and all(c.disposition == "no_price_available" for c in captures)
+
+    def test_zero_quantity_sizing_disposition(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        zero_limits = default_state().risk_limits.model_copy(update={"risk_per_trade_pct": 0.0, "max_position_pct": 0.0})
+        state, record, _definition, _forced_signal = self._wire_forced_signal(
+            monkeypatch, "Disposition Zero Quantity Family", risk_limits=zero_limits
+        )
+        result = nexus_tick(state, TimeState(day=2, hour=0, minute=0), 5)
+        captures = [c for c in result.champion_live_signal_captures if c.champion_id == record.id and c.symbol == "AAPL"]
+        assert captures and all(c.disposition == "zero_quantity_sizing" for c in captures)
+
+    def test_every_disposition_value_is_a_real_member_of_the_declared_literal(self) -> None:
+        """Structural check: the schema's own declared set of dispositions
+        is exactly what this test class exercises above — if a new value
+        is ever added to ChampionSignalDisposition, this test starts
+        failing until a real test for it is added too."""
+        from typing import get_args
+
+        from app.schemas import ChampionSignalDisposition
+
+        declared = set(get_args(ChampionSignalDisposition))
+        exercised = {
+            "created_proposal_candidate",
+            "duplicate_pending",
+            "duplicate_resolved",
+            "blocked_trading_restriction",
+            "no_price_available",
+            "zero_quantity_sizing",
+        }
+        assert declared == exercised

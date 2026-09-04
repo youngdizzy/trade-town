@@ -234,6 +234,7 @@ from app.schemas import (
     PredictionRecord,
     ChallengeReport,
     ChampionLiveSignalCapture,
+    ChampionSignalDisposition,
     BlackSwanEventRecord,
     BlackSwanReport,
     BoardReport,
@@ -1680,21 +1681,6 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             champion_live_signal = detect_live_setup_at_latest_bar(champion_definition, watchlist_entry.symbol, champion_live_candles)
             if champion_live_signal is None:
                 continue
-            champion_live_signal_captures.append(
-                ChampionLiveSignalCapture(
-                    id=f"champion-live-signal-{champion.id}-{watchlist_entry.symbol}-{new_time.day}-{sim_minutes(new_time)}",
-                    strategyFamily=family,
-                    championId=champion.id,
-                    definitionId=champion_definition.id,
-                    definitionVersion=champion_definition.version,
-                    symbol=watchlist_entry.symbol,
-                    signal=champion_live_signal,
-                    capturedSimMinutes=sim_minutes(new_time),
-                    createdAt=_now_iso(),
-                )
-            )
-            if len(champion_live_signal_captures) > MAX_CHAMPION_LIVE_SIGNAL_CAPTURES:
-                del champion_live_signal_captures[: len(champion_live_signal_captures) - MAX_CHAMPION_LIVE_SIGNAL_CAPTURES]
 
             # --- Champion -> TradeProposal bridge ---------------------------
             # Deterministic id from three real values (champion identity,
@@ -1711,40 +1697,79 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             # produces one) is what makes this idempotent across ticks,
             # ticks-since-restart, and repeated evaluation, per this
             # directive's own explicit duplicate-prevention test matrix.
+            #
+            # CEO directive "TradeTown — Champion → Live Signal →
+            # TradeProposal / Forensic Architecture Gate + Safe Production
+            # Bridge 1.0" — every branch below now records WHY, via
+            # `champion_signal_disposition` (ChampionSignalDisposition,
+            # app/schemas.py), rather than a bare, unrecorded `continue`.
+            # `champion_proposal` stays `None` on every branch except the
+            # one that actually builds one.
             champion_candidate_id = f"proposal-champion-{champion.id}-{watchlist_entry.symbol}-{champion_live_signal.entry_timestamp}"
             already_pending = any(p.id == champion_candidate_id for p in trade_proposals)
             already_resolved = any(d.id == f"decision-{champion_candidate_id}" for d in decisions)
-            if already_pending or already_resolved:
-                continue
-            if trading_restrictions and find_blocking_restriction(trading_restrictions, symbol=watchlist_entry.symbol, category=_category_for_symbol(watchlist_entry.symbol, research)):
-                continue
-            champion_price = prices.get(watchlist_entry.symbol)
-            if champion_price is None or champion_price <= 0:
-                continue
-            champion_quantity = recommended_quantity(effective_risk_limits, paper_portfolio, champion_price)
-            if champion_quantity <= 0:
-                continue
-            champion_sentinel_warning = evaluate_sentinel_risk(
-                effective_risk_limits, paper_portfolio, symbol=watchlist_entry.symbol, proposed_value=champion_quantity * champion_price, sim_day=sim_minutes(new_time) // 1440
-            )
-            champion_guardian_warning = evaluate_guardian_exposure(effective_risk_limits, paper_portfolio, symbol=watchlist_entry.symbol)
-            champion_proposal = build_champion_trade_proposal(
-                champion,
-                champion_definition,
-                champion_live_signal,
-                watchlist_entry.symbol,
-                price=champion_price,
-                comparison=champion_comparison,
-                research=research,
-                sentinel_warning=champion_sentinel_warning,
-                guardian_warning=champion_guardian_warning,
-                now_sim_minutes=sim_minutes(new_time),
-                portfolio=paper_portfolio,
-                risk_limits=effective_risk_limits,
-                market_intelligence=market_intelligence,
-            )
+            champion_proposal: TradeProposal | None = None
+            champion_signal_disposition: ChampionSignalDisposition
+            if already_pending:
+                champion_signal_disposition = "duplicate_pending"
+            elif already_resolved:
+                champion_signal_disposition = "duplicate_resolved"
+            elif trading_restrictions and find_blocking_restriction(trading_restrictions, symbol=watchlist_entry.symbol, category=_category_for_symbol(watchlist_entry.symbol, research)):
+                champion_signal_disposition = "blocked_trading_restriction"
+            else:
+                champion_price = prices.get(watchlist_entry.symbol)
+                if champion_price is None or champion_price <= 0:
+                    champion_signal_disposition = "no_price_available"
+                else:
+                    champion_quantity = recommended_quantity(effective_risk_limits, paper_portfolio, champion_price)
+                    if champion_quantity <= 0:
+                        champion_signal_disposition = "zero_quantity_sizing"
+                    else:
+                        champion_sentinel_warning = evaluate_sentinel_risk(
+                            effective_risk_limits, paper_portfolio, symbol=watchlist_entry.symbol, proposed_value=champion_quantity * champion_price, sim_day=sim_minutes(new_time) // 1440
+                        )
+                        champion_guardian_warning = evaluate_guardian_exposure(effective_risk_limits, paper_portfolio, symbol=watchlist_entry.symbol)
+                        champion_proposal = build_champion_trade_proposal(
+                            champion,
+                            champion_definition,
+                            champion_live_signal,
+                            watchlist_entry.symbol,
+                            price=champion_price,
+                            comparison=champion_comparison,
+                            research=research,
+                            sentinel_warning=champion_sentinel_warning,
+                            guardian_warning=champion_guardian_warning,
+                            now_sim_minutes=sim_minutes(new_time),
+                            portfolio=paper_portfolio,
+                            risk_limits=effective_risk_limits,
+                            market_intelligence=market_intelligence,
+                        )
+                        # `build_champion_trade_proposal()` recomputes the
+                        # same real `recommended_quantity()` internally from
+                        # the same inputs already checked above, so `None`
+                        # is unreachable here in practice — kept as an
+                        # honest, correctly-labeled fallback rather than an
+                        # unexplained crash if that ever changes.
+                        champion_signal_disposition = "created_proposal_candidate" if champion_proposal is not None else "zero_quantity_sizing"
             if champion_proposal is not None:
                 champion_candidate_proposals.append(champion_proposal)
+
+            champion_live_signal_captures.append(
+                ChampionLiveSignalCapture(
+                    id=f"champion-live-signal-{champion.id}-{watchlist_entry.symbol}-{new_time.day}-{sim_minutes(new_time)}",
+                    strategyFamily=family,
+                    championId=champion.id,
+                    definitionId=champion_definition.id,
+                    definitionVersion=champion_definition.version,
+                    symbol=watchlist_entry.symbol,
+                    signal=champion_live_signal,
+                    capturedSimMinutes=sim_minutes(new_time),
+                    createdAt=_now_iso(),
+                    disposition=champion_signal_disposition,
+                )
+            )
+            if len(champion_live_signal_captures) > MAX_CHAMPION_LIVE_SIGNAL_CAPTURES:
+                del champion_live_signal_captures[: len(champion_live_signal_captures) - MAX_CHAMPION_LIVE_SIGNAL_CAPTURES]
 
     # --- v0.6: Pulse's market scanner --------------------------------------
     # Runs off this tick's freshest watchlist prices, same as everything

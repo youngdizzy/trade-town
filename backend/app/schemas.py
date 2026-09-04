@@ -3345,6 +3345,39 @@ AnalystChoice = Literal["buy", "sell", "wait"]
 # No other source type is justified by the current architecture.
 ProposalSource = Literal["heuristic", "champion"]
 
+# CEO directive "TradeTown — Champion → Live Signal → TradeProposal /
+# Forensic Architecture Gate + Safe Production Bridge 1.0" — the
+# complete, disjoint set of PRE-GATEKEEPER outcomes a real champion
+# `LiveSetupSignal` can resolve to inside app/nexus.py's tick(), recorded
+# on `ChampionLiveSignalCapture.disposition`. "created_proposal_candidate"
+# is the only value under which a real `source="champion"` TradeProposal
+# was actually built and handed to the Opportunity Gatekeeper — every
+# other value means this real signal never became a proposal at all, for
+# the stated, real, disclosed reason:
+#   - duplicate_pending: this exact signal (same champion, symbol, bar
+#     timestamp) already has a pending TradeProposal awaiting the CEO.
+#   - duplicate_resolved: this exact signal already produced a decision
+#     (CEO choice, auto-resolution, or an expired-to-wait auto-decision)
+#     in an earlier tick.
+#   - blocked_trading_restriction: an active TradingRestriction covers
+#     this symbol/category.
+#   - no_price_available: no current watchlist price for this symbol.
+#   - zero_quantity_sizing: real position sizing (recommended_quantity())
+#     resolved to zero given the current portfolio/RiskLimits.
+# What happens to a "created_proposal_candidate" AFTER this point (gate
+# rejection, pending, or resolved) is never re-tracked here — see
+# ChampionLiveSignalCapture's own docstring for the existing, unmodified
+# records that already answer that question by the proposal's own
+# deterministic id.
+ChampionSignalDisposition = Literal[
+    "created_proposal_candidate",
+    "duplicate_pending",
+    "duplicate_resolved",
+    "blocked_trading_restriction",
+    "no_price_available",
+    "zero_quantity_sizing",
+]
+
 # v0.7 Feature 40.5 — the Expert Consultation System's two real CEO
 # actions beyond buy/sell/wait. Both do the same real thing (reset the
 # proposal's own expiry clock — see app/executive.py's hold_proposal());
@@ -9628,6 +9661,30 @@ class ChampionLiveSignalCapture(CamelModel):
     signal: LiveSetupSignal
     captured_sim_minutes: int = Field(alias="capturedSimMinutes")
     created_at: str = Field(alias="createdAt")
+    # CEO directive "TradeTown — Champion → Live Signal → TradeProposal /
+    # Forensic Architecture Gate + Safe Production Bridge 1.0" — every
+    # real fresh signal this capture represents must resolve to an
+    # OBSERVABLE reason for what happened to it PRE-GATEKEEPER, rather
+    # than a bare, unrecorded `continue` in app/nexus.py's tick(). Set
+    # once, at the same moment this capture is built (never revised
+    # afterward). `None` only for a capture persisted before this field
+    # existed (an old save) — an honest "unknown", never backfilled with
+    # a guess.
+    #
+    # This is deliberately NOT a second, parallel "did the Gatekeeper
+    # accept it" tracker: `app/opportunity_gatekeeper.py` already owns
+    # that permanent record for every candidate proposal, champion-
+    # sourced or heuristic alike, keyed by the proposal's own
+    # deterministic id — `oppreject-<proposal.id>` in
+    # `state.opportunity_rejections` for a gate rejection, the id itself
+    # in `state.trade_proposals` while still pending, or
+    # `decision-<proposal.id>` in `state.decisions` once resolved. A
+    # `created_proposal_candidate` disposition here means exactly "this
+    # signal reached that existing, unmodified funnel" — cross-reference
+    # those three lists by `proposal-champion-<championId>-<symbol>-
+    # <entryTimestamp>` (this capture's own `signal.entry_timestamp`) for
+    # the post-gate outcome, rather than duplicating that bookkeeping.
+    disposition: ChampionSignalDisposition | None = Field(default=None, alias="disposition")
 
 
 # ============================================================================
