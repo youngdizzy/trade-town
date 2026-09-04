@@ -7,6 +7,71 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Autonomous Quant Company End-State 1.0"
+  (Phase 21 slice: Self-Monitoring).** A consolidated Phase 0 forensic
+  audit — building on every prior audit this session (Pipeline Stall
+  Audit 1.0, Liquidity + Automation Readiness 1.0, Autonomous Quant
+  Company 2.0's own Phase 5 slice) plus new targeted checks — found the
+  overwhelming majority of this 34-phase directive's own ask already
+  real and shipped: a working closed research/mutation/validation loop
+  (`research_factory.py`), real automatic drift detection wired into
+  the tick loop (`strategy_drift.py`), a real, disclosed, "never a
+  promotion authority" cross-strategy Portfolio Analyst
+  (`app/portfolio_analyst.py`, confirmed via its own source-inspection
+  test — Phase 15's own "Portfolio-Level Intelligence" ask, already
+  built), and (this session's own immediately-preceding work) automatic
+  evidence-gated strategy promotion. Two genuinely new, confirmed-absent
+  capabilities were found by direct grep: Self-Monitoring (Phase 21)
+  and Evidence Maturity tracking (Phase 31) — neither existed anywhere
+  in this codebase before this pass.
+  - **What was built: `app/system_health.py`.** A new, diagnostic-only,
+    computed-fresh-never-persisted `SystemHealthSnapshot` (same CAGS
+    convention `TradePipelineHealthSnapshot`/`CollaborationCaseSummary`
+    already established — zero new `GameSaveState` fields, zero
+    migration risk) reusing three already-real sources rather than
+    computing anything new: `compute_trade_pipeline_health()` (research/
+    decision funnel counts), `find_promotable_comparisons()` (this
+    session's own autonomous-promotion sweep — a persistently nonzero
+    read here is itself a real anomaly worth investigating), and
+    `state.drift_events`/`state.factory_runs`/`state.champion_history`
+    directly. Reports, honestly: whether research is completing with
+    zero decisions ever resolving (`researchToDecisionStallDetected` —
+    turns this session's own one-time, manual Pipeline Stall Audit
+    finding into an always-on, real check rather than something only
+    discoverable by asking for another audit); whether the Strategy
+    Factory has EVER been triggered on this save
+    (`factoryEverRun`/`factoryRunCount`/`lastFactoryRunAt` — confirmed,
+    by this same Phase 0 audit, to require a human/API call every time,
+    honestly reported rather than hidden); real concerning
+    (watch/critical) drift-event counts. New `GET /api/trades/system-
+    health` endpoint, mirroring the existing pipeline-health endpoint's
+    own convention exactly.
+  - **Explicitly NOT built this pass, and why** (per this project's own
+    "scope an honest subset, disclose the rest" discipline — attempting
+    all 34 phases in one pass would necessarily mean fabricating
+    shallow, unconvincing coverage of things like an "autonomous
+    hypothesis engine 2.0," a "strategy diversity engine," graduated
+    SHADOW/PAPER staged deployment, or automatic quarantine ACTIONS
+    (as opposed to the already-real drift DETECTION) — each a genuine,
+    multi-day design effort in its own right, and each explicitly
+    forbidden from being faked by this very directive's own "no fake
+    autonomy" rule): the Autonomous Research Orchestrator/scheduler
+    (Phase 1, 20) that would trigger `research_factory.py` cycles
+    without a human call; Evidence Maturity states (Phase 31); the
+    Strategy Diversity Engine (Phase 4); automatic certification/
+    shadow/paper staged transitions (Phase 7-8); automatic failure-
+    response actions (Phase 10); connecting `champion_history` to what
+    TradeTown actually trades (the single largest remaining gap,
+    already disclosed by the immediately-preceding milestone).
+  - **Testing.** 12 new tests (`tests/test_system_health.py`) — honest
+    zero-state on a fresh save, real stall detection, real factory-run
+    reflection, real pending-promotion counting (reusing, not
+    duplicating, the autonomous-promotion engine's own logic), real
+    concerning-drift counting, no input mutation. mypy/ruff clean on
+    every touched file.
+  - **Regression safety.** Zero changes to any trading, research,
+    validation, promotion, or risk logic — this module only reads.
+
 - **CEO directive "TradeTown — Paper Trading Exit Engine Forensic Audit
   1.0."** A forensic audit of whether `PaperPosition.stopPrice`/
   `targetPrice` are real live exit triggers, reference/grading values

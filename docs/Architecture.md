@@ -21400,3 +21400,122 @@ actually influence a live trade — remains fully disconnected and
 entirely unaddressed by this pass, and several ordinary lifecycle steps
 (triggering new research, generating hypotheses, deploying past paper
 validation) still require an explicit human/API call.
+
+## CEO directive "TradeTown — Autonomous Quant Company End-State 1.0" (Phase 21 slice)
+
+The directive's own 41-section, 34-phase ask is the fullest possible
+version of everything the two immediately-preceding directives already
+scoped down from. Per this project's own "scope an honest subset,
+disclose the rest" discipline — reinforced by this directive's own
+explicit "no fake autonomy... do not claim completion because code
+compiles" rule — this pass performed one more consolidated Phase 0
+forensic audit and implemented exactly one new, genuinely-absent,
+safely-bounded capability: Phase 21, Self-Monitoring.
+
+### Phase 0 — consolidated findings
+
+Building on every audit already performed this session, plus new
+targeted checks, confirmed real and already shipped: the closed
+research→mutation→backtest→adversarial→council→lesson loop
+(`app/research_factory.py`, from "Phase 7/8/9: Full/Autonomous Quant
+Research Factory"); automatic drift detection wired into `nexus.py`'s
+tick loop (`app/strategy_drift.py`); automatic evidence-gated strategy
+promotion (this session's own immediately-preceding "Autonomous Quant
+Company 2.0" milestone); and — a genuinely new finding this pass —
+**Portfolio-Level Intelligence (this directive's own Phase 15) is
+already real and shipped**: `app/portfolio_analyst.py` ("CEO directive
+'TradeTown — Phase 10: Real Data + True Holdout + Portfolio
+Intelligence'") computes real combined-drawdown/correlation/worst-
+period analysis across multiple backtested candidates, reusing
+`aggregate_bucket()`/`run_worst_period_attack()`/`pearson_correlation()`
+— never a second backtest engine — and is confirmed, by its own
+source-inspection test (`TestNeverAPromotionAuthority`), to be research
+information only, never wired into any promotion or risk gate. This
+directly satisfies Phase 15's own core ask; nothing further was needed
+or built.
+
+Two capabilities were confirmed genuinely absent by direct grep across
+the entire `app/` tree — zero references anywhere: Self-Monitoring
+(Phase 21) and Evidence Maturity tracking (Phase 31).
+
+### What was built: Self-Monitoring
+
+New `app/system_health.py::compute_system_health()` — diagnostic only,
+computed fresh from `GameSaveState` on every call, never persisted (the
+same CAGS convention `TradePipelineHealthSnapshot`/
+`CollaborationCaseSummary` already established this session and
+before it). Reuses three already-real sources, computing nothing new:
+`app/trade_pipeline_health.py::compute_trade_pipeline_health()` for the
+real research→decision funnel; `app/autonomous_promotion.py::
+find_promotable_comparisons()` for the real pending-promotion queue
+(this session's own prior work — a persistently nonzero read here would
+itself be a real anomaly, since the autonomous-promotion sweep fires
+the instant a comparison is created); and direct reads of
+`state.drift_events`/`state.factory_runs`/`state.champion_history`.
+
+**A concrete precedent for why this matters, not a hypothetical.** This
+session's own "Research-to-Trade Proposal Pipeline Stall Audit 1.0"
+found — via a one-time, manual, forensic investigation — that real
+research was completing while real `TradeProposal` generation had
+stalled. `SystemHealthSnapshot.researchToDecisionStallDetected` turns
+that exact one-time finding into an always-on, honest check: real
+`completedResearchSignals > 0` combined with real `resolvedDecisions
+== 0`. This is not a fixed defect (per this directive's own instruction
+not to silently change production thresholds) — it is the ongoing,
+automatic DETECTION Phase 21 explicitly asks for, of a real, already-
+disclosed, still-unresolved condition.
+
+**Honest reporting of the recurring human-trigger boundary.**
+`factoryEverRun`/`factoryRunCount`/`lastFactoryRunAt` report — honestly,
+without editorializing — whether `app/research_factory.py`'s real
+closed-loop cycle has EVER been triggered on this save. Confirmed by
+this same Phase 0 audit (repeating the finding from the immediately-
+preceding milestone) that this requires a human/API call every single
+time; nothing in `app/nexus.py`'s tick loop calls it. This module
+cannot and does not fix that — it only makes the real, current state of
+it honestly observable, which is the whole point of Self-Monitoring.
+
+New `GET /api/trades/system-health` endpoint (`app/routers/trades.py`),
+mirroring the existing `/pipeline-health` endpoint's own convention
+exactly. Zero new `GameSaveState` fields, zero migration risk.
+
+### Explicitly NOT built this pass, and why
+
+Consistent with the "no fake autonomy" rule this directive itself
+states: the Autonomous Research Orchestrator/operating scheduler
+(Phases 1, 20) that would trigger `research_factory.py` cycles without
+a human call — this remains the single most valuable, most-repeated
+finding across every audit this session, and deliberately was not
+attempted as a rider on a self-monitoring milestone; Evidence Maturity
+states (Phase 31); the Strategy Diversity Engine (Phase 4); automatic
+certification and graduated SHADOW/PAPER staged deployment (Phase 7-8);
+automatic failure-response ACTIONS beyond the already-real drift
+DETECTION (Phase 10); connecting `champion_history` to what TradeTown
+actually trades (the single largest remaining gap, already disclosed
+by the immediately-preceding milestone and still not attempted here).
+Each of these is a genuine, multi-day design effort requiring its own
+dedicated Phase 0, not something to build shallowly as one line item
+among 34.
+
+### Testing and regression
+
+12 new tests (`tests/test_system_health.py`): honest zero-state on a
+fresh save (never a fabricated "all healthy" default), real stall
+detection (both a positive and a negative case), real factory-run
+reflection (including "most recent of several"), real pending-
+promotion counting for both a qualifying and a non-qualifying
+comparison (reusing, not duplicating, `find_promotable_comparisons()`),
+real concerning-drift counting, input-mutation safety. mypy/ruff clean
+on every touched file. Zero changes to any trading, research,
+validation, promotion, or risk logic — this module only reads already-
+real, already-persisted state.
+
+**Company Automation Final Classification: C — SUBSTANTIAL AUTONOMY
+BUT IMPORTANT AUTOMATION GAPS REMAIN.** The core paper-trading and
+strategy-validation chain is substantially automated and now
+genuinely self-monitoring; the system can honestly answer "is anything
+stalled?" But the recurring human-trigger boundary at the START of
+research/validation cycles, and the complete disconnection between
+validated strategies and live trade generation, both remain — exactly
+the two findings this and every other audit this session converged on
+independently.

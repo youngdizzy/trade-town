@@ -7604,6 +7604,32 @@ class TradePipelineHealthSnapshot(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+class SystemHealthSnapshot(CamelModel):
+    """CEO directive "TradeTown — Autonomous Quant Company End-State
+    1.0," Phase 21 (Self-Monitoring) — see app/system_health.py's own
+    module docstring for the full real methodology. DIAGNOSTIC ONLY,
+    computed fresh from GameSaveState on every call, never persisted —
+    same CAGS convention TradePipelineHealthSnapshot above already
+    establishes. Nothing here gates, scores, or influences any real
+    trading, research, or promotion decision."""
+
+    generated_at: str = Field(alias="generatedAt")
+    last_persisted_at: str = Field(alias="lastPersistedAt")
+    sim_day: int = Field(alias="simDay")
+    sim_minute: int = Field(alias="simMinute")
+    research_completed_signals: int = Field(alias="researchCompletedSignals")
+    resolved_decisions: int = Field(alias="resolvedDecisions")
+    research_to_decision_stall_detected: bool = Field(alias="researchToDecisionStallDetected")
+    factory_ever_run: bool = Field(alias="factoryEverRun")
+    factory_run_count: int = Field(alias="factoryRunCount")
+    last_factory_run_at: str | None = Field(default=None, alias="lastFactoryRunAt")
+    pending_autonomous_promotions: int = Field(alias="pendingAutonomousPromotions")
+    champion_history_count: int = Field(alias="championHistoryCount")
+    concerning_drift_event_count: int = Field(alias="concerningDriftEventCount")
+    total_drift_event_count: int = Field(alias="totalDriftEventCount")
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+
+
 # CEO directive "Professional Quant Trading Core," Rule 25/26 — the CEO
 # Opportunity Feed. Every entry's eligibility status is one of these
 # four real states, never a fabricated "guaranteed winner" — see

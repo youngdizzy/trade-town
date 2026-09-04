@@ -49,6 +49,7 @@ from app.schemas import (
     StrategySessionPerformanceSummary,
     StrategyTradingDiagnosticSummary,
     SymbolPerformanceSummary,
+    SystemHealthSnapshot,
     TradeAttributionSummary,
     TradeLifecycleRecord,
     TradePipelineHealthSnapshot,
@@ -57,6 +58,7 @@ from app.schemas import (
     WatchlistEligibilitySummary,
 )
 from app.state import game_state
+from app.system_health import compute_system_health
 from app.trade_attribution import compute_trade_attribution_history, compute_unattributed_trade_monitor, resolve_trade_strategy_rule_snapshot
 from app.trade_lifecycle import build_trade_lifecycle_record
 from app.trade_pipeline_health import compute_strategy_trading_diagnostics, compute_trade_pipeline_health
@@ -366,6 +368,19 @@ async def get_trade_pipeline_health() -> TradePipelineHealthSnapshot:
     anything."""
     state = await game_state.snapshot()
     return compute_trade_pipeline_health(state)
+
+
+@router.get("/system-health", response_model=SystemHealthSnapshot)
+async def get_system_health() -> SystemHealthSnapshot:
+    """CEO directive "TradeTown — Autonomous Quant Company End-State
+    1.0," Phase 21 (Self-Monitoring) — real, computed-fresh telemetry
+    on whether the autonomous subsystems are actually moving, not just
+    whether the process is up. See app/system_health.py's own module
+    docstring for the exact real methodology and honesty boundary on
+    each field. Diagnostic only — nothing here gates, scores, or
+    influences any real trading, research, or promotion decision."""
+    state = await game_state.snapshot()
+    return compute_system_health(state)
 
 
 @router.get("/opportunity-feed", response_model=OpportunityFeed)
