@@ -21019,3 +21019,202 @@ evidence lines render this real data correctly. The real burn-in
 backend was restarted afterward with zero migration errors, confirming
 the new code loads the real save cleanly (no new persisted fields to
 migrate in the first place).
+
+## CEO directive "TradeTown — Research-to-Trade Proposal Pipeline Stall Audit 1.0"
+
+A forensic-only diagnostic (no permission to loosen gates, force trades,
+or change trading behavior) tracing exactly why the real burn-in save
+shows ~100 opportunity rejections and almost no `TradeProposal`s.
+Every stage from real research completion through candidate generation,
+Opportunity Gatekeeper evaluation, `TradeProposal` creation, persistence,
+and CEO/auto decision resolution was traced against actual source and
+cross-checked against the real save's own persisted evidence — no
+missing call, no silent exception, no persistence loss, no miscomputed
+sub-score anywhere in the chain. `tradeProposals: 0` is not data loss:
+`app/state.py` deliberately filters a resolved proposal OUT of the
+pending list on resolution, and there is no separate lifetime archive of
+resolved `TradeProposal` objects — the lifetime record is `decisions`,
+which is intact (3, matching `ceoDecisions`/`debates`/
+`executiveMeetingLog` exactly). The near-total rejection rate is the
+real, honest, already-previously-audited ("Professional Quant Firm
+Phase 41-45," Critical Task #0) and deliberately-unchanged consequence
+of `min_trade_quality_score=75` combined with a correctly-computed,
+near-zero liquidity sub-score on short (30x1h at the time) real candle
+windows. **Final Classification: A — VERIFIED CORRECT / NO PIPELINE
+DEFECT.** Zero code changed. Recommended next milestone at the time:
+Paper Trading Evidence Collection / burn-in — superseded by the
+directive below, which investigated the liquidity finding further.
+
+## CEO directive "TradeTown — Liquidity Context Improvement + Autonomous Company Readiness Audit 1.0"
+
+Two coordinated, forensic-first objectives following directly from the
+Pipeline Stall Audit above: (A) improve the liquidity read's real market
+context without weakening the Opportunity Gatekeeper, and (B)
+forensically map exactly how automated TradeTown actually is. Explicit
+non-goals, both honored: no threshold loosened, no trade forced, no
+recommendation called "automation," no analytics called "self-
+improvement," no live trading.
+
+### Objective A — liquidity context (shadow-only)
+
+**Correcting the directive's own premise.** The directive's own text
+named `app/war_room.py`'s `PROPOSAL_TIMEFRAME`/`PROPOSAL_CANDLE_COUNT=30`
+as "the existing liquidity calculation." Direct source tracing found
+this is not accurate: `build_war_room_session()`'s own
+`liquidity = next((liq for liq in market_intelligence.liquidity if
+liq.symbol == proposal.symbol), None)` shows the REAL production
+liquidity read is computed once per tick, for the full watchlist, by
+`app/market_intelligence.py::compute_market_intelligence_state()`, at
+its own `CANDLE_TIMEFRAME="1h"`/`CANDLE_WINDOW=40` — a comment on that
+constant already discloses real (if informal) intent: "More history
+than app/executive.py's own PROPOSAL_CANDLE_COUNT (30) — swing/
+structure detection needs enough bars on each side of a candidate swing
+point to be meaningful." `war_room.py`'s own 30x1h fetch feeds a
+separate What-If simulation / evidence-confluence read, never liquidity.
+This correction is disclosed rather than silently absorbed, per this
+codebase's own standing forensic-first discipline.
+
+**Why the window is genuinely short, not just "clock says so."**
+`app/market_data.py::MockMarketDataProvider` (the real, confirmed-active
+`market_data_provider` singleton — the separate, opt-in
+`ExternalMarketDataProvider` from "Real Market Data + Evidence Integrity
+Foundation" reports `is_available() == False` here, no credentials
+exist) is a real GARCH(1,1)-style, regime-switching, mean-reverting,
+AR(1)-momentum-persistent walk, not plain noise. Internal regime
+segments (`_REGIME_DURATION_BARS = (12, 55)`) last 12-55 bars regardless
+of timeframe granularity. A 40-bar 1h window (40 real hours) frequently
+doesn't span a full mean-reverting "range" segment — exactly the real
+behavior `compute_liquidity()`'s equal-high/equal-low clustering is
+built to detect. The SAME 12-55-bar duration read on 4h candles spans
+4x the wall-clock time per bar, genuinely improving the odds of
+capturing a complete segment — a real, principled reason a coarser
+timeframe adds distinct information, not just noisier resampling.
+Window classification (Part II): **C — a practical, reasonable default
+reused across multiple consumers (structure/volatility/liquidity),
+never dedicated-validated for liquidity's own clustering-probability
+math specifically.**
+
+**A leakage hazard found and avoided before writing code.**
+`MockMarketDataProvider.get_candles()` seeds its RNG by `(symbol,
+timeframe)` only, but its live-regime-bias window is defined as `i >=
+limit - RECENT_REGIME_BIAS_WINDOW` — relative to the CALLER's own
+`limit`, not to a fixed calendar position. Two calls with different
+`limit` values are therefore NOT prefix-stable: a longer request is an
+independently-realized walk sharing the same seed, not "the same bars
+plus more history prepended." Naively enlarging the 1h `limit` would
+have silently substituted a different reality than production's own
+read for the overlapping bars — exactly the "reconstruction that
+changes historical meaning" Part IV forbids, and the same class of
+leakage risk `opportunity_gate_calibration_experiment.py`'s own
+docstring already flagged for a different reason (rescaling to the live
+price on every call). The safe design instead fetches a genuinely
+SEPARATE `4h` read, at the SAME real tick, never touching the 1h
+`limit` at all.
+
+**What was built.** `app/market_intelligence.py::
+compute_multi_timeframe_liquidity(symbol, one_hour_candles,
+higher_timeframe_candles)` calls the real, unmodified `compute_liquidity()`
+twice (1h and 4h — zero duplicated clustering/swing logic). A real 1h
+zone earns a small, capped bonus
+(`MULTI_TIMEFRAME_CONFIRMATION_BONUS_PER_ZONE=10.0`,
+`MAX_MULTI_TIMEFRAME_CONFIRMATION_BONUS=20.0` — reusing the exact
+capped-bonus shape "Department Debate & Collaboration Intelligence 1.0"
+already established for its own evidence-reuse bonus, rather than
+inventing a new weighting convention) only when the SAME real price
+level, same zone kind, independently clusters on the 4h read too,
+within the SAME real `LIQUIDITY_CLUSTER_TOLERANCE_PCT` — genuine
+cross-timeframe confluence, the standard technical-analysis concept,
+honestly named (never "hedge-fund"/"institutional" liquidity, per Part
+VI — this codebase has no order-flow data source). Never lowers the
+real 1h score. New `MultiTimeframeLiquidityCapture` records (symmetric
+across REJECTED and APPROVED candidates — unlike
+`OpportunityShadowSubScoreCapture`, which only covers rejections, this
+one also needed the "accepted by A / rejected by B" comparison group
+Part IX asks for) are captured in `app/nexus.py::tick()`'s existing
+Gatekeeper-evaluation loop, at the same real tick as the real 1h
+fetch — a new, safely-defaulted, capped-at-100 `GameSaveState.
+multi_timeframe_liquidity_captures` list, added to the `trade_history`
+archive module alongside its sibling.
+
+**Wired into the existing shadow architecture, not a new one.**
+`app/opportunity_gate_calibration_experiment.py`'s `evaluate_shadow_models()`
+gained one new optional parameter (`multi_timeframe_liquidity_score`);
+when supplied, `_composite_multi_timeframe_liquidity()` substitutes
+ONLY the liquidity term in the same real mean-of-sub-scores formula
+Model A/Control already uses — every other real dimension untouched
+(Part VII no-double-counting, satisfied directly). Reuses the same
+`_group_counts()`/`_rescued_win_rate_evidence()`/leakage-audit machinery
+the existing Models B/C/D already established — zero duplicated
+statistical infrastructure. Never wired into `evaluate_opportunity()`
+or any live decision.
+
+**Liquidity Final Classification: A — SAFE IMPROVEMENT READY FOR SHADOW
+VALIDATION.** Correct, tested, point-in-time-safe by construction (never
+reconstructed retroactively). Zero real captures exist yet on the live
+save — not yet promotable, only ready to begin collecting evidence.
+
+### Objective B — full automation forensic audit
+
+22 company layers traced against real source and the real burn-in
+save's own persisted state — never documentation, never ambition. Full
+classification table (component/level/human-required/paper-or-live/
+evidence/limitation) delivered in this milestone's own final report;
+key findings:
+
+- **Proven, live, autonomous chain.** The real save's own
+  `operating_mode: "executive"` and its 3 real `CeoDecisionRecord`s all
+  carrying `resolvedBy: "auto"` are direct, live proof the full
+  Research → Candidate → Opportunity Gatekeeper → TradeProposal →
+  Decision → Risk Contract → Order → Fill → Position chain runs with
+  zero human clicks in this mode — confirmed by tracing
+  `app/nexus.py::_apply_operating_mode()` and `app/executive.py::
+  resolve_proposal()` directly, not inferred from the mode's name.
+- **Strategy promotion is human-only, and has never happened.**
+  `app/champion_challenger.py::promote_challenger()` is only ever
+  called from `routers/sandbox.py`'s promotion endpoint (`promoted_by`
+  a required payload field) — `app/schemas.py`'s own comment: "this
+  record is never created automatically." 0/6 real strategies on the
+  live save have ever cleared `historical_backtest` stage.
+- **Learning is real at the write layer, analytics at the application
+  layer.** Institutional Memory/Company Wisdom writes are real and
+  automatic (confirmed this session by the Learning Organization 1.0/1.1
+  milestones); a direct grep across every gating file
+  (`nexus.py`/`gatekeeper.py`/`opportunity_gatekeeper.py`) found ZERO
+  references to `wisdom_state` or institutional-memory content — real
+  memory informs an agent's own reasoning TEXT (cited in department
+  opinions/challenge reports) but never alters a vote, score, or
+  threshold. Per this directive's own explicit instruction, this is
+  never called "self-improving."
+- **A disclosed exit-mechanism honesty gap, found incidentally.**
+  `app/paper_trading.py::tick_paper_trading()` — the real function that
+  decides when a paper position closes — uses a minimum-hold-time
+  (`MIN_HOLD_MINUTES=120`) + memoryless random-roll
+  (`CLOSE_CHANCE_PER_TICK=0.12`) mechanic; it never reads a position's
+  own real, stored `stop_price`/`target_price` (set by "Hard Risk Gates
+  2.0" at entry) to trigger a live exit — those fields are real and
+  used for post-hoc grading (`process_adherence.py`, `decision_vault.py`)
+  only. Disclosed here per the FINAL PRINCIPLE, not fixed (out of this
+  milestone's own explicit scope — exit logic changes are forbidden by
+  Part I).
+- **Governance boundaries are intentional, not gaps.** Emergency Stop
+  resumption, Risk Contract configuration, operating-mode selection,
+  and strategy promotion are all real, human-only actions via explicit
+  API calls — correct professional design, not something to automate
+  away.
+
+**Company Automation Final Classification: B — MOSTLY AUTOMATED, HUMAN
+GOVERNANCE REMAINS.**
+
+### Regression safety and testing
+
+Zero changes to `min_trade_quality_score`, the Opportunity Gatekeeper,
+the Trade Gatekeeper, Risk Contract, Emergency Stop, position sizing,
+entry/exit logic, or the Memecoin Sniper. No live trading, no Schwab
+integration. 16 new tests (9 `tests/test_market_intelligence.py`, 7
+`tests/test_opportunity_gate_calibration_experiment.py`). Full backend
+suite: 4015 passed (up from 3997), zero regressions. mypy and ruff
+clean on every touched file. No frontend changes were made or needed.
+The real burn-in backend was restarted with the new code and confirmed
+to load cleanly with zero migration errors; the new
+`multiTimeframeLiquidityCaptures` field appeared present and honestly
+empty (`[]`) rather than absent or erroring.

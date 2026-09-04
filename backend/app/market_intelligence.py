@@ -94,6 +94,7 @@ from app.schemas import (
     InstitutionalActivityRead,
     LiquidityRead,
     LiquidityZone,
+    MultiTimeframeLiquidityRead,
     MarketDebate,
     MarketEnvironmentEntry,
     MarketEnvironmentRegime,
@@ -126,6 +127,44 @@ CANDLE_WINDOW = 40
 RECENT_WINDOW = 10
 SWING_LOOKBACK = 3
 LIQUIDITY_CLUSTER_TOLERANCE_PCT = 0.3
+
+# CEO directive "Liquidity Context Improvement + Autonomous Company
+# Readiness Audit 1.0," Objective A — a SHADOW-ONLY, higher-timeframe
+# companion read for compute_liquidity() below. A dedicated Phase 0
+# forensic audit for that directive found the real, structural reason
+# production's own 1h/40-candle liquidity read lands near-zero for most
+# candidates: `app/market_data.py::MockMarketDataProvider`'s own real
+# regime-switching walk holds one internal regime (mean-reverting
+# "range" segments especially, see that module's own
+# _REGIME_MEAN_REVERSION) for 12-55 BARS regardless of timeframe — a
+# 40-bar 1h window (40 real hours) frequently doesn't even span one full
+# regime segment, so there is rarely enough real repeated-visits-to-a-
+# level behavior for compute_liquidity()'s own real clustering logic to
+# find. The SAME 12-55-bar regime duration, read on a 4h candle instead,
+# spans 4x the real wall-clock time per bar — a materially better chance
+# of a real mean-reverting segment showing up complete within a bounded
+# candle count. This is a genuine, disclosed property of the underlying
+# generator's own real mean-reversion structure, not a claim about real
+# markets (this module has no live feed — see this module's own
+# docstring) and not evidence the 1h read is wrong; it only means a
+# COARSER real timeframe is a genuinely different, not merely noisier,
+# observation of the SAME real (mock) price process.
+MULTI_TIMEFRAME_LIQUIDITY_TIMEFRAME = "4h"
+MULTI_TIMEFRAME_LIQUIDITY_CANDLE_COUNT = 30
+# A level that clusters independently on BOTH the 1h and the 4h read is
+# real cross-timeframe confirmation — the standard, honest technical-
+# analysis concept of "higher-timeframe confluence," never a claim about
+# real institutional order flow this codebase cannot observe (see
+# LiquidityRead's own docstring for the same honesty boundary). Capped-
+# bonus shape reused from "TradeTown — Department Debate & Collaboration
+# Intelligence 1.0"'s own EVIDENCE_REUSE_BONUS_PER_PAIR/MAX_EVIDENCE_
+# REUSE_BONUS precedent (app/collaboration_intelligence.py) rather than
+# inventing a new weighting convention — fixed, predeclared BEFORE this
+# shadow read was ever compared against a single real outcome (see
+# app/opportunity_gate_calibration_experiment.py's own "NO SEARCH OVER
+# WEIGHTS" discipline).
+MULTI_TIMEFRAME_CONFIRMATION_BONUS_PER_ZONE = 10.0
+MAX_MULTI_TIMEFRAME_CONFIRMATION_BONUS = 20.0
 
 MAX_MARKET_INTELLIGENCE_REPORTS = 60
 MAX_MARKET_INTELLIGENCE_LEARNING = 60
@@ -558,6 +597,55 @@ def compute_liquidity(symbol: str, candles: list[Candle]) -> LiquidityRead:
         sweepDirection=sweep_direction,
         sweepTimestamp=sweep_timestamp,
         liquidityScore=round(liquidity_score, 1),
+        detail=detail,
+    )
+
+
+def _zone_confirmed_at_higher_timeframe(zone: LiquidityZone, higher_timeframe_zones: list[LiquidityZone]) -> bool:
+    """A real zone is 'confirmed' only by a same-kind zone (equal-highs
+    only confirms equal-highs) landing within the SAME real clustering
+    tolerance compute_liquidity() itself already uses — never a new,
+    looser tolerance invented for this shadow read."""
+    return any(
+        other.kind == zone.kind and abs(zone.price - other.price) / other.price * 100 <= LIQUIDITY_CLUSTER_TOLERANCE_PCT
+        for other in higher_timeframe_zones
+    )
+
+
+def compute_multi_timeframe_liquidity(symbol: str, one_hour_candles: list[Candle], higher_timeframe_candles: list[Candle]) -> MultiTimeframeLiquidityRead:
+    """CEO directive "Liquidity Context Improvement + Autonomous Company
+    Readiness Audit 1.0," Objective A — SHADOW-ONLY. Reuses compute_liquidity()
+    itself, unmodified, twice (once per real timeframe) — never a second
+    clustering/swing implementation. Never replaces, mutates, or is read
+    by the real production `liquidity_quality_score` this module's own
+    compute_liquidity() already feeds into app/war_room.py's real
+    DecisionScoreBreakdown — see app/opportunity_gate_calibration_
+    experiment.py's own module docstring for where this shadow read is
+    compared, never substituted, against the real Gatekeeper outcome.
+
+    `blended_score` never LOWERS the real 1h score — it only ever ADDS a
+    capped bonus when the SAME real price level independently clusters
+    on the higher real timeframe too (genuine cross-timeframe
+    confirmation, the standard technical-analysis concept — never a
+    claim about real institutional order flow this codebase has no data
+    source for, see LiquidityRead's own docstring for the same honesty
+    boundary already established there)."""
+    one_hour = compute_liquidity(symbol, one_hour_candles)
+    higher_timeframe = compute_liquidity(symbol, higher_timeframe_candles)
+    confirmed_zone_count = sum(1 for zone in one_hour.zones if _zone_confirmed_at_higher_timeframe(zone, higher_timeframe.zones))
+    bonus = min(MAX_MULTI_TIMEFRAME_CONFIRMATION_BONUS, confirmed_zone_count * MULTI_TIMEFRAME_CONFIRMATION_BONUS_PER_ZONE)
+    blended_score = round(min(100.0, one_hour.liquidity_score + bonus), 1)
+    if confirmed_zone_count:
+        detail = f"{confirmed_zone_count} of {len(one_hour.zones)} real 1h liquidity zone(s) also cluster independently on the real {MULTI_TIMEFRAME_LIQUIDITY_TIMEFRAME} read — cross-timeframe confirmed."
+    else:
+        detail = f"No real 1h liquidity zone was independently confirmed by the real {MULTI_TIMEFRAME_LIQUIDITY_TIMEFRAME} read."
+    return MultiTimeframeLiquidityRead(
+        symbol=symbol,
+        oneHourLiquidityScore=one_hour.liquidity_score,
+        higherTimeframeLiquidityScore=higher_timeframe.liquidity_score,
+        higherTimeframe=MULTI_TIMEFRAME_LIQUIDITY_TIMEFRAME,
+        confirmedZoneCount=confirmed_zone_count,
+        blendedLiquidityScore=blended_score,
         detail=detail,
     )
 

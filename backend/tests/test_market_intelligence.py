@@ -11,13 +11,17 @@ from datetime import datetime, timezone
 
 from app.market_data import Candle, MockMarketDataProvider
 from app.market_intelligence import (
+    MAX_MULTI_TIMEFRAME_CONFIRMATION_BONUS,
+    MULTI_TIMEFRAME_CONFIRMATION_BONUS_PER_ZONE,
     _classify_regime,
     _session_for_hour,
+    _zone_confirmed_at_higher_timeframe,
     compute_historical_similarity,
     compute_liquidity,
     compute_market_intelligence_state,
     compute_market_quality,
     compute_market_structure,
+    compute_multi_timeframe_liquidity,
     compute_news_risk,
     compute_session,
     compute_strategy_match,
@@ -30,6 +34,7 @@ from app.market_intelligence import (
     record_market_intelligence_report,
 )
 from app.schemas import (
+    LiquidityZone,
     MarketEnvironmentEntry,
     MarketIntelligenceReport,
     NewsItem,
@@ -209,6 +214,102 @@ class TestComputeLiquidity:
         # Research Engine" — Live Desk chart markers. The real timestamp
         # of the candle whose wick pierced the zone (index 15).
         assert liquidity.sweep_timestamp == candles[15].timestamp
+
+
+def _equal_high_candles(*, high_price: float = 110.0, base: float = 100.0) -> list[Candle]:
+    """Same real fixture shape as
+    TestComputeLiquidity::test_two_equal_highs_form_a_real_liquidity_zone
+    above, parameterized on the zone's own price so tests can place it at
+    a chosen level (for real cross-timeframe confirmation) or a distinct
+    one (for real non-confirmation)."""
+    candles = []
+    for i in range(3):
+        candles.append(_candle(i, open_=base, high=base + 0.5, low=base - 0.5, close=base))
+    candles.append(_candle(3, open_=base, high=high_price, low=base - 0.5, close=base + 1))
+    for i in range(4, 8):
+        candles.append(_candle(i, open_=base + 1, high=base + 2, low=base, close=base + 1))
+    candles.append(_candle(8, open_=base + 1, high=high_price + 0.1, low=base + 0.5, close=base + 2))
+    for i in range(9, 15):
+        candles.append(_candle(i, open_=base + 2, high=base + 2.5, low=base + 1.5, close=base + 2))
+    for i in range(15, 20):
+        candles.append(_candle(i, open_=base + 2, high=base + 3, low=base + 1, close=base + 2))
+    return candles
+
+
+class TestComputeMultiTimeframeLiquidity:
+    """CEO directive "Liquidity Context Improvement + Autonomous Company
+    Readiness Audit 1.0," Objective A. Every test proves this SHADOW-ONLY
+    read reuses compute_liquidity() unmodified (never a second clustering
+    implementation), is a deterministic pure function of its own real
+    candle inputs (no hidden clock read — Part IV point-in-time
+    correctness), and never lowers the real 1h score."""
+
+    def test_one_hour_score_reproduces_compute_liquidity_exactly(self) -> None:
+        one_hour = _equal_high_candles(high_price=110.0)
+        higher = _flat_candles(n=40, price=50.0)
+        result = compute_multi_timeframe_liquidity("NEXA", one_hour, higher)
+        assert result.one_hour_liquidity_score == compute_liquidity("NEXA", one_hour).liquidity_score
+
+    def test_no_confirmation_when_higher_timeframe_zone_is_at_a_different_level(self) -> None:
+        one_hour = _equal_high_candles(high_price=110.0)
+        higher = _equal_high_candles(high_price=50.0)  # real zone, but a different real price
+        result = compute_multi_timeframe_liquidity("NEXA", one_hour, higher)
+        assert result.confirmed_zone_count == 0
+        assert result.blended_liquidity_score == result.one_hour_liquidity_score
+
+    def test_confirmed_zone_at_the_same_level_adds_a_real_bonus(self) -> None:
+        one_hour = _equal_high_candles(high_price=110.0)
+        higher = _equal_high_candles(high_price=110.05)  # within the real 0.3% cluster tolerance
+        result = compute_multi_timeframe_liquidity("NEXA", one_hour, higher)
+        assert result.confirmed_zone_count >= 1
+        assert result.blended_liquidity_score > result.one_hour_liquidity_score
+        assert result.blended_liquidity_score == min(
+            100.0, round(result.one_hour_liquidity_score + result.confirmed_zone_count * MULTI_TIMEFRAME_CONFIRMATION_BONUS_PER_ZONE, 1)
+        )
+
+    def test_bonus_never_exceeds_the_predeclared_cap(self) -> None:
+        one_hour = _equal_high_candles(high_price=110.0)
+        higher = _equal_high_candles(high_price=110.05)
+        result = compute_multi_timeframe_liquidity("NEXA", one_hour, higher)
+        # Even if every real 1h zone were confirmed, the bonus itself is capped.
+        assert result.confirmed_zone_count * MULTI_TIMEFRAME_CONFIRMATION_BONUS_PER_ZONE >= MAX_MULTI_TIMEFRAME_CONFIRMATION_BONUS or result.blended_liquidity_score <= result.one_hour_liquidity_score + MAX_MULTI_TIMEFRAME_CONFIRMATION_BONUS
+
+    def test_blended_score_never_exceeds_100(self) -> None:
+        one_hour = _equal_high_candles(high_price=110.0)
+        higher = _equal_high_candles(high_price=110.05)
+        result = compute_multi_timeframe_liquidity("NEXA", one_hour, higher)
+        assert result.blended_liquidity_score <= 100.0
+
+    def test_insufficient_history_on_higher_timeframe_is_an_honest_zero_bonus(self) -> None:
+        one_hour = _equal_high_candles(high_price=110.0)
+        higher: list[Candle] = _flat_candles(n=2)  # below compute_liquidity()'s own real minimum
+        result = compute_multi_timeframe_liquidity("NEXA", one_hour, higher)
+        assert result.confirmed_zone_count == 0
+        assert result.higher_timeframe_liquidity_score == 50.0  # compute_liquidity()'s own real "not enough data" default
+        assert result.blended_liquidity_score == result.one_hour_liquidity_score
+
+    def test_deterministic_pure_function_of_its_own_inputs(self) -> None:
+        one_hour = _equal_high_candles(high_price=110.0)
+        higher = _equal_high_candles(high_price=110.05)
+        first = compute_multi_timeframe_liquidity("NEXA", one_hour, higher)
+        second = compute_multi_timeframe_liquidity("NEXA", one_hour, higher)
+        assert first == second
+
+    def test_never_lowers_the_real_one_hour_score(self) -> None:
+        for higher_price in (50.0, 110.0, 110.05, 200.0):
+            one_hour = _equal_high_candles(high_price=110.0)
+            higher = _equal_high_candles(high_price=higher_price)
+            result = compute_multi_timeframe_liquidity("NEXA", one_hour, higher)
+            assert result.blended_liquidity_score >= result.one_hour_liquidity_score
+
+    def test_confirmation_requires_the_same_real_zone_kind(self) -> None:
+        # An equal-high zone must never be "confirmed" by an equal-low
+        # zone at the same price — real support and real resistance are
+        # not the same real price-action signal.
+        high_zone = LiquidityZone(kind="equal_highs", price=110.0, touches=2)
+        low_zone = LiquidityZone(kind="equal_lows", price=110.0, touches=2)
+        assert _zone_confirmed_at_higher_timeframe(high_zone, [low_zone]) is False
+        assert _zone_confirmed_at_higher_timeframe(high_zone, [high_zone]) is True
 
 
 class TestComputeSession:

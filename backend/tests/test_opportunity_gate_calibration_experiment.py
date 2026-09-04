@@ -22,6 +22,7 @@ from app.opportunity_gate_calibration_experiment import (
     _composite,
     _composite_capped_penalty,
     _composite_liquidity_excluded,
+    _composite_multi_timeframe_liquidity,
     _composite_weighted,
     build_shadow_sub_score_capture,
     control_equivalence,
@@ -30,8 +31,26 @@ from app.opportunity_gate_calibration_experiment import (
 )
 from app.opportunity_gatekeeper import build_opportunity_rejection
 from app.portfolio import default_portfolio
-from app.schemas import DecisionScoreBreakdown, OpportunityShadowSubScoreCapture, RiskLimits, WarRoomSession
+from app.schemas import DecisionScoreBreakdown, MultiTimeframeLiquidityCapture, MultiTimeframeLiquidityRead, OpportunityShadowSubScoreCapture, RiskLimits, WarRoomSession
 from app.war_room import build_war_room_session
+
+
+def _multi_timeframe_read(*, blended: float = 80.0, one_hour: float = 60.0) -> MultiTimeframeLiquidityRead:
+    return MultiTimeframeLiquidityRead(
+        symbol="NEXA", oneHourLiquidityScore=one_hour, higherTimeframeLiquidityScore=70.0, higherTimeframe="4h", confirmedZoneCount=2, blendedLiquidityScore=blended, detail="test"
+    )
+
+
+def _multi_timeframe_capture(*, rejection_id: str | None = None, proposal_id: str | None = None, blended: float = 80.0) -> MultiTimeframeLiquidityCapture:
+    return MultiTimeframeLiquidityCapture(
+        id=f"mtfcap-{rejection_id or proposal_id}",
+        symbol="NEXA",
+        rejectionId=rejection_id,
+        proposalId=proposal_id,
+        read=_multi_timeframe_read(blended=blended),
+        capturedSimMinutes=0,
+        createdAt=_now_iso(),
+    )
 
 
 def _now_iso() -> str:
@@ -230,6 +249,98 @@ class TestEvaluateShadowModels:
         breakdown = _breakdown()
         results = evaluate_shadow_models(breakdown, gate_threshold=75.0)
         assert set(results.keys()) == {"control", "liquidity_excluded", "capped_penalty", "weighted_equal_weight", "weighted_reduced_liquidity_weight", "weighted_increased_liquidity_weight"}
+
+    def test_multi_timeframe_liquidity_omitted_when_no_capture_exists(self) -> None:
+        """CEO directive "Liquidity Context Improvement + Autonomous
+        Company Readiness Audit 1.0" — a candidate with no matching real
+        MultiTimeframeLiquidityCapture must never get a fabricated
+        7th score."""
+        breakdown = _breakdown()
+        results = evaluate_shadow_models(breakdown, gate_threshold=75.0)
+        assert "multi_timeframe_liquidity" not in results
+
+    def test_multi_timeframe_liquidity_present_when_a_real_score_is_supplied(self) -> None:
+        breakdown = _breakdown()
+        results = evaluate_shadow_models(breakdown, gate_threshold=75.0, multi_timeframe_liquidity_score=80.0)
+        assert "multi_timeframe_liquidity" in results
+
+    def test_multi_timeframe_liquidity_never_changes_the_real_control_score(self) -> None:
+        """Model A reproducibility (Part XXII, SHADOW #12) — adding the
+        optional multi-timeframe score must never perturb any other
+        model's own real, already-established composite."""
+        breakdown = _breakdown()
+        without = evaluate_shadow_models(breakdown, gate_threshold=75.0)
+        with_mtf = evaluate_shadow_models(breakdown, gate_threshold=75.0, multi_timeframe_liquidity_score=80.0)
+        for model_id in without:
+            assert with_mtf[model_id] == without[model_id]
+
+
+class TestMultiTimeframeLiquidityShadowModel:
+    """CEO directive "Liquidity Context Improvement + Autonomous Company
+    Readiness Audit 1.0," Part VIII-X — the real Model B: same real
+    unweighted-mean composite shape as Model A/Control, with only the
+    liquidity term substituted for the real, independently-captured
+    multi-timeframe blended score. Never wired into evaluate_opportunity()
+    or any live Gatekeeper decision (see TestNoProductionMutation for the
+    static source check covering this file's whole module)."""
+
+    def test_composite_substitutes_only_the_liquidity_term(self) -> None:
+        breakdown = _breakdown(evidence=90.0, confidence=80.0, risk=70.0, expected_value=60.0, market_quality=85.0, liquidity=10.0, portfolio_compatibility=95.0)
+        result = _composite_multi_timeframe_liquidity(breakdown, 80.0)
+        expected = round((90.0 + 80.0 + 70.0 + 60.0 + 85.0 + 80.0 + 95.0) / 7, 1)
+        assert result == expected
+
+    def test_higher_blended_score_can_rescue_a_candidate_the_control_rejects(self) -> None:
+        breakdown = _breakdown(evidence=80.0, confidence=80.0, risk=80.0, expected_value=80.0, market_quality=80.0, liquidity=0.0, portfolio_compatibility=80.0)
+        control = _composite(breakdown)
+        assert control < 75.0  # real production would reject this candidate
+        rescued = _composite_multi_timeframe_liquidity(breakdown, 90.0)
+        assert rescued >= 75.0
+
+    def test_run_experiment_joins_capture_by_rejection_id(self) -> None:
+        rejection = _rejection(rejection_id="oppreject-mtf1", decision_score=65.0)
+        breakdown = _breakdown(liquidity=0.0)
+        capture = _capture(rejection, breakdown)
+        mtf_capture = _multi_timeframe_capture(rejection_id=rejection.id, blended=95.0)
+        report = run_opportunity_gate_calibration_experiment(
+            opportunity_rejections=[rejection], opportunity_shadow_captures=[capture], war_room_sessions=[], multi_timeframe_liquidity_captures=[mtf_capture]
+        )
+        candidate = next(r for r in report.rescued_candidates if r.rejection_id == rejection.id)
+        assert "multi_timeframe_liquidity" in candidate.shadow_scores
+        assert candidate.shadow_scores["multi_timeframe_liquidity"].passed is True
+
+    def test_run_experiment_joins_capture_by_proposal_id_for_approved_candidates(self) -> None:
+        breakdown = _breakdown(liquidity=90.0)
+        session = _approved_session(sub_scores=breakdown, proposal_id="warroom-mtf1")
+        mtf_capture = _multi_timeframe_capture(proposal_id="warroom-mtf1", blended=10.0)
+        report = run_opportunity_gate_calibration_experiment(
+            opportunity_rejections=[], opportunity_shadow_captures=[], war_room_sessions=[session], multi_timeframe_liquidity_captures=[mtf_capture]
+        )
+        group = next(g for g in report.group_counts if g.model_id == "multi_timeframe_liquidity")
+        # A real production PASS whose real multi-timeframe context would
+        # have failed it — the "accepted by A / rejected by B" group
+        # Part IX explicitly asks for.
+        assert group.shadow_would_reject_count == 1
+
+    def test_candidate_with_no_matching_multi_timeframe_capture_has_no_extra_score(self) -> None:
+        rejection = _rejection(rejection_id="oppreject-nomtf")
+        breakdown = _breakdown()
+        capture = _capture(rejection, breakdown)
+        report = run_opportunity_gate_calibration_experiment(
+            opportunity_rejections=[rejection], opportunity_shadow_captures=[capture], war_room_sessions=[], multi_timeframe_liquidity_captures=[]
+        )
+        result = next(r for r in report.rescued_win_rate_comparisons if r.model_id == "multi_timeframe_liquidity")
+        assert result.evidence_state == "insufficient_evidence"
+
+    def test_run_experiment_backward_compatible_when_multi_timeframe_captures_omitted(self) -> None:
+        """Existing callers (and old saves with no
+        multi_timeframe_liquidity_captures list yet) must keep working
+        unchanged — the new parameter is optional."""
+        rejection = _rejection()
+        breakdown = _breakdown()
+        capture = _capture(rejection, breakdown)
+        report = run_opportunity_gate_calibration_experiment(opportunity_rejections=[rejection], opportunity_shadow_captures=[capture], war_room_sessions=[])
+        assert report.total_rejections_on_record == 1
 
 
 class TestBuildShadowSubScoreCapture:

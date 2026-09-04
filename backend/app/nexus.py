@@ -103,7 +103,10 @@ from app.market_data import market_data_provider
 from app.market_debate import generate_market_debate
 from app.market_environment import tick_market_environment
 from app.market_intelligence import (
+    MULTI_TIMEFRAME_LIQUIDITY_CANDLE_COUNT,
+    MULTI_TIMEFRAME_LIQUIDITY_TIMEFRAME,
     compute_market_intelligence_state,
+    compute_multi_timeframe_liquidity,
     compute_strategy_match,
     filter_environment_entries_for_day,
     filter_trades_for_day,
@@ -265,6 +268,7 @@ from app.schemas import (
     MemoryRecord,
     MeetingMinutes,
     MeetingState,
+    MultiTimeframeLiquidityCapture,
     NewsItem,
     OpportunityRejection,
     OpportunityShadowSubScoreCapture,
@@ -364,6 +368,11 @@ MAX_OPPORTUNITY_REJECTIONS = 100
 # from here on (see that schema's own docstring for why this is a
 # separate list), capped 1:1 with MAX_OPPORTUNITY_REJECTIONS above.
 MAX_OPPORTUNITY_SHADOW_CAPTURES = 100
+# CEO directive "Liquidity Context Improvement + Autonomous Company
+# Readiness Audit 1.0" — one MultiTimeframeLiquidityCapture per real
+# candidate reaching Opportunity Gatekeeper evaluation (rejected OR
+# approved — see that schema's own docstring), capped the same way.
+MAX_MULTI_TIMEFRAME_LIQUIDITY_CAPTURES = 100
 # v0.7 Feature 22 — one MarketEnvironmentEntry per real regime change
 # (see app/market_environment.py) — a meaningful timeline stays small on
 # its own, but still capped like every other history list here.
@@ -1415,6 +1424,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # docstring for why this is a separate list, paired 1:1 (by
     # rejectionId) with opportunity_rejections above.
     opportunity_shadow_captures: list[OpportunityShadowSubScoreCapture] = list(state.opportunity_shadow_captures)
+    # CEO directive "Liquidity Context Improvement + Autonomous Company
+    # Readiness Audit 1.0" — see MultiTimeframeLiquidityCapture's own
+    # docstring. Symmetric across both rejected AND approved candidates,
+    # unlike opportunity_shadow_captures above.
+    multi_timeframe_liquidity_captures: list[MultiTimeframeLiquidityCapture] = list(state.multi_timeframe_liquidity_captures)
     agent_energy = state.agent_energy
     operating_mode = state.settings.operating_mode
     executive_reviews: list[ExecutiveReview] = list(state.executive_reviews)
@@ -1984,6 +1998,20 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             war_room_candles = market_data_provider.get_candles(proposal.symbol, WAR_ROOM_TIMEFRAME, WAR_ROOM_CANDLE_COUNT)
         except ValueError:
             war_room_candles = []
+        # CEO directive "Liquidity Context Improvement + Autonomous
+        # Company Readiness Audit 1.0," Objective A — SHADOW-ONLY, fetched
+        # at this SAME real tick (never reconstructed later — see
+        # MultiTimeframeLiquidityCapture's own docstring). Never read by
+        # build_war_room_session()/evaluate_opportunity() below; the real
+        # production `war_room_session.decision_score.liquidity_quality_score`
+        # this tick's Gatekeeper decision actually uses is untouched.
+        try:
+            higher_timeframe_candles = market_data_provider.get_candles(proposal.symbol, MULTI_TIMEFRAME_LIQUIDITY_TIMEFRAME, MULTI_TIMEFRAME_LIQUIDITY_CANDLE_COUNT)
+        except ValueError:
+            higher_timeframe_candles = []
+        multi_timeframe_liquidity_read = (
+            compute_multi_timeframe_liquidity(proposal.symbol, war_room_candles, higher_timeframe_candles) if war_room_candles and higher_timeframe_candles else None
+        )
         war_room_session = build_war_room_session(
             f"warroom-{proposal.id}",
             proposal,
@@ -2036,9 +2064,37 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
             if len(opportunity_shadow_captures) > MAX_OPPORTUNITY_SHADOW_CAPTURES:
                 del opportunity_shadow_captures[: len(opportunity_shadow_captures) - MAX_OPPORTUNITY_SHADOW_CAPTURES]
+            if multi_timeframe_liquidity_read is not None:
+                multi_timeframe_liquidity_captures.append(
+                    MultiTimeframeLiquidityCapture(
+                        id=f"mtfcap-{new_rejection.id}",
+                        symbol=proposal.symbol,
+                        rejectionId=new_rejection.id,
+                        proposalId=None,
+                        read=multi_timeframe_liquidity_read,
+                        capturedSimMinutes=now_sim_minutes,
+                        createdAt=_now_iso(),
+                    )
+                )
+                if len(multi_timeframe_liquidity_captures) > MAX_MULTI_TIMEFRAME_LIQUIDITY_CAPTURES:
+                    del multi_timeframe_liquidity_captures[: len(multi_timeframe_liquidity_captures) - MAX_MULTI_TIMEFRAME_LIQUIDITY_CAPTURES]
             continue
 
         challenge_reports.append(new_challenge_report)
+        if multi_timeframe_liquidity_read is not None:
+            multi_timeframe_liquidity_captures.append(
+                MultiTimeframeLiquidityCapture(
+                    id=f"mtfcap-{proposal.id}",
+                    symbol=proposal.symbol,
+                    rejectionId=None,
+                    proposalId=proposal.id,
+                    read=multi_timeframe_liquidity_read,
+                    capturedSimMinutes=now_sim_minutes,
+                    createdAt=_now_iso(),
+                )
+            )
+            if len(multi_timeframe_liquidity_captures) > MAX_MULTI_TIMEFRAME_LIQUIDITY_CAPTURES:
+                del multi_timeframe_liquidity_captures[: len(multi_timeframe_liquidity_captures) - MAX_MULTI_TIMEFRAME_LIQUIDITY_CAPTURES]
         # v0.7 Feature 46 — "Devil's Advocate references it": the whole
         # job of a ChallengeReport is challenging assumptions (Article
         # III); when it also finds real missing evidence, that's a
@@ -3501,6 +3557,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "risk_decisions": risk_decisions,
             "opportunity_rejections": opportunity_rejections,
             "opportunity_shadow_captures": opportunity_shadow_captures,
+            "multi_timeframe_liquidity_captures": multi_timeframe_liquidity_captures,
             "market_environment": market_environment,
             "market_intelligence": market_intelligence,
             "market_intelligence_reports": market_intelligence_reports,

@@ -3964,6 +3964,28 @@ class LiquidityRead(CamelModel):
     detail: str
 
 
+class MultiTimeframeLiquidityRead(CamelModel):
+    """CEO directive "Liquidity Context Improvement + Autonomous Company
+    Readiness Audit 1.0," Objective A — SHADOW-ONLY output of
+    app/market_intelligence.py::compute_multi_timeframe_liquidity(). Real,
+    computed from real (mock) OHLCV Candle data at two real timeframes,
+    same honesty boundary LiquidityRead's own docstring already
+    establishes — never a claim about real institutional/hedge-fund order
+    flow this codebase has no data source for. `blended_liquidity_score`
+    is NEVER read by evaluate_opportunity() or any other live Gatekeeper
+    decision — see app/opportunity_gate_calibration_experiment.py's own
+    module docstring for where it is compared, never substituted, against
+    the real production Trade Quality composite."""
+
+    symbol: str
+    one_hour_liquidity_score: float = Field(alias="oneHourLiquidityScore")
+    higher_timeframe_liquidity_score: float = Field(alias="higherTimeframeLiquidityScore")
+    higher_timeframe: str = Field(alias="higherTimeframe")
+    confirmed_zone_count: int = Field(alias="confirmedZoneCount")
+    blended_liquidity_score: float = Field(alias="blendedLiquidityScore")  # 0-100
+    detail: str
+
+
 class MarketStructureRead(CamelModel):
     """Real, per-symbol swing structure from the symbol's own recent
     candle history — swing highs/lows via real local-extrema detection,
@@ -9448,6 +9470,29 @@ class OpportunityShadowSubScoreCapture(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+class MultiTimeframeLiquidityCapture(CamelModel):
+    """CEO directive "Liquidity Context Improvement + Autonomous Company
+    Readiness Audit 1.0," Objective A — captured once, in app/nexus.py's
+    tick(), at the exact real moment a candidate reaches Opportunity
+    Gatekeeper evaluation (both approved AND rejected candidates —
+    unlike OpportunityShadowSubScoreCapture above, this is symmetric,
+    since Objective A's own Part IX needs the "accepted by A / rejected
+    by B" comparison group too). Exactly one of rejection_id/proposal_id
+    is set, matching which population this candidate belongs to. A
+    SEPARATE record from OpportunityShadowSubScoreCapture — never a new
+    field on it or on OpportunityRejection/WarRoomSession — same
+    "never modify a production record" precedent that module's own
+    docstring already establishes."""
+
+    id: str
+    symbol: str
+    rejection_id: str | None = Field(default=None, alias="rejectionId")
+    proposal_id: str | None = Field(default=None, alias="proposalId")
+    read: MultiTimeframeLiquidityRead
+    captured_sim_minutes: int = Field(alias="capturedSimMinutes")
+    created_at: str = Field(alias="createdAt")
+
+
 # ============================================================================
 # CEO directive "Opportunity Gate Calibration Experiment 1.0" — report
 # schemas for app/opportunity_gate_calibration_experiment.py. See that
@@ -13435,6 +13480,14 @@ class GameSaveState(CamelModel):
     # app/opportunity_gate_calibration_experiment.py's MAX_SHADOW_CAPTURES).
     opportunity_shadow_captures: list[OpportunityShadowSubScoreCapture] = Field(
         default_factory=list, alias="opportunityShadowCaptures"
+    )
+    # CEO directive "Liquidity Context Improvement + Autonomous Company
+    # Readiness Audit 1.0" — see MultiTimeframeLiquidityCapture's own
+    # docstring. Capped the same way as opportunity_shadow_captures (see
+    # app/nexus.py's MAX_MULTI_TIMEFRAME_LIQUIDITY_CAPTURES). Safe,
+    # optional default — no migration risk for an existing save.
+    multi_timeframe_liquidity_captures: list[MultiTimeframeLiquidityCapture] = Field(
+        default_factory=list, alias="multiTimeframeLiquidityCaptures"
     )
     # v0.7 Feature 22 — Market Environment Simulation (app/market_environment.py).
     market_environment: MarketEnvironmentState = Field(alias="marketEnvironment")

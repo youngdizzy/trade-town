@@ -187,6 +187,7 @@ from app.schemas import (
     DecisionScoreBreakdown,
     LeakageAuditCheck,
     ModelGroupSummary,
+    MultiTimeframeLiquidityCapture,
     OpportunityGateCalibrationExperimentReport,
     OpportunityRejection,
     OpportunityShadowSubScoreCapture,
@@ -260,6 +261,7 @@ ShadowModelId = Literal[
     "weighted_equal_weight",
     "weighted_reduced_liquidity_weight",
     "weighted_increased_liquidity_weight",
+    "multi_timeframe_liquidity",
 ]
 
 _WEIGHTED_MODEL_IDS: dict[str, str] = {
@@ -332,11 +334,32 @@ def _composite_weighted(breakdown: DecisionScoreBreakdown, weights: dict[str, fl
     return round(sum(scores[name] * weights[name] for name in _CORE_SUB_SCORE_NAMES), 1)
 
 
-def evaluate_shadow_models(breakdown: DecisionScoreBreakdown, gate_threshold: float) -> dict[str, ShadowModelScore]:
+def _composite_multi_timeframe_liquidity(breakdown: DecisionScoreBreakdown, blended_liquidity_score: float) -> float:
+    """CEO directive "Liquidity Context Improvement + Autonomous Company
+    Readiness Audit 1.0," Objective A — the SAME real Model A mean-of-
+    real-sub-scores shape `_composite()` uses, with exactly one term
+    substituted: the real, already-captured `liquidity_quality_score`
+    replaced by the real, independently-captured
+    `MultiTimeframeLiquidityCapture.read.blended_liquidity_score` for
+    this SAME candidate at this SAME real tick (see that schema's own
+    docstring). Every other sub-score is untouched — this isolates the
+    liquidity-context question from every other real dimension, exactly
+    matching Part VII's "no double counting" instruction."""
+    scores = _real_sub_scores(breakdown)
+    if "liquidity" in scores:
+        scores["liquidity"] = blended_liquidity_score
+    return round(sum(scores.values()) / len(scores), 1)
+
+
+def evaluate_shadow_models(breakdown: DecisionScoreBreakdown, gate_threshold: float, *, multi_timeframe_liquidity_score: float | None = None) -> dict[str, ShadowModelScore]:
     """The one real entry point for scoring a single real, already-
-    captured DecisionScoreBreakdown under all 4 predeclared models (D
-    expanded into its 3 predeclared weight schemes) — 6 real scores
-    total, every one a pure function of the same frozen input."""
+    captured DecisionScoreBreakdown under all predeclared models (D
+    expanded into its 3 predeclared weight schemes) — every one a pure
+    function of the same frozen input. `multi_timeframe_liquidity_score`
+    (CEO directive "Liquidity Context Improvement + Autonomous Company
+    Readiness Audit 1.0") is optional — omitted (None) whenever this
+    candidate has no matching real MultiTimeframeLiquidityCapture (see
+    that schema's own docstring), never a fabricated substitute."""
     results: dict[str, ShadowModelScore] = {}
     control = _composite(breakdown)
     results["control"] = ShadowModelScore(modelId="control", overall=control, passed=control >= gate_threshold)
@@ -348,6 +371,9 @@ def evaluate_shadow_models(breakdown: DecisionScoreBreakdown, gate_threshold: fl
         weighted = _composite_weighted(breakdown, WEIGHT_SCHEMES[scheme_name])
         if weighted is not None:
             results[model_id] = ShadowModelScore(modelId=model_id, overall=weighted, passed=weighted >= gate_threshold)
+    if multi_timeframe_liquidity_score is not None:
+        multi_timeframe = _composite_multi_timeframe_liquidity(breakdown, multi_timeframe_liquidity_score)
+        results["multi_timeframe_liquidity"] = ShadowModelScore(modelId="multi_timeframe_liquidity", overall=multi_timeframe, passed=multi_timeframe >= gate_threshold)
     return results
 
 
@@ -375,8 +401,14 @@ def build_shadow_sub_score_capture(
     )
 
 
-def _rejected_candidate_result(rejection: OpportunityRejection, capture: OpportunityShadowSubScoreCapture) -> ShadowCandidateResult:
-    shadow_scores = evaluate_shadow_models(capture.sub_scores, capture.gate_threshold_at_capture)
+def _rejected_candidate_result(
+    rejection: OpportunityRejection, capture: OpportunityShadowSubScoreCapture, multi_timeframe_capture: MultiTimeframeLiquidityCapture | None
+) -> ShadowCandidateResult:
+    shadow_scores = evaluate_shadow_models(
+        capture.sub_scores,
+        capture.gate_threshold_at_capture,
+        multi_timeframe_liquidity_score=multi_timeframe_capture.read.blended_liquidity_score if multi_timeframe_capture is not None else None,
+    )
     return ShadowCandidateResult(
         rejectionId=rejection.id,
         symbol=rejection.symbol,
@@ -389,13 +421,17 @@ def _rejected_candidate_result(rejection: OpportunityRejection, capture: Opportu
     )
 
 
-def _approved_candidate_result(session: WarRoomSession) -> ShadowApprovedCandidateResult:
+def _approved_candidate_result(session: WarRoomSession, multi_timeframe_capture: MultiTimeframeLiquidityCapture | None) -> ShadowApprovedCandidateResult:
     # Real production PASS candidates never had a gate_threshold captured
     # alongside them (there was nothing to reject) — evaluated against
     # `decision_score.threshold`, the same real DECISION_SCORE_THRESHOLD
     # constant app/war_room.py's own DecisionScoreBreakdown.threshold
     # field already carries on every session, real and unmodified.
-    shadow_scores = evaluate_shadow_models(session.decision_score, session.decision_score.threshold)
+    shadow_scores = evaluate_shadow_models(
+        session.decision_score,
+        session.decision_score.threshold,
+        multi_timeframe_liquidity_score=multi_timeframe_capture.read.blended_liquidity_score if multi_timeframe_capture is not None else None,
+    )
     resolved_outcome: Literal["win", "loss", "unresolved"] = "unresolved"
     if session.outcome_comparison is not None:
         resolved_outcome = "win" if session.outcome_comparison.actual_pnl_pct > 0 else "loss"
@@ -554,6 +590,7 @@ def run_opportunity_gate_calibration_experiment(
     opportunity_rejections: list[OpportunityRejection],
     opportunity_shadow_captures: list[OpportunityShadowSubScoreCapture],
     war_room_sessions: list[WarRoomSession],
+    multi_timeframe_liquidity_captures: list[MultiTimeframeLiquidityCapture] | None = None,
 ) -> OpportunityGateCalibrationExperimentReport:
     """The one real entry point. Reads only already-persisted state —
     never regenerates a candidate, never calls into market data, never
@@ -561,17 +598,34 @@ def run_opportunity_gate_calibration_experiment(
     Order/Position/Trade. Safe to call as often as wanted (idempotent,
     no side effects, no randomness in Models A-D — the only randomness
     anywhere in this module is `bootstrap_compare_samples()`'s own
-    deterministic seeded resampling)."""
+    deterministic seeded resampling).
+
+    `multi_timeframe_liquidity_captures` (CEO directive "Liquidity
+    Context Improvement + Autonomous Company Readiness Audit 1.0",
+    optional, defaults to none) is joined by rejectionId/proposalId,
+    same as opportunity_shadow_captures above — a candidate with no
+    matching capture simply has no `"multi_timeframe_liquidity"` entry
+    in its own `shadow_scores`, never a fabricated one."""
     captures_by_rejection_id = {c.rejection_id: c for c in opportunity_shadow_captures}
     eligible_rejections = [r for r in opportunity_rejections if r.id in captures_by_rejection_id]
     ineligible_count = len(opportunity_rejections) - len(eligible_rejections)
 
-    rejected_results = [_rejected_candidate_result(r, captures_by_rejection_id[r.id]) for r in eligible_rejections]
-    approved_results = [_approved_candidate_result(s) for s in war_room_sessions]
+    multi_timeframe_by_rejection_id: dict[str, MultiTimeframeLiquidityCapture] = {}
+    multi_timeframe_by_proposal_id: dict[str, MultiTimeframeLiquidityCapture] = {}
+    for capture in multi_timeframe_liquidity_captures or []:
+        if capture.rejection_id is not None:
+            multi_timeframe_by_rejection_id[capture.rejection_id] = capture
+        if capture.proposal_id is not None:
+            multi_timeframe_by_proposal_id[capture.proposal_id] = capture
+
+    rejected_results = [
+        _rejected_candidate_result(r, captures_by_rejection_id[r.id], multi_timeframe_by_rejection_id.get(r.id)) for r in eligible_rejections
+    ]
+    approved_results = [_approved_candidate_result(s, multi_timeframe_by_proposal_id.get(s.proposal_id)) for s in war_room_sessions]
 
     checked, mismatches = control_equivalence(rejected_results)
 
-    model_ids = ["liquidity_excluded", "capped_penalty", *(_WEIGHTED_MODEL_IDS.keys())]
+    model_ids = ["liquidity_excluded", "capped_penalty", *(_WEIGHTED_MODEL_IDS.keys()), "multi_timeframe_liquidity"]
     group_counts = [g for g in (_group_counts(mid, rejected_results, approved_results) for mid in model_ids) if g is not None]
     rescued_win_rate_comparisons = [_rescued_win_rate_evidence(mid, rejected_results) for mid in model_ids]
 

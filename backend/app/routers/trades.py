@@ -113,6 +113,7 @@ async def get_opportunity_gate_calibration_experiment() -> OpportunityGateCalibr
         opportunity_rejections=state.opportunity_rejections,
         opportunity_shadow_captures=state.opportunity_shadow_captures,
         war_room_sessions=state.war_room_sessions,
+        multi_timeframe_liquidity_captures=state.multi_timeframe_liquidity_captures,
     )
 
 
