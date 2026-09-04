@@ -79,7 +79,27 @@ def tick_paper_trading(
         exit_price, exit_slippage_bps = apply_slippage(
             signal_price, action_side=closing_side, market_intelligence=market_intelligence, symbol=pos.symbol
         )
-        reason = "Take-profit target reached" if pos.unrealized_pnl > 0 else "Stop-loss / thesis reassessment"
+        # CEO directive "Paper Trading Exit Engine Forensic Audit 1.0" —
+        # this random-roll, minimum-hold-time close is a genuinely
+        # DIFFERENT real mechanism from app/broker.py::tick_broker()'s
+        # own real, price-triggered stop_loss/take_profit order fills
+        # (which run earlier in the same tick, see app/nexus.py's
+        # tick() — a position that already hit its real stop/target
+        # this tick is closed there first and never reaches this loop
+        # at all). The prior reason text here ("Take-profit target
+        # reached"/"Stop-loss / thesis reassessment") reused the exact
+        # same "Take-profit target reached" wording tick_broker() uses
+        # for a REAL price-level hit, making a random, time-based close
+        # indistinguishable from a real stop/target trigger in the
+        # Paper Trade Journal and every evidence report that reads
+        # `PaperTrade.reason` — exactly the "do not relabel a random
+        # exit as a stop/target exit" defect that audit's own Phase 6
+        # named. This position never touched its real stop_price/
+        # target_price this tick (tick_broker() would have already
+        # closed it if it had); the real reason is a random hold-
+        # duration roll, honestly labeled as such regardless of the
+        # position's current P&L sign.
+        reason = "Maximum hold period reached — thesis reassessment (position was profitable)" if pos.unrealized_pnl > 0 else "Maximum hold period reached — thesis reassessment (position was unprofitable)"
         market_conditions = f"{pos.symbol} moved from {pos.entry_price:.2f} to {exit_price:.2f} over a {held_for}-minute simulated hold."
         supporting = [pos.opened_by]
         opposing = [aid for aid in all_agent_ids if aid not in (pos.opened_by, "coach")][:1]

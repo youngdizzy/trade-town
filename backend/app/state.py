@@ -179,6 +179,7 @@ from app.schemas import (
     TradingMode,
     RestrictionScope,
 )
+from app.autonomous_promotion import apply_autonomous_promotions
 from app.champion_challenger import compare_champion_challenger, promote_challenger
 from app.failure_taxonomy import find_similar_failed_strategies
 from app.quant_research_lab import cap_quant_research_experiments, classify_research_relationship, file_quant_research_experiment, find_similar_experiments
@@ -3187,7 +3188,20 @@ class GameState:
         )
         async with self.lock:
             updated = [*self.data.challenger_comparisons, comparison]
-            self.data = self.data.model_copy(update={"challenger_comparisons": updated})
+            # CEO directive "TradeTown — Autonomous Quant Company 2.0,"
+            # Phase 5 — the ONE real trigger point where a NEW,
+            # potentially-promotable ChallengerComparison can appear
+            # (compare_champion_challenger() is never called from
+            # anywhere else — see app/autonomous_promotion.py's own
+            # module docstring for why this event-driven point, not a
+            # tick()-based sweep, is the correct real hook). Sweeps every
+            # real pending comparison, not just this new one, so an
+            # older comparison that was created before this directive
+            # shipped and never got a human click is honestly evaluated
+            # too, exactly once (find_promotable_comparisons() itself is
+            # idempotent — see its own docstring).
+            updated_champion_history, _ = apply_autonomous_promotions(updated, self.data.champion_history)
+            self.data = self.data.model_copy(update={"challenger_comparisons": updated, "champion_history": updated_champion_history})
             return self.data, comparison
 
     async def promote_champion_challenger(self, *, comparison_id: str, promoted_by: AgentId, reasoning: str) -> tuple[GameSaveState, ChampionRecord]:
@@ -3201,6 +3215,21 @@ class GameState:
             comparison = next((c for c in self.data.challenger_comparisons if c.id == comparison_id), None)
             if comparison is None:
                 raise ValueError(f"No real ChallengerComparison found with id '{comparison_id}'.")
+            # CEO directive "TradeTown — Autonomous Quant Company 2.0,"
+            # Phase 19 (duplicate promotion must fail closed) — this
+            # comparison may already have been promoted automatically
+            # (see app/autonomous_promotion.py, wired into this same
+            # comparison's own creation above) or by an earlier real
+            # human click; either way, promoting the SAME real
+            # comparison twice would create two ChampionRecords for one
+            # real evidence gate having already passed once, which is
+            # never honest history. Real, existing linkage
+            # (ChampionRecord.source_comparison_id), never a new flag.
+            already_promoted = next((r for r in self.data.champion_history if r.source_comparison_id == comparison_id), None)
+            if already_promoted is not None:
+                raise ValueError(
+                    f"Comparison '{comparison_id}' was already promoted (see ChampionRecord '{already_promoted.id}', by '{already_promoted.promoted_by}')."
+                )
             record = promote_challenger(
                 comparison,
                 promoted_by=promoted_by,

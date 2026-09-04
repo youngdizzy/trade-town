@@ -21218,3 +21218,185 @@ The real burn-in backend was restarted with the new code and confirmed
 to load cleanly with zero migration errors; the new
 `multiTimeframeLiquidityCaptures` field appeared present and honestly
 empty (`[]`) rather than absent or erroring.
+
+## CEO directive "TradeTown — Paper Trading Exit Engine Forensic Audit 1.0"
+
+Forensic-only (no permission to redesign the exit system before the
+audit). Traced `TradeProposal → Decision → Risk Contract → Order → Fill
+→ Position → monitoring → exit detection → close_position() → P&L →
+MAE/MFE → Journal → Evidence Report` against real source.
+
+**The directive's own premise was incomplete.** It assumed the entire
+exit mechanism is `app/paper_trading.py`'s `MIN_HOLD_MINUTES=120`/
+`CLOSE_CHANCE_PER_TICK=0.12` random closer. A second, separate,
+already-live mechanism was found: `app/broker.py::tick_broker()`
+monitors real `stop_loss`/`take_profit` orders — placed automatically
+at entry by `app/executive.py::resolve_proposal()`'s real ATR-based
+"Hard Risk Gates 2.0" stop-distance computation — against live price
+every real tick, with correct long/short semantics (independently
+verified against the directive's own stated formulas), real gap-through
+worse-of-trigger fills, and real slippage. It runs BEFORE the random
+closer in the same tick (`app/nexus.py` line 1667 vs. 2253), so a
+position that hits its real stop/target is closed there first and never
+reaches the random-close loop at all.
+
+**The one real defect: mislabeling, not miscomputation.**
+`tick_broker()`'s real price-triggered close uses `reason = "Take-profit
+target reached"` / `"Stop-loss triggered"`. `paper_trading.py`'s random,
+time-based close reused the EXACT SAME "Take-profit target reached"
+string for a close that never checked price against a stop/target level
+at all — making a time-based "thesis reassessment" indistinguishable
+from a real price-level hit in the Paper Trade Journal and every
+evidence report (`app/process_adherence.py`/`app/decision_vault.py`
+both separately, correctly use `stop_price`/`target_price` for real
+entry-quality grading and R-multiple evidence — neither of those was
+affected). Fixed with the smallest possible change: the random closer's
+reason text now honestly says "Maximum hold period reached — thesis
+reassessment ([un]profitable)," never claiming a real stop/target hit.
+Nothing else — no exit logic, entry logic, Gatekeeper, Risk Contract,
+position sizing, or strategy logic — was touched. Trailing-stop
+execution confirmed NOT implemented anywhere in the exit-relevant
+modules, disclosed rather than built (Phase 5's own instruction). The
+same-tick stop+target ambiguity Phase 4 asks about is structurally
+impossible in this system's real data model (`tick_broker()` evaluates
+a single point price per symbol per tick, never intrabar OHLC).
+
+3 new tests (`tests/test_paper_trading.py::TestRandomCloseReasonNever
+ClaimsARealStopTargetHit`). 176 targeted tests passed (existing stop/
+target trigger, gap-through, slippage, and OCO coverage in `test_
+broker.py` already proved Phase 9's items 1-9; not duplicated).
+
+**Final Classification: C — exit implementation defect found and
+minimally fixed.**
+
+## CEO directive "TradeTown — Autonomous Quant Company 2.0" (Phase 5 slice)
+
+The directive's own 24-phase ask is a genuinely large, multi-week build
+(hypothesis engine, 2x strategy generation, automatic validation funnel,
+graduated shadow/paper deployment, automatic health/quarantine, a
+closed learning loop, research prioritization, multi-agent research
+synthesis, diversity telemetry). Per this codebase's own established
+"scope an honest subset, disclose the rest" discipline, this pass
+performed a full Phase 0 forensic architecture audit and then
+implemented exactly ONE real, safely-bounded, explicitly-requested
+slice: Phase 5, Automatic Promotion — rather than fabricating partial,
+unconvincing coverage of all 24 phases.
+
+### Phase 0 findings — most of the loop already exists
+
+A direct source audit (not documentation) found the overwhelming
+majority of this directive's own ask already real and shipped from
+PRIOR CEO directives in this same codebase's history: "TradeTown —
+11/10 Self-Improving Quant Agent System" (Champion/Challenger) and
+"TradeTown — Phase 7/8/9: Full/Autonomous Quant Research Factory."
+Specifically confirmed real and automatic (once triggered):
+`run_research_factory_cycle()`'s complete OBSERVE→GENERATE→MUTATE→
+COMPILE→BACKTEST→ADVERSARIAL-ATTACK→VALIDATE→STRESS→COMPARE→ACCEPT-OR-
+BIN→LEARN loop, including a real, deterministic, no-LLM Research
+Council synthesis (`app/research_council.py`, disagreement preserved,
+never blindly averaged — directly matching this new directive's own
+Phase 11 ask) and real, structured lesson-memory retrieval that
+genuinely feeds real mutation selection (`retrieve_relevant_lessons()`
+→ each child's `lessonsUsed`) — this new directive's own Phase 9
+"closed learning loop," already substantially real. Also confirmed
+real and automatic: strategy lineage/versioning (`strategy_registry.py`),
+drift detection wired into `nexus.py`'s tick() (`strategy_drift.py`,
+confirmed via direct grep), and the comprehensive, already-enforced
+Champion/Challenger evidence gate (`compare_champion_challenger()`'s
+real economic-significance rule, minimum-sample floor, FRAGILE/
+REJECTED/INVALID conclusion check, multiple-testing and tuning-exposure
+flags — `promote_challenger()` already refuses anything whose real
+`verdict != "challenger_recommended"`).
+
+**The one recurring real gap, confirmed by direct grep across nearly
+every phase**: an external HUMAN/API trigger is required to START each
+piece (`POST /research-factory/run`, `POST /sandbox/champion-challenger/
+compare`, `POST /sandbox/champion-challenger/promote` — confirmed zero
+references to any of `research_factory`/`research_discovery`/
+`compare_champion_challenger`/`promote_challenger` anywhere in `app/
+nexus.py`'s automatic tick loop). Once triggered, each piece runs to
+completion with zero further human intervention.
+
+### What was built: Automatic Promotion
+
+New `app/autonomous_promotion.py`. `find_promotable_comparisons()` /
+`apply_autonomous_promotions()` locate real `ChallengerComparison`s
+with `verdict == "challenger_recommended"` that have no matching
+`ChampionRecord.sourceComparisonId` yet, and call the SAME, unmodified
+`promote_challenger()` — inventing no second evidence gate (the real
+one was already comprehensive and already enforced; only who calls it
+was missing). Provenance: `promoted_by="quant"` (a real, pre-existing
+`AgentId`, already used for statistical/quant review elsewhere in this
+codebase), `reasoning` citing the comparison's own real, already-
+computed reasoning text verbatim. Wired into the ONE real place a
+promotable comparison can appear: `app/state.py`'s `submit_champion_
+challenger_comparison()`, which now sweeps every real pending
+comparison (not just the newest one) inside the same lock, immediately
+after appending. Zero new schema fields — `ChallengerComparison`/
+`ChampionRecord` are structurally unchanged — zero migration risk.
+
+**A deliberate, disclosed reversal of an earlier design comment.**
+`ChampionRecord`'s own docstring previously said promotion is "never
+created automatically... agents cannot secretly change production
+strategies" (written for an earlier directive). This directive's own
+Phase 5 explicitly asks to replace that human-click boundary with an
+evidence-gated automatic one; the docstring is updated alongside the
+code to say so honestly, with the real reasoning it remains safe: a
+direct grep of `app/nexus.py`/`app/executive.py`/`app/strategy_
+engine.py` confirms `champion_history`/`get_current_champion()` are
+read by NOTHING in the live trade-proposal/decision/order pipeline
+today — promoting a champion changes an internal record only, not what
+TradeTown actually trades (a separate, larger, still-disconnected gap,
+not closed this pass). The human "judgment" this reverses was never
+independent judgment to begin with — a human clicking Promote was
+already rubber-stamping a verdict computed with zero human input;
+automating that click doesn't remove real judgment from the loop.
+
+**Also closed: a real duplicate-promotion gap** (this directive's own
+Phase 19 "must fail closed" ask, discovered while touching this exact
+code path) — the human `promote_champion_challenger()` endpoint now
+refuses (raises `ValueError`) a comparison that was already promoted
+(autonomously or by an earlier human click), instead of silently
+creating a second `ChampionRecord` for the same evidence.
+
+### Explicitly NOT built this pass, and why
+
+Per "do not build for the sake of building" and this directive's own
+Phase 5 scope: automatically TRIGGERING new comparisons (would require
+this module to also pick a seed hypothesis/symbol/timeframe — a
+materially larger, riskier change than automating an already-fully-
+computed decision); the hypothesis engine (Phase 2 — `research_
+factory.py`'s own mutation/failure-diagnosis engine already covers most
+of its real intent); 2x strategy generation (Phase 3 — a volume/tuning
+knob, low intrinsic value on its own); graduated SHADOW/PAPER staged
+deployment states beyond what exists (Phase 6 — would need new
+`StrategyStage` values and material new plumbing); automatic health/
+quarantine actions (Phase 7-8 — drift DETECTION is real and automatic;
+automatic RESPONSE to it is not, and risk-reduction actions specifically
+must never be automated without exhaustive, separate design review);
+research prioritization telemetry (Phase 10, 13); multi-agent research
+synthesis beyond what `research_council.py` already does (Phase 11);
+diversity metrics (Phase 15). Connecting `champion_history` to what
+TradeTown actually trades remains the single largest, most valuable,
+and most dangerous piece of this directive's own ask — explicitly NOT
+attempted this pass, and not recommended for the immediate next
+milestone either (see final report).
+
+### Regression safety and testing
+
+Zero changes to the Opportunity Gatekeeper, Trade Gatekeeper, Risk
+Contract, Emergency Stop, position sizing, entry/exit logic, or the
+Memecoin Sniper. No live trading, no Schwab integration. 13 new tests
+(`tests/test_autonomous_promotion.py`). Full backend suite and mypy/
+ruff run fresh after all changes (see this milestone's own final
+report for the exact numbers). No frontend changes — `ChallengerComparison`/
+`ChampionRecord` are structurally unchanged, so no new type surface
+exists for the frontend to reflect.
+
+**Company Automation Final Classification: C — PARTIAL AUTONOMY;
+IMPORTANT AUTOMATION BOUNDARIES REMAIN.** Not B, because the single
+most consequential boundary — whether a validated strategy can ever
+actually influence a live trade — remains fully disconnected and
+entirely unaddressed by this pass, and several ordinary lifecycle steps
+(triggering new research, generating hypotheses, deploying past paper
+validation) still require an explicit human/API call.

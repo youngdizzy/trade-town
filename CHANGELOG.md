@@ -7,6 +7,68 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Paper Trading Exit Engine Forensic Audit
+  1.0."** A forensic audit of whether `PaperPosition.stopPrice`/
+  `targetPrice` are real live exit triggers, reference/grading values
+  only, placeholders, partial infrastructure, or a defect. Found the
+  directive's own premise incomplete: a SECOND, separate, already-live
+  exit mechanism exists beyond `app/paper_trading.py`'s hold-duration
+  random closer — `app/broker.py::tick_broker()` already monitors real
+  `stop_loss`/`take_profit` orders (placed automatically at entry by
+  "Hard Risk Gates 2.0") against live price every real tick, with
+  correct long/short semantics, real gap-through fills, and real
+  slippage, and runs BEFORE the random closer in the same tick. One
+  genuine, narrow defect was found and minimally fixed: the random
+  closer's own reason text reused the exact same "Take-profit target
+  reached" wording the real price-triggered mechanism uses, making a
+  time-based close indistinguishable from a real stop/target hit in the
+  Paper Trade Journal and every evidence report — corrected to an
+  honest, distinct "Maximum hold period reached — thesis reassessment"
+  label. No exit logic, entry logic, Gatekeeper, Risk Contract,
+  position sizing, or strategy logic changed. Trailing-stop execution
+  confirmed NOT implemented, disclosed rather than built. 3 new tests.
+  **Final Classification: C — exit implementation defect found and
+  minimally fixed** (a one-line, non-behavioral labeling correction).
+
+- **CEO directive "TradeTown — Autonomous Quant Company 2.0" (Phase 5
+  slice: Automatic Promotion).** A Phase 0 forensic audit found the vast
+  majority of this directive's own 24-phase ask for a closed research→
+  strategy→validation→deployment→learning loop already real and shipped
+  from prior directives ("Phase 7/8/9: Full Autonomous Quant Research
+  Factory," "11/10 Self-Improving Quant Agent System"): automatic
+  multi-generation mutation/backtest/adversarial-attack/Research-Council
+  synthesis, real lesson-memory retrieval feeding real mutation
+  selection, real strategy lineage, real drift detection wired into the
+  tick loop. The one real, narrow, safely-scoped gap actually closed
+  this pass — matching this directive's own explicit Phase 5 ask —
+  is WHO calls `app/champion_challenger.py::promote_challenger()`. That
+  function already refuses (raises `ValueError`) to promote anything
+  whose real `verdict != "challenger_recommended"` — the evidence gate
+  was already comprehensive and already enforced; only the human-only
+  trigger was missing. New `app/autonomous_promotion.py` finds real,
+  qualifying, not-yet-promoted `ChallengerComparison`s and calls the
+  SAME unmodified `promote_challenger()` automatically (provenance:
+  `promoted_by="quant"`), wired into the one real place a promotable
+  comparison can appear (`state.py`'s `submit_champion_challenger_
+  comparison()`). Verified safe by direct source audit, not merely
+  asserted: `champion_history`/`get_current_champion()` are read by
+  NOTHING in the live trade-proposal/decision/order pipeline today —
+  promoting a champion changes an internal record only, never what
+  TradeTown actually trades (a separate, larger, still-disconnected gap,
+  disclosed rather than closed this pass). Zero new schema fields, zero
+  migration risk. Also closes a real, disclosed duplicate-promotion gap
+  (Phase 19's own "must fail closed" ask): the human promotion endpoint
+  now refuses a comparison that was already promoted (autonomously or by
+  an earlier human click) instead of silently creating a second
+  `ChampionRecord`. 13 new tests. Comparison-triggering itself (`compare_
+  champion_challenger()`) remains human-initiated this pass — a
+  disclosed, deliberate scope cut, not an oversight; automatically
+  triggering NEW comparisons would require this module to also
+  automatically pick a seed hypothesis/symbol/timeframe, a materially
+  larger and riskier change than automating an already-fully-computed
+  decision. **Final Classification: C — Partial Autonomy; Important
+  Automation Boundaries Remain.**
+
 - **CEO directive "TradeTown — Liquidity Context Improvement +
   Autonomous Company Readiness Audit 1.0."** Two coordinated,
   forensic-first objectives, neither touching the production Gatekeeper

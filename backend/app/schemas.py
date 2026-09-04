@@ -6695,11 +6695,27 @@ class ChampionRecord(CamelModel):
     field exists anywhere. `source_comparison_id` is `None` only for
     the very first real champion ever recorded for a family (nothing
     to have beaten yet) — never fabricated. Promotion is always an
-    explicit, real, named agent action (see app/champion_challenger.py's
-    promote_challenger()) — this record is never created automatically
-    just because a ChallengerComparison recommended it, matching the
-    directive's own Section 31 ("agents cannot... secretly change
-    production strategies")."""
+    explicit, named agent action (see app/champion_challenger.py's
+    promote_challenger()), which refuses unless the comparison's own
+    real `verdict == "challenger_recommended"` — that real evidence gate
+    is the actual safeguard, not who/what calls the function.
+
+    CEO directive "TradeTown — Autonomous Quant Company 2.0," Phase 5 —
+    an earlier version of this docstring said this record was "never
+    created automatically... agents cannot secretly change production
+    strategies." That earlier claim is DELIBERATELY, EXPLICITLY reversed
+    by that directive's own Phase 5 ask: `app/autonomous_promotion.py`'s
+    `apply_autonomous_promotions()` now calls `promote_challenger()`
+    automatically for any real, already-qualifying comparison (real
+    provenance: `promoted_by="quant"`, distinguishable from a real
+    human promotion by that agent id and this record's own `reasoning`
+    text). Verified safe because nothing changed about production
+    trading, not merely asserted: a direct source audit confirmed
+    `champion_history`/`get_current_champion()` are read by NOTHING in
+    the live trade-proposal/decision/order pipeline — promoting a
+    champion updates this internal record only, never what TradeTown
+    actually trades (a separate, larger, still-disconnected gap, see
+    that directive's own final report)."""
 
     id: str
     strategy_family: str = Field(alias="strategyFamily")
