@@ -21,6 +21,7 @@ import type {
   CeoDecisionRecord,
   CeoOverrideRecord,
   ChallengeReport,
+  CollaborationCaseSummary,
   ChallengerComparison,
   ChampionChallengerFamilyRead,
   ChampionRecord,
@@ -576,6 +577,10 @@ export const api = {
   // lifecycle mutations (backend/app/routers/audit.py's new
   // /incidents/cases endpoints, distinct from the ephemeral /incidents
   // filter above).
+  // "TradeTown — Department Debate & Collaboration Intelligence 1.0" —
+  // computed fresh server-side from real ExecutiveMeetingLogEntry/
+  // ChallengeReport data, never a second persisted copy.
+  getCollaborationCases: () => request<CollaborationCaseSummary[]>("/collaboration/cases"),
   getComplianceIncidentCases: () => request<ComplianceIncident[]>("/audit/incidents/cases"),
   getComplianceIncidentSummary: () => request<ComplianceIncidentSummary>("/audit/incidents/summary"),
   startInvestigatingIncident: (incidentId: string, owner: AgentId) =>

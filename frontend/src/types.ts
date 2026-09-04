@@ -3983,6 +3983,27 @@ export interface ExecutiveMeetingLogEntry {
   createdAt: string;
 }
 
+// "TradeTown — Department Debate & Collaboration Intelligence 1.0" —
+// computed fresh server-side from real, already-permanent
+// ExecutiveMeetingLogEntry/ChallengeReport data, never persisted itself.
+export interface CollaborationCaseSummary {
+  id: string;
+  proposalId: string;
+  symbol: string;
+  simDay: number;
+  departmentCount: number;
+  distinctStanceCount: number;
+  consensusSummary: string;
+  evidenceReuseCount: number;
+  evidenceReusePairs: string[];
+  challengeSeverity: ChallengeSeverity | null;
+  challengeHeeded: boolean;
+  recommendedAction: ExecutiveAction;
+  ceoDecision: AnalystChoice;
+  networkAgreed: boolean;
+  createdAt: string;
+}
+
 // v0.7 Feature 50 (Part 2/3) — Weekly Self-Evaluation. One real entry
 // per department per in-game week, built entirely from that
 // department's own real Meeting Log opinions over the trailing week.

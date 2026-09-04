@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { GameUiState } from "@/state/gameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import type { ReflectionCadence, ReflectionSession, WisdomFactor, WisdomTier } from "@/types";
+import { api } from "@/net/api";
+import type { CollaborationCaseSummary, ReflectionCadence, ReflectionSession, WisdomFactor, WisdomTier } from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 const TIER_TONE: Record<WisdomTier, "amber" | "cyan" | "green" | "purple"> = {
@@ -30,7 +31,7 @@ const CADENCE_TONE: Record<ReflectionCadence, "cyan" | "purple"> = {
  * note) — this panel is the Reflection Chamber.
  */
 export function ReflectionPanel() {
-  const { reflectionSessions, wisdomState, institutionalMemory, knowledgeEvents } = useGameStore();
+  const { reflectionSessions, wisdomState, institutionalMemory, knowledgeEvents, decisions, debates } = useGameStore();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedFactorId, setExpandedFactorId] = useState<string | null>(null);
 
@@ -60,6 +61,8 @@ export function ReflectionPanel() {
                 onToggle={() => setExpandedFactorId((v) => (v === factor.id ? null : factor.id))}
                 institutionalMemory={institutionalMemory}
                 knowledgeEvents={knowledgeEvents}
+                decisions={decisions}
+                debates={debates}
               />
             ))}
           </div>
@@ -91,13 +94,21 @@ const MISTAKE_PATTERN_SOURCES = new Set(["behavioral_mistake", "failure_classifi
 
 /**
  * "TradeTown — Learning Organization 1.0" — real evidence lines for the
- * four factors that draw on Institutional Memory / KnowledgeEvent
- * telemetry (see backend/app/wisdom.py's own compute_wisdom_score()
- * docstring for exactly which four). Returns [] for the other four
- * factors — never a fabricated evidence count for a formula that
+ * seven factors with a real fallback signal below their primary
+ * closed-trade-gated data (see backend/app/wisdom.py's own compute_
+ * wisdom_score() docstring for exactly which). Returns [] for
+ * `complete_research` — the one factor with no data-availability gate
+ * to explain, never a fabricated evidence count for a formula that
  * doesn't actually use this data.
  */
-function evidenceLines(factor: WisdomFactor, institutionalMemory: GameUiState["institutionalMemory"], knowledgeEvents: GameUiState["knowledgeEvents"]): string[] {
+function evidenceLines(
+  factor: WisdomFactor,
+  institutionalMemory: GameUiState["institutionalMemory"],
+  knowledgeEvents: GameUiState["knowledgeEvents"],
+  decisions: GameUiState["decisions"],
+  debates: GameUiState["debates"],
+  collaborationCases: CollaborationCaseSummary[] | null,
+): string[] {
   switch (factor.id) {
     case "share_knowledge": {
       const sharedCount = knowledgeEvents.filter((e) => e.type === "lesson_shared").length;
@@ -114,6 +125,28 @@ function evidenceLines(factor: WisdomFactor, institutionalMemory: GameUiState["i
     }
     case "follow_principles":
       return ["Falls back to the real Audit Log compliance score until a real trade or Gatekeeper block exists."];
+    case "learn_from_experience": {
+      const gradedCount = decisions.filter((d) => d.decisionGradeScore !== null).length;
+      return [`${gradedCount} real decision(s) with a Decision Grade score on file — used as the trend source until 4+ real Discipline Reviews exist.`];
+    }
+    case "improve_communication":
+      return [`${decisions.length} real CEO decision(s) and ${debates.length} real AI Debate(s) on file — used to read this factor at decision time until real Discipline Reviews exist.`];
+    case "support_collaboration": {
+      if (collaborationCases === null) {
+        return ["Loading real collaboration case evidence…"];
+      }
+      if (collaborationCases.length === 0) {
+        return [`${decisions.length} real CEO decision(s) and ${debates.length} real AI Debate(s) on file — used to read this factor at decision time until real Discipline Reviews exist.`];
+      }
+      const multiDept = collaborationCases.filter((c) => c.departmentCount >= 3).length;
+      const withEvidenceReuse = collaborationCases.filter((c) => c.evidenceReuseCount > 0).length;
+      const challengesHeeded = collaborationCases.filter((c) => c.challengeHeeded).length;
+      return [
+        `${collaborationCases.length} real collaboration case(s) on file (${multiDept} involved 3+ departments).`,
+        `${withEvidenceReuse} case(s) included real cross-department evidence reuse.`,
+        `${challengesHeeded} real challenge(s) changed the network's own recommendation — used to read this factor before real Discipline Reviews exist.`,
+      ];
+    }
     default:
       return [];
   }
@@ -125,14 +158,30 @@ function WisdomFactorRow({
   onToggle,
   institutionalMemory,
   knowledgeEvents,
+  decisions,
+  debates,
 }: {
   factor: WisdomFactor;
   expanded: boolean;
   onToggle: () => void;
   institutionalMemory: GameUiState["institutionalMemory"];
   knowledgeEvents: GameUiState["knowledgeEvents"];
+  decisions: GameUiState["decisions"];
+  debates: GameUiState["debates"];
 }) {
-  const lines = expanded ? evidenceLines(factor, institutionalMemory, knowledgeEvents) : [];
+  const [collaborationCases, setCollaborationCases] = useState<CollaborationCaseSummary[] | null>(null);
+
+  useEffect(() => {
+    if (expanded && factor.id === "support_collaboration" && collaborationCases === null) {
+      api
+        .getCollaborationCases()
+        .then(setCollaborationCases)
+        .catch(() => setCollaborationCases([]));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, factor.id]);
+
+  const lines = expanded ? evidenceLines(factor, institutionalMemory, knowledgeEvents, decisions, debates, collaborationCases) : [];
   return (
     <div>
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between text-left">
