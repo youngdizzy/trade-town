@@ -13712,6 +13712,43 @@ class AIReasoningResult(CamelModel):
     # the actual instruction text changes, never silently.
     prompt_version: str = Field(alias="promptVersion")
 
+    # CEO directive "TradeTown — Memecoin Sniper AI Burn-In Cohort
+    # Identity 1.0" — the real, deterministic, immutable-per-configuration
+    # identity for "the exact experimental configuration that produced
+    # this result": a pure function of domain + model_provider +
+    # model_version + prompt_version (all already real fields on this
+    # model, reused unchanged) plus context_builder_version +
+    # reasoning_schema_version (the two genuinely NEW pieces of
+    # configuration identity below — see app/ai_reasoning.py's
+    # `compute_cohort_id()` for the exact derivation). Populated ONLY
+    # when `status == "completed"` — a cohort represents a configuration
+    # that actually produced a reasoning result, and a
+    # provider_unavailable/provider_timeout/provider_error/invalid_output
+    # attempt did not, so all three of these fields stay `None` for
+    # those (never a fabricated identity for an attempt that didn't
+    # succeed). `None` is also the correct, honest value for any save
+    # created before this field existed — never backfilled from today's
+    # current configuration, which would misrepresent history (see this
+    # field's own migration test). Never derived from, or writable by,
+    # anything the model itself returned or a client request supplied —
+    # `build_reasoning_result()` computes it entirely from caller-known,
+    # server-side values.
+    cohort_id: str | None = Field(default=None, alias="cohortId")
+    # The real evidence-context-builder version that built THIS result's
+    # evidence packet (app/ai_context_builder.py's or
+    # app/sniper_ai_context.py's own `CONTEXT_BUILDER_VERSION` constant
+    # at request time). Persisted here because the transient
+    # `AIEvidencePacket` itself is never persisted in `GameSaveState`
+    # (only referenced by `evidence_packet_id` above) — without this
+    # field, a later auditor could not recover which context-builder
+    # version actually produced a given historical result.
+    context_builder_version: str | None = Field(default=None, alias="contextBuilderVersion")
+    # The real, shared structured-output schema version
+    # (`app/ai_reasoning.py`'s `REASONING_SCHEMA_VERSION`) that
+    # `build_reasoning_result()` parsed THIS result's raw provider
+    # response under.
+    reasoning_schema_version: str | None = Field(default=None, alias="reasoningSchemaVersion")
+
     # Part IX — populated ONLY when status == "completed", from the
     # model's own real structured response, never fabricated for any
     # other status.

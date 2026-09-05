@@ -17,7 +17,10 @@ import pytest
 
 import app.state as state_module
 from app.ai_provider import ProviderCallResult
+from app.ai_reasoning import REASONING_SCHEMA_VERSION, compute_cohort_id
 from app.schemas import AIReasoningResult, InstitutionalMemoryEntry, SniperCandidate, SniperScoreComponent, SniperTrade, TimeState
+from app.sniper_ai_context import CONTEXT_BUILDER_VERSION
+from app.sniper_ai_reasoning import SNIPER_ANALYST_PROMPT_VERSION
 from app.state import GameState
 
 _CREATED_AT = "2026-01-01T00:00:00+00:00"
@@ -186,6 +189,57 @@ def test_deterministic_recommendation_is_wait_when_never_entered(monkeypatch: py
         state.data = state.data.model_copy(update={"sniper_candidates": [candidate]})
         _updated, result = await state.submit_sniper_ai_reasoning_request(candidate.id)
         assert result.deterministic_recommendation == "wait"
+
+    asyncio.run(_run())
+
+
+def test_reasoning_request_end_to_end_gets_a_real_cohort_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """"Sniper AI Burn-In Cohort Identity 1.0" directive — the real,
+    live entry point (not just the unit-level build_reasoning_result())
+    must produce a completed result carrying a real cohort identity
+    matching exactly what the real configuration in play (fake
+    provider/model, this domain's own real prompt/context-builder
+    versions, the shared reasoning-schema version) computes to."""
+    monkeypatch.setattr(state_module, "get_ai_provider", lambda: _FakeProvider())
+
+    async def _run() -> None:
+        state = GameState()
+        candidate = _candidate()
+        state.data = state.data.model_copy(update={"sniper_candidates": [candidate]})
+        _updated, result = await state.submit_sniper_ai_reasoning_request(candidate.id)
+        assert result.status == "completed"
+        assert result.cohort_id == compute_cohort_id(
+            domain="memecoin_sniper", provider="fake", model="fake-model",
+            prompt_version=SNIPER_ANALYST_PROMPT_VERSION, context_version=CONTEXT_BUILDER_VERSION,
+            reasoning_schema_version=REASONING_SCHEMA_VERSION,
+        )
+        assert result.context_builder_version == CONTEXT_BUILDER_VERSION
+        assert result.reasoning_schema_version == REASONING_SCHEMA_VERSION
+
+    asyncio.run(_run())
+
+
+def test_cohort_id_survives_a_real_outcome_refresh_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The real `refresh_sniper_ai_reasoning_outcomes()` grading pass
+    only ever updates outcome_status/outcome/outcome_ref/evaluated_at
+    (see that method's own real update dict) — this proves it end-to-end
+    rather than merely by code inspection: cohort identity must be
+    byte-identical before and after a real grading pass."""
+    monkeypatch.setattr(state_module, "get_ai_provider", lambda: _FakeProvider())
+
+    async def _run() -> None:
+        state = GameState()
+        candidate = _candidate()
+        state.data = state.data.model_copy(update={"sniper_candidates": [candidate]})
+        _updated, result = await state.submit_sniper_ai_reasoning_request(candidate.id)
+        original_cohort_id = result.cohort_id
+        assert original_cohort_id is not None
+        trade = _trade(mint=candidate.mint, pnl_sol=0.05)
+        state.data = state.data.model_copy(update={"sniper_trade_history": [trade]})
+        refreshed_state = await state.refresh_sniper_ai_reasoning_outcomes()
+        refreshed_result = next(r for r in refreshed_state.ai_reasoning_results if r.id == result.id)
+        assert refreshed_result.outcome_status == "evaluated"
+        assert refreshed_result.cohort_id == original_cohort_id
 
     asyncio.run(_run())
 

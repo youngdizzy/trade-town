@@ -23361,3 +23361,305 @@ silently mixed with results collected under a different prompt/context-
 builder version — the concrete, minimal precondition Part IV/V of this
 directive actually needs before any checkpointed sample-size gate
 (N=10/25/50/100) or cross-cohort comparison could be built honestly.
+
+## CEO directive "TradeTown — Memecoin Sniper AI Burn-In Cohort Identity
+1.0"
+
+Implements exactly the milestone the previous pass recommended and
+nothing beyond it — an experiment-integrity milestone, explicitly not an
+AI-intelligence/trading/provider-activation/dashboard task. A fresh
+Phase 0 audit (per the directive's own instruction, not trusting the
+prior pass's recommendation at face value) traced the real, current
+architecture end to end before writing any code.
+
+### Phase 0 findings: what already existed vs. what was genuinely missing
+
+Traced: `SniperCandidate` → AI reasoning request → evidence packet →
+prompt/context construction → AI provider → `AIReasoningResult` →
+persistence → outcome refresh → comparison → institutional memory → UI.
+Grepped the whole backend for every version/identity symbol the
+directive named (`AIReasoningResult(`, `promptVersion`, `contextVersion`,
+`model`, `provider`, `sniper_analyst`, `discoveredSimMinutes`,
+`requestedAfterOutcomeKnown`, ...).
+
+Already real and reusable, confirmed by direct reading — no rebuild:
+
+- **Prompt version**: `RESEARCHER_PROMPT_VERSION`/
+  `DEVILS_ADVOCATE_PROMPT_VERSION` (`app/ai_reasoning.py`),
+  `SNIPER_ANALYST_PROMPT_VERSION` (`app/sniper_ai_reasoning.py`) — one
+  real constant per domain/role, bumped only when its instruction text
+  changes.
+- **Context version**: `CONTEXT_BUILDER_VERSION` — one real constant per
+  domain (`app/ai_context_builder.py` = `"ai-context-builder-1.0"`,
+  `app/sniper_ai_context.py` = `"sniper-ai-context-builder-1.0"`),
+  already stamped onto every `AIEvidencePacket.context_builder_version`
+  at build time.
+- **Model/provider identity**: `AIReasoningResult.model_provider`/
+  `model_version` — already real, existing, per-result fields, populated
+  from `ProviderCallResult.provider`/`.model` (the real value the
+  provider itself returned for that call, never a guess;
+  `UnavailableAIProvider` genuinely returns `model=None`, never a
+  fabricated model name).
+- **Domain**: `AIReasoningResult.domain`/`AIEvidencePacket.domain` —
+  already the real, existing `KnowledgeDomain` literal (`"equities"` |
+  `"memecoin_sniper"`), already the one filter every router/list/refresh
+  function in both domains already keys off.
+- **The one real hashing/identity convention this codebase already
+  has**: `hashlib.sha256(":".join(parts)).hexdigest()` →
+  `random.Random(...)` for reproducibility, used identically in
+  `app/strategy_families.py`, `app/statistical_comparison.py`,
+  `app/research_factory.py`, `app/portfolio_monte_carlo.py`,
+  `app/adversarial_research.py`, `app/evaluation_simulator.py`,
+  `app/dataset_registry.py`, `app/holdout.py`, `app/persistence.py`.
+  Reused verbatim for cohort derivation (the hash target here is an
+  identity string, not an RNG seed, but the primitive and the
+  fixed-order-tuple discipline are identical).
+
+Genuinely missing (confirmed by grep returning nothing):
+
+- **No "reasoning schema version" concept existed anywhere.** The one
+  shared structured-output JSON contract `build_reasoning_result()`
+  parses for every domain (thesis/supporting_evidence/
+  contradictory_evidence/knowledge_ids_used/assumptions/unknowns/
+  uncertainty/recommendation/confidence/risk_flags/
+  invalidation_conditions/alternative_hypotheses) had no version tag of
+  its own — only the surrounding prompt PROSE was versioned, not the
+  parser's own contract.
+- **No cohort identity field existed on `AIReasoningResult` at all.**
+  `evidence_packet_id` links to a packet that is never itself persisted
+  in `GameSaveState` (confirmed by grep: no `AIEvidencePacket` list
+  field exists anywhere in that model), so even the packet's own
+  `context_builder_version` was not recoverable from a persisted result
+  after the fact.
+
+### What was built
+
+- **`REASONING_SCHEMA_VERSION = "ai-reasoning-schema-1.0"`**
+  (`app/ai_reasoning.py`) — the smallest new version identifier
+  actually needed (Phase 2's own instruction), bumped only if the shared
+  JSON contract itself changes, never per domain or per prompt-wording
+  change (those already have their own independent version constants).
+- **`compute_cohort_id(*, domain, provider, model, prompt_version,
+  context_version, reasoning_schema_version) -> str`**
+  (`app/ai_reasoning.py`) — a pure function:
+  `f"cohort-{hashlib.sha256(':'.join(six_parts)).hexdigest()[:16]}"`.
+  Deliberately a fixed-order positional tuple, never a dict/JSON object
+  — there is no key-ordering question to defend against because there
+  are no keys, only this function's own permanently-fixed argument
+  order. The six inputs are the COMPLETE, EXHAUSTIVE configuration
+  identity — no candidate/proposal/mint/result-id/timestamp/outcome/
+  token-usage/latency/randomness value is a parameter of this function,
+  structurally, not merely by convention.
+- **Wired into `build_reasoning_result()`'s "completed" branch only**
+  — every other branch (`provider_unavailable`/`provider_timeout`/
+  `provider_error`/`invalid_output`) returns before this computation is
+  ever reached, so `cohort_id` stays `None` for all of them by
+  construction, never by a separate conditional that could drift out of
+  sync. `call_result.model`/`call_result.provider` are read directly
+  from the real provider response (never from `parsed`, the model's own
+  JSON) — there is no code path in `build_reasoning_result()` that ever
+  looks up a cohort-shaped key from the model's output, so a hostile or
+  confused model response containing `{"cohort_id": "...", ...}` cannot
+  influence the stored identity at all (proven, not merely argued — see
+  Testing below).
+- **Three new fields on `AIReasoningResult`** (`app/schemas.py`):
+  `cohort_id` (the derived grouping key), `context_builder_version`,
+  `reasoning_schema_version` — all `str | None`, default `None`. The
+  latter two are genuinely new persisted information (not recoverable
+  any other way once the transient packet is gone); `domain`/
+  `model_provider`/`model_version`/`prompt_version` are reused verbatim,
+  never duplicated into the cohort's constituent fields a second time.
+
+### Why the identity is deterministic, immutable, and creation-time-snapshotted
+
+- **Deterministic**: `compute_cohort_id()` is a pure function of its six
+  string arguments — no randomness, no I/O, no mutable state. Same
+  inputs, same output, provably (tested — see below).
+- **Immutable**: cohort fields are set exactly once, inside
+  `build_reasoning_result()`, at the moment a result is constructed. No
+  other function in the codebase ever calls `model_copy(update=...)`
+  with any of these three field names — confirmed by reading both real
+  outcome-refresh functions (`refresh_ai_reasoning_outcomes()`/
+  `refresh_sniper_ai_reasoning_outcomes()` in `app/state.py`), whose own
+  update dicts touch only `outcome_status`/`outcome`/`outcome_ref`/
+  `evaluated_at`.
+- **Creation-time snapshotted, never re-derived at read time**: nothing
+  in the codebase recomputes `cohort_id` when a result is displayed,
+  refreshed, compared, or reloaded from a save — the persisted string is
+  simply read back. This is the same principle the immediately-prior
+  pass's `discoveredSimMinutes` fix established for a different field:
+  historical facts get stamped once, at the real moment they occur, and
+  are never regenerated from "whatever the current configuration
+  happens to be" later.
+
+### Domain isolation and the trust boundary
+
+`domain` is one of the six real cohort inputs, so a Sniper result and an
+equities result can never share a cohort even if every other axis
+happened to match (proven directly — see Testing). Every domain-scoped
+router/list/refresh function already filters by `domain ==
+"memecoin_sniper"`/`"equities"` before this pass touched anything; this
+pass added no new filtering logic because none was needed — cohort
+identity rides along on the same already-domain-tagged record.
+
+Security/trust boundary (Phase 14): `POST /api/sniper/ai-reasoning/run`
+accepts exactly one query parameter (`candidateId`); `POST
+/api/ai-reasoning/run` accepts exactly two (`proposalId`, `role`).
+Neither router function, nor `run_sniper_analyst_reasoning()`/
+`run_researcher_reasoning()`/`run_devils_advocate_reasoning()`, nor
+`build_reasoning_result()` itself, has a parameter shaped like
+`cohortId`/`contextBuilderVersion`/`reasoningSchemaVersion` anywhere in
+their real signatures — confirmed by direct `inspect.signature()`
+introspection in a dedicated test, not merely by reading the code once.
+There is structurally no field a malicious request body or a
+prompt-injected model response could set to claim a different cohort.
+
+### Cross-cohort comparison audit (Phase 16)
+
+Audited `compare_sniper_ai_to_deterministic()` — the only comparison
+logic that exists today. It grades exactly ONE `AIReasoningResult`
+against its OWN `deterministic_recommendation` (stamped onto that same
+result at request time); there is no function anywhere in this codebase
+that aggregates or compares MULTIPLE `AIReasoningResult`s against each
+other. Conclusion: there is currently nothing that could invalidly mix
+cohorts, because there is no cross-result aggregation at all yet — so no
+guard was added this pass (adding one now would be building analytics
+infrastructure with nothing real to guard, which Phase 17/29 explicitly
+forbid). This is the exact honest gap the recommended next milestone
+below would need to address once real burn-in data exists.
+
+### Testing
+
+23 new tests in `tests/test_ai_reasoning_cohort.py` plus targeted
+additions to `tests/test_state_sniper_ai_reasoning.py`/
+`tests/test_state_ai_reasoning.py` prove, against the real shared
+function and the real end-to-end `GameState` entry points (not only a
+pure-function unit level):
+
+- Determinism and differentiation on all six configuration axes
+  (domain/provider/model/prompt-version/context-version/schema-version).
+- Independence from candidate id, proposal id, task text, and packet
+  creation timestamp — two results built from packets differing in
+  every one of those fields, under otherwise identical configuration,
+  produce the identical cohort id.
+- Result id and cohort id are always distinct, including across 10
+  results deliberately built under one identical configuration (one
+  cohort, ten distinct result ids).
+- A hostile/confused model JSON response containing `cohort_id`/
+  `cohortId`/`contextBuilderVersion`/`reasoningSchemaVersion`/`provider`/
+  `model` keys never influences the stored values — the real computed
+  identity is asserted, not the injected one.
+- No public reasoning function or HTTP router endpoint (both domains)
+  accepts a cohort-related parameter, via direct signature inspection.
+- Sniper and equities cohorts never collide even under a matching fake
+  provider/model (both the pure-function level and, separately, the
+  real `GameState.submit_ai_reasoning_request()`/
+  `submit_sniper_ai_reasoning_request()` entry points).
+- Concurrent calls (`asyncio.gather`) under identical configuration
+  produce one shared cohort id with distinct result ids — not
+  race-dependent.
+- A real `refresh_sniper_ai_reasoning_outcomes()` grading pass (the
+  actual state-mutating function, not a simulated `model_copy`) leaves
+  cohort fields byte-identical before and after.
+- Cohort fields survive a simulated `model_dump()`/`model_validate()`
+  save/reload cycle unchanged.
+- A historical result constructed with simulated OLD version constants
+  (standing in for a since-bumped prompt/context/schema version) reloads
+  with that exact old cohort identity intact — proven to differ from
+  what today's live constants would compute, so this is a genuine
+  non-regression check, not a tautology.
+- An old save predating this field defaults `cohortId`/
+  `contextBuilderVersion`/`reasoningSchemaVersion` to `None`, never a
+  backfilled/guessed value.
+
+Full targeted regression (`test_ai_reasoning.py`,
+`test_ai_reasoning_cohort.py`, `test_ai_provider.py`,
+`test_sniper_ai_reasoning.py`, `test_sniper_ai_shadow_boundary.py`,
+`test_sniper_ai_context.py`, `test_state.py`, `test_state_ai_reasoning.py`,
+`test_state_sniper_ai_reasoning.py`, `test_state_research_factory.py`,
+`test_memecoin_sniper.py`, `test_nexus.py`,
+`test_nexus_sniper_lesson_promotion.py`,
+`test_sniper_equity_snapshot.py`) — 380 passed. `python -m mypy app/`
+(235 files) and `python -m ruff check app/ tests/` both clean. The
+repository-wide 4,289-test suite could not be run to completion in this
+environment's resource-constrained runtime (a pre-existing, unrelated
+condition also encountered and disclosed in the immediately-prior pass);
+the targeted regression above directly covers every module this pass
+touched or that depends on it.
+
+No live burn-in was run or is affected by this milestone:
+`TRADETOWN_AI_PROVIDER_API_KEY` remains unset in this environment
+(reconfirmed by direct inspection).
+
+### Frontend
+
+A small, optional addition to the existing Sniper "AI shadow reasoning"
+card (`frontend/src/sniper/SniperApp.tsx`) — the one appropriate existing
+detail surface the directive itself pointed to as the right place, if
+any UI change was warranted at all. No new tab, no dashboard, no cohort
+management screen; a completed result now shows its `cohortId` as a
+short, monospace, truncated audit label alongside the thesis/confidence/
+recommendation it already displayed.
+
+### Explicitly NOT built this pass
+
+Burn-in observability/"experiment health" endpoint, checkpointed
+sample-size gates (N=10/25/50/100), a cross-cohort-mixing guard (audited
+and found unnecessary today — see above), provider activation, AI prompt
+optimization, an experiment dashboard, AI voting/ensemble/multi-agent
+reasoning, a new memory/backtest/market-data engine. None of these have
+a real evidence source or a real aggregation function to guard yet.
+
+### Classification
+
+- Cohort identity (determinism/differentiation/immutability/creation-time
+  snapshot): **A** — proven by 23+ tests against both the pure function
+  and the real end-to-end entry points, not merely asserted.
+- Prompt versioning: **A** — pre-existing, reused unchanged, confirmed
+  by fresh reading.
+- Context versioning: **A** — pre-existing, reused unchanged.
+- Model/provider identity: **A** — pre-existing, reused unchanged; the
+  real provider has still never completed a genuine call in this
+  environment (no credential), so this is proven only against the fake-
+  provider/mocked-HTTP-transport tests already established in prior
+  passes.
+- Persistence: **A** — save/reload round-trip and legacy-migration
+  proven directly.
+- Domain isolation: **A** — proven at both the pure-function and the
+  real-entry-point level, including the specific "matching provider/
+  model, different domain" adversarial case.
+- Temporal integrity: **A** — cohort identity contains no outcome/
+  timestamp information by construction, and the prior pass's
+  `discoveredSimMinutes` anchoring is unmodified and re-confirmed by the
+  unchanged full targeted regression.
+- Security (client/model cannot spoof cohort fields): **A** — proven by
+  direct signature inspection of every public entry point plus a hostile-
+  payload test.
+- AI reasoning quality / AI usefulness: **E**, unchanged — zero real
+  model calls have ever completed in this environment; this milestone
+  changes nothing about that and makes no claim otherwise.
+- Trading performance: **N/A** — this milestone touches no execution,
+  risk, sizing, or order-routing code path at all.
+- Real-market validity: **E**, unchanged — Sniper market data remains
+  entirely simulated.
+- Paper-trading safety: **A** — unmodified; the full targeted regression
+  above re-confirms every existing negative-space test in
+  `tests/test_sniper_ai_shadow_boundary.py` still passes unchanged.
+
+**Is the AI actually useful yet?** Still genuinely NOT ENOUGH DATA — this
+milestone deliberately does not attempt to answer that question; it only
+makes the answer, once real data exists, attributable to a real,
+provable configuration rather than an ambiguous or silently-mixed one.
+
+Recommended next milestone (not implemented in this pass, per the
+directive's own explicit closing instruction): **Sniper AI Burn-In
+Observability 1.0** — a read-only, computed-fresh (never a new
+persistence system) aggregation over `ai_reasoning_results`, grouped by
+the now-real `cohortId`, answering exactly the questions Phase 17 of
+this directive named as future-proofed but explicitly deferred: how many
+results exist per cohort, and how many of those are successful/failed/
+provider-unavailable/citation-invalid/awaiting-outcome/evaluated — the
+concrete, minimal precondition any future checkpointed sample-size gate
+(N=10/25/50/100) needs before it could be built honestly, and the
+natural, smallest next step now that cohort identity makes "per-cohort"
+grouping a real, provable operation instead of a guess.

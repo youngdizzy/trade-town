@@ -95,6 +95,39 @@ def test_researcher_request_appends_one_persisted_result(monkeypatch: pytest.Mon
     asyncio.run(_run())
 
 
+def test_researcher_request_end_to_end_gets_a_real_cohort_id_distinct_from_sniper(monkeypatch: pytest.MonkeyPatch) -> None:
+    """"Sniper AI Burn-In Cohort Identity 1.0" directive, Phase 9 — the
+    equities entry point must ALSO get a real cohort identity (this is a
+    shared, domain-agnostic capability, not a Sniper-only add-on), and it
+    must never collide with a Sniper-domain cohort even under the same
+    fake provider/model, because domain is one of the six real
+    configuration axes."""
+    from app.ai_context_builder import CONTEXT_BUILDER_VERSION as EQUITIES_CONTEXT_BUILDER_VERSION
+    from app.ai_reasoning import REASONING_SCHEMA_VERSION, RESEARCHER_PROMPT_VERSION, compute_cohort_id
+
+    monkeypatch.setattr(state_module, "get_ai_provider", lambda: _FakeProvider())
+
+    async def _run() -> None:
+        state = GameState()
+        state.data = state.data.model_copy(update={"trade_proposals": [_proposal()]})
+        _updated, result = await state.submit_ai_reasoning_request("proposal-1", role="researcher")
+        assert result.status == "completed"
+        expected_cohort_id = compute_cohort_id(
+            domain="equities", provider="fake", model="fake-model",
+            prompt_version=RESEARCHER_PROMPT_VERSION, context_version=EQUITIES_CONTEXT_BUILDER_VERSION,
+            reasoning_schema_version=REASONING_SCHEMA_VERSION,
+        )
+        assert result.cohort_id == expected_cohort_id
+        sniper_cohort_id = compute_cohort_id(
+            domain="memecoin_sniper", provider="fake", model="fake-model",
+            prompt_version=RESEARCHER_PROMPT_VERSION, context_version=EQUITIES_CONTEXT_BUILDER_VERSION,
+            reasoning_schema_version=REASONING_SCHEMA_VERSION,
+        )
+        assert result.cohort_id != sniper_cohort_id
+
+    asyncio.run(_run())
+
+
 def test_devils_advocate_rotates_through_the_same_eligible_pool(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.devils_advocate import ELIGIBLE_DEVILS_ADVOCATES
 

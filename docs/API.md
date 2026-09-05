@@ -4346,6 +4346,16 @@ never writes institutional memory, never alters the deterministic
 `overallRecommendation`/Gatekeeper/Risk Contract state — its only effect
 is appending one new, persisted `AIReasoningResult`.
 
+"Sniper AI Burn-In Cohort Identity 1.0" directive — a `status:
+"completed"` result now also carries `cohortId`, `contextBuilderVersion`,
+and `reasoningSchemaVersion`: a real, deterministic identity for the
+exact model/prompt/context/schema configuration that produced it (see
+`app/ai_reasoning.py::compute_cohort_id()`). All three are `null` for
+every non-`"completed"` status and for any result predating this field.
+No request parameter on this endpoint (or the Sniper equivalent below)
+can influence any of these three values — they are derived entirely
+server-side from real, already-known configuration.
+
 ### `GET /api/ai-reasoning/results?proposalId=...`
 
 Read-only, computed fresh from `ai_reasoning_results`, filtered to
@@ -4403,6 +4413,14 @@ promoted between a candidate's discovery and a later call here could
 still have been wrongly surfaced as pre-existing knowledge. Fixed; see
 CHANGELOG.md and docs/Architecture.md for the full regression-test
 detail.
+
+"Sniper AI Burn-In Cohort Identity 1.0" directive — same real
+`cohortId`/`contextBuilderVersion`/`reasoningSchemaVersion` fields
+described above for the equities endpoint apply identically here (this
+is one shared, domain-agnostic mechanism, not a second per-domain
+implementation); a Sniper result's cohort never collides with an
+equities result's cohort even under an identical model/provider, because
+`domain` is one of the six real inputs to the cohort derivation.
 
 ### `GET /api/sniper/ai-reasoning/results?mint=...`
 

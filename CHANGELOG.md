@@ -7,6 +7,91 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Memecoin Sniper AI Burn-In Cohort
+  Identity 1.0."** An experiment-integrity milestone, not an AI
+  intelligence/trading/dashboard upgrade: gives every completed
+  `AIReasoningResult` (both domains — this is a shared, domain-agnostic
+  capability, not a Sniper-only add-on) a real, deterministic,
+  immutable-per-configuration **cohort identity**, so a future real
+  burn-in can answer "which exact model + prompt + evidence-context +
+  reasoning contract produced this result?" and "can these two results
+  be legitimately compared?"
+  - **Fresh Phase 0 audit** confirmed the canonical version sources
+    already existed and needed reuse, not reinvention:
+    `RESEARCHER_PROMPT_VERSION`/`DEVILS_ADVOCATE_PROMPT_VERSION`/
+    `SNIPER_ANALYST_PROMPT_VERSION`, `CONTEXT_BUILDER_VERSION` (one per
+    domain, already stamped onto every `AIEvidencePacket`), and
+    `model_provider`/`model_version` already real fields on
+    `AIReasoningResult`. The one genuinely missing piece: a "reasoning
+    schema version" for the ONE shared JSON contract
+    `build_reasoning_result()` parses for every domain — added as
+    `REASONING_SCHEMA_VERSION` (`app/ai_reasoning.py`), bumped only if
+    that shared contract itself changes, never per domain/prompt.
+  - **New pure helper**: `compute_cohort_id()` (`app/ai_reasoning.py`) —
+    `hashlib.sha256(":".join(domain, provider, model, prompt_version,
+    context_version, reasoning_schema_version)).hexdigest()[:16]`,
+    reusing this codebase's own already-established
+    `hashlib.sha256(":".join(parts))` reproducibility convention (see
+    `app/strategy_families.py`, `app/statistical_comparison.py`, ...)
+    rather than inventing a second hashing scheme. A fixed-order
+    positional tuple, never a dict/JSON object, so there is no key-
+    ordering question to guard against. Contains ONLY configuration
+    identity — no candidate/mint/timestamp/outcome/token-usage/latency/
+    randomness ever reaches this function.
+  - **Wired into `build_reasoning_result()`'s "completed" branch only**
+    — a cohort represents a configuration that actually produced a
+    reasoning result; a `provider_unavailable`/`provider_timeout`/
+    `provider_error`/`invalid_output` attempt did not, so all three new
+    fields stay `None` for those, never fabricated. Never derived from,
+    or influenced by, anything the model's own JSON output or a client
+    request supplied.
+  - **Three new persisted fields on `AIReasoningResult`**:
+    `cohortId` (the derived identity — the new grouping key),
+    `contextBuilderVersion` and `reasoningSchemaVersion` (the two
+    genuinely new constituent facts not otherwise recoverable later,
+    since the transient `AIEvidencePacket` itself is never persisted).
+    `domain`/`modelProvider`/`modelVersion`/`promptVersion` are reused
+    unchanged, never duplicated. All three default `None` — an old save
+    predating this field loads cleanly with an honest `None`, never a
+    backfilled/guessed value.
+  - **Proven invariants** (23 new tests in
+    `tests/test_ai_reasoning_cohort.py`, plus end-to-end tests in
+    `tests/test_state_sniper_ai_reasoning.py`/`tests/test_state_ai_reasoning.py`):
+    same configuration → same cohort; each of the six configuration axes
+    (domain/provider/model/prompt/context/schema version) independently
+    changes the cohort; cohort is fully independent of candidate,
+    proposal, task, timestamp, and outcome; result id and cohort id are
+    always distinct even across 10 results sharing one cohort;
+    concurrent calls under identical configuration share one cohort with
+    distinct result ids; a model's own JSON response cannot smuggle a
+    fabricated `cohort_id`/`contextBuilderVersion`/`reasoningSchemaVersion`
+    into the result (those keys are never read from the parsed payload);
+    no public reasoning function or HTTP router endpoint (equities or
+    Sniper) accepts any cohort-related parameter at all, proven by
+    signature inspection; Sniper and equities never share a cohort even
+    under a matching fake provider/model; a real outcome-refresh pass
+    leaves cohort fields byte-identical; cohort fields survive a
+    simulated save/reload cycle unchanged; a historical result computed
+    under simulated OLD version constants reloads with that exact old
+    identity intact, never silently recomputed from today's live
+    constants; an old save predating this field defaults all three
+    fields honestly to `None`.
+  - **No live burn-in run** (unaffected by this milestone — it only
+    prepares the identity infrastructure a future real burn-in would
+    need): `TRADETOWN_AI_PROVIDER_API_KEY` remains unset in this
+    environment.
+  - **Explicitly NOT built this pass**: no burn-in observability/
+    "experiment health" endpoint, no checkpointed sample-size gates
+    (N=10/25/50/100), no cross-cohort comparison guard (audited — no
+    aggregation function across multiple reasoning results currently
+    exists at all, so there is nothing yet that COULD mix cohorts
+    invalidly; `compare_sniper_ai_to_deterministic()` only ever grades
+    one result against its own `deterministic_recommendation`), no
+    provider activation, no AI prompt optimization, no experiment
+    dashboard. A small, optional frontend surface (a cohort id line on
+    the existing Sniper "AI shadow reasoning" card) is the only UI
+    change — no new tab, no dashboard, no cohort management screen.
+
 - **CEO directive "TradeTown — Memecoin Sniper AI Burn-In + Provider
   Activation 1.0."** A second, fresh forensic audit (not trusting the
   immediately-prior "Shadow Reasoning Burn-In 1.0" pass's own report)

@@ -22,9 +22,20 @@ functions. Both share one real pipeline:
 Every non-"completed" status (`provider_unavailable`/`provider_timeout`/
 `provider_error`/`invalid_output`) leaves every reasoning field (thesis,
 recommendation, assumptions, ...) `None`/empty — never a fabricated
-partial answer."""
+partial answer.
+
+CEO directive "TradeTown — Memecoin Sniper AI Burn-In Cohort Identity
+1.0" added `compute_cohort_id()` and its wiring into the "completed"
+branch below: a real, deterministic, immutable-per-configuration
+identity (domain + provider + model + prompt version + context-builder
+version + reasoning-schema version) stamped once, at the moment a
+result is confirmed successful, into `AIReasoningResult.cohort_id`. See
+that function's own docstring for the full contract; this is a shared,
+domain-agnostic capability (both equities and Sniper reuse this one
+function), not a second, per-domain versioning system."""
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
@@ -35,6 +46,21 @@ from app.schemas import AgentId, AIEvidencePacket, AIReasoningResult, AIRecommen
 # Part XXI — bumped only when the actual instruction text below changes.
 RESEARCHER_PROMPT_VERSION = "researcher-prompt-1.0"
 DEVILS_ADVOCATE_PROMPT_VERSION = "devils-advocate-prompt-1.0"
+
+# CEO directive "TradeTown — Memecoin Sniper AI Burn-In Cohort Identity
+# 1.0" — the one real, shared structured-output CONTRACT this module's
+# own `build_reasoning_result()` parses (the JSON key set: thesis/
+# supporting_evidence/contradictory_evidence/knowledge_ids_used/
+# assumptions/unknowns/uncertainty/recommendation/confidence/risk_flags/
+# invalidation_conditions/alternative_hypotheses). Every domain
+# (equities Researcher/Devil's Advocate, Sniper Analyst) already reuses
+# this ONE function rather than a second parser (confirmed by fresh
+# reading of app/sniper_ai_reasoning.py) — bumped only when this shared
+# contract itself changes (a field added/removed/retyped), never per
+# domain and never per prompt wording change (that is what
+# RESEARCHER_PROMPT_VERSION/DEVILS_ADVOCATE_PROMPT_VERSION/
+# SNIPER_ANALYST_PROMPT_VERSION already track independently).
+REASONING_SCHEMA_VERSION = "ai-reasoning-schema-1.0"
 
 _ALLOWED_RECOMMENDATIONS: frozenset[str] = frozenset({"buy", "sell", "wait", "research_more", "reject_thesis"})
 
@@ -143,6 +169,36 @@ def _as_str_list(value: object) -> list[str]:
     return [str(v) for v in value if isinstance(v, str)]
 
 
+def compute_cohort_id(
+    *, domain: str, provider: str, model: str, prompt_version: str, context_version: str, reasoning_schema_version: str
+) -> str:
+    """CEO directive "TradeTown — Memecoin Sniper AI Burn-In Cohort
+    Identity 1.0" — the one pure, deterministic identity for "the exact
+    experimental configuration under which a completed
+    `AIReasoningResult` was produced." Reuses this codebase's own
+    already-established `hashlib.sha256(":".join(parts)).hexdigest()`
+    reproducibility convention verbatim (see app/strategy_families.py's
+    `_seeded_rng`, app/statistical_comparison.py, app/research_factory.py,
+    app/portfolio_monte_carlo.py, ...) rather than inventing a second
+    hashing scheme. Deliberately a fixed-order positional tuple, never a
+    dict/JSON object — there is no key-ordering question to guard against
+    (Phase 3 requirement 8) because there are no keys at all, only a
+    fixed argument order this function's own signature pins permanently.
+
+    CONFIGURATION IDENTITY ONLY. The six inputs above are the complete,
+    exhaustive set — every one of them is already a real, existing,
+    caller-known value BEFORE any candidate/proposal is even chosen, a
+    provider call is made, or an outcome exists. This function must
+    NEVER be called with (and its signature has no parameter for):
+    candidate/proposal/mint identity, a result id, any timestamp, any
+    outcome/pnl/recommendation value, token usage/latency, or any
+    randomness — see `build_reasoning_result()`'s own call site below for
+    proof none of those ever reach here."""
+    parts = (domain, provider, model, prompt_version, context_version, reasoning_schema_version)
+    digest = hashlib.sha256(":".join(parts).encode()).hexdigest()
+    return f"cohort-{digest[:16]}"
+
+
 def build_reasoning_result(
     *,
     call_result: ProviderCallResult,
@@ -231,6 +287,35 @@ def build_reasoning_result(
     raw_uncertainty = parsed.get("uncertainty")
     uncertainty = raw_uncertainty if isinstance(raw_uncertainty, str) else None
 
+    # CEO directive "TradeTown — Memecoin Sniper AI Burn-In Cohort
+    # Identity 1.0" — the cohort identity is computed here, at the one
+    # moment a reasoning result is actually confirmed successful, from
+    # ONLY the six real configuration facts already known at this exact
+    # point: `domain`/`prompt_version` are the caller's own real,
+    # existing arguments (never model-controlled); `packet.context_builder_version`
+    # is the real, existing version stamp the evidence-packet builder
+    # already attached (app/ai_context_builder.py /
+    # app/sniper_ai_context.py); `call_result.provider`/`call_result.model`
+    # are the real, existing values the provider itself returned for
+    # THIS call (never None here — `status == "ok"` guarantees both were
+    # populated by `AnthropicAIProvider.call()`, and every test fake in
+    # this codebase follows the same real contract). Never derived from
+    # `parsed` (the model's own JSON output) — there is no key this
+    # function ever reads from `parsed` that could smuggle a client- or
+    # model-supplied cohort/version claim into this value. Deliberately
+    # NOT computed for any other status above (provider_unavailable/
+    # provider_timeout/provider_error/invalid_output all return earlier)
+    # — a cohort represents a configuration that actually PRODUCED a
+    # reasoning result, and none of those did.
+    cohort_id = compute_cohort_id(
+        domain=domain,
+        provider=call_result.provider,
+        model=call_result.model or "VERSION_UNAVAILABLE",
+        prompt_version=prompt_version,
+        context_version=packet.context_builder_version,
+        reasoning_schema_version=REASONING_SCHEMA_VERSION,
+    )
+
     return AIReasoningResult(
         **base,  # type: ignore[arg-type]
         status="completed",
@@ -249,6 +334,9 @@ def build_reasoning_result(
         alternativeHypotheses=_as_str_list(parsed.get("alternative_hypotheses")),
         citationValidationPassed=not invalid_citations,
         invalidCitations=invalid_citations,
+        cohortId=cohort_id,
+        contextBuilderVersion=packet.context_builder_version,
+        reasoningSchemaVersion=REASONING_SCHEMA_VERSION,
     )
 
 
