@@ -3226,6 +3226,33 @@ negative expectancy; `unproven` is zero real trades; everything else is
 `developing`. No new `GameSaveState` field, no gate, no automatic
 action — purely a read.
 
+### `GET /api/market/candles?symbol=...&timeframe=1h&limit=150`
+
+Returns `Candle[]` (oldest first) from the configured `MarketDataProvider`
+(mock in this environment — always `dataStatus: "simulated"`, never
+`"live"`). `400` for an unsupported `timeframe` or a `limit` outside
+`[10, 500]`.
+
+"Terminal 2.2" directive — two additional, optional, purely-additive
+query params so a caller reviewing a specific CLOSED historical trade can
+ask for the real window/price that actually surrounded it, instead of
+always getting "the most recent `limit` bars as of right now" (which
+silently shares no real time overlap with a trade that closed hours or
+days ago):
+
+- `endTime` (ISO-8601) — anchors the window's rightmost bar to this real
+  instant instead of the current wall-clock time.
+- `anchorPrice` (`> 0`) — rescales the whole series (proportionally,
+  preserving every bar's real relative shape/volatility) so the
+  rightmost bar's close lands exactly on this real price, instead of
+  today's live mock quote.
+
+Omitting both reproduces the exact prior behavior — every existing
+caller (this endpoint's other consumers, `/technical-analysis` below,
+the Sniper open-position chart) is unaffected. The Sniper Terminal's
+closed-trade chart is the one caller that passes both, using the trade's
+own real `closedAt`/`exitPrice`.
+
 ### `GET /api/market/technical-analysis?symbol=...&timeframe=1h&limit=100`
 
 CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
@@ -4191,6 +4218,20 @@ field (an old save's pre-existing history) — never a fabricated price.
 forward from the position rather than re-defaulted, so a trade keeps
 its own real historical identity even if this domain ever gains real
 versioning later.
+
+### `GET /api/sniper/pnl-history`
+
+"Terminal 2.2" directive — returns `SniperPnlHistoryPoint[]`, oldest
+first: one real point per closed trade (`closedAt`, `tradeId`, `symbol`,
+`realizedPnlSol`, `cumulativeRealizedPnlSol`), built fresh from the same
+`trade_history` `GET /api/sniper/status`'s Performance card reads for
+Session P&L/win-rate/expectancy — the two can never silently disagree.
+Realized-only, never a mark-to-market equity curve (no unrealized P&L
+from open positions, no interpolation): `SniperRiskState.equitySol` is
+only ever a live snapshot, never sampled over time, so a true equity
+history does not exist and this endpoint does not fabricate one. Empty
+list when no trades have closed — the frontend renders an honest "no P&L
+history yet" state, never a zero-filled fake history.
 
 ### `GET /api/sniper/leads`
 

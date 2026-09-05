@@ -4,6 +4,7 @@ Market Data Abstraction / candlestick chart feature.
 from __future__ import annotations
 
 import random
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -370,3 +371,89 @@ class TestFuturesFxTreasurySeedPrices:
     def test_a_symbol_with_no_override_still_uses_the_generic_hash_range(self):
         seed = MockMarketDataProvider._seed_price("SOME-UNKNOWN-SYMBOL")
         assert 20.0 <= seed <= 500.0
+
+
+class TestEndTimeAndAnchorPrice:
+    """"Terminal 2.2" directive — real root cause fix for a closed
+    Sniper trade's chart: get_candles() always generated its window
+    ending at wall-clock *now*, so a trade that closed hours/days ago
+    got a chart sharing no real time overlap with it at all (its own
+    entry/exit markers collapsed onto whichever edge candle happened to
+    be nearest, at a price scale that had nothing to do with the trade).
+    `end_time`/`anchor_price` let a caller ask for the real historical
+    window/price a specific closed trade actually needs instead."""
+
+    def test_omitting_both_reproduces_exact_prior_behavior(self):
+        # Same call, no new params — every existing caller (main equities
+        # charts, technical-analysis endpoints, the open-position chart)
+        # must see zero behavior change.
+        provider = MockMarketDataProvider()
+        candles = provider.get_candles("AAPL", "1h", 30)
+        assert len(candles) == 30
+        assert all(c.data_status == "simulated" for c in candles)
+
+    def test_end_time_anchors_the_rightmost_bar_to_the_given_instant(self):
+        provider = MockMarketDataProvider()
+        end = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        candles = provider.get_candles("MEWX", "1m", 10, end_time=end)
+        assert candles[-1].timestamp == end.isoformat()
+        # And every earlier bar walks backward from it at the timeframe's
+        # own real spacing — never fabricated gaps.
+        for i in range(9):
+            expected = end - timedelta(minutes=1 * (9 - i))
+            assert candles[i].timestamp == expected.isoformat()
+
+    def test_end_time_does_not_change_the_underlying_deterministic_walk(self):
+        """The RNG walk is seeded from (symbol, timeframe) only and never
+        reads wall time (see get_candles's own docstring) — end_time only
+        relabels which real instant the same deterministic series is
+        anchored to. Proven here by comparing OHLC values (not
+        timestamps) across two different end_time anchors."""
+        provider = MockMarketDataProvider()
+        a = provider.get_candles("MEWX", "1m", 15, end_time=datetime(2020, 1, 1, tzinfo=timezone.utc))
+        b = provider.get_candles("MEWX", "1m", 15, end_time=datetime(2024, 6, 15, tzinfo=timezone.utc))
+        assert [c.open for c in a] == [c.open for c in b]
+        assert [c.close for c in a] == [c.close for c in b]
+        assert [c.high for c in a] == [c.high for c in b]
+        assert [c.low for c in a] == [c.low for c in b]
+
+    def test_anchor_price_rescales_the_series_to_land_on_a_real_historical_price(self):
+        provider = MockMarketDataProvider()
+        candles = provider.get_candles("MEWX", "1m", 20, anchor_price=0.0006223)
+        assert candles[-1].close == 0.0006223
+
+    def test_anchor_price_takes_priority_over_a_live_override(self):
+        provider = MockMarketDataProvider()
+        provider.set_live_price_override("MEWX", 500.0)
+        candles = provider.get_candles("MEWX", "1m", 20, anchor_price=0.0006223)
+        assert candles[-1].close == 0.0006223
+
+    def test_anchor_price_ignored_when_not_positive(self):
+        provider = MockMarketDataProvider()
+        provider.set_live_price_override("MEWX", 0.0007)
+        candles = provider.get_candles("MEWX", "1m", 20, anchor_price=0.0)
+        # Falls back to the live override, not the rejected non-positive anchor.
+        assert candles[-1].close == 0.0007
+
+    def test_no_anchor_price_and_no_live_override_leaves_series_unrescaled(self):
+        provider = MockMarketDataProvider()
+        end = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        a = provider.get_candles("NEWSYMBOL", "1m", 10, end_time=end)
+        b = provider.get_candles("NEWSYMBOL", "1m", 10, end_time=end)
+        assert [c.close for c in a] == [c.close for c in b]
+
+    def test_a_real_closed_trade_scenario_produces_a_coherent_window(self):
+        """The exact scenario this directive's live verification caught:
+        MEWX closed 2026-09-02T21:05:00Z at 0.0006223 after a 4-second
+        hold from entry at 0.0007103. Anchoring end_time to closedAt and
+        anchor_price to exitPrice must put the real entry price's
+        candle within the fetched window, not off the edge."""
+        provider = MockMarketDataProvider()
+        closed_at = datetime(2026, 9, 2, 21, 5, 0, tzinfo=timezone.utc)
+        candles = provider.get_candles("MEWX", "1m", 120, end_time=closed_at, anchor_price=0.0006223)
+        assert candles[-1].timestamp == closed_at.isoformat()
+        assert candles[-1].close == 0.0006223
+        window_start = datetime.fromisoformat(candles[0].timestamp)
+        window_end = datetime.fromisoformat(candles[-1].timestamp)
+        entry_time = closed_at - timedelta(seconds=4)
+        assert window_start <= entry_time <= window_end

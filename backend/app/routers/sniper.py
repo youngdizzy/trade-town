@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.memecoin_sniper import build_engine_status_read
+from app.memecoin_sniper import build_engine_status_read, build_sniper_pnl_history
 from app.persistence import persist_modules
 from app.schemas import (
     SniperCandidate,
@@ -17,6 +17,7 @@ from app.schemas import (
     SniperLead,
     SniperLesson,
     SniperLiveArmingStatus,
+    SniperPnlHistoryPoint,
     SniperPosition,
     SniperRiskState,
     SniperTrade,
@@ -67,6 +68,17 @@ async def sniper_positions(open_only: bool = Query(default=False, alias="openOnl
 async def sniper_trades(limit: int = Query(default=100, ge=1, le=500)) -> list[SniperTrade]:
     state = await game_state.snapshot()
     return list(reversed(state.sniper_trade_history))[:limit]
+
+
+@router.get("/pnl-history", response_model=list[SniperPnlHistoryPoint])
+async def sniper_pnl_history() -> list[SniperPnlHistoryPoint]:
+    """"Terminal 2.2" directive — the real, oldest-first cumulative
+    realized P&L curve, built fresh from the same permanent trade
+    journal `/status`'s Performance card reads (see
+    build_sniper_pnl_history's own docstring for why this is
+    realized-only, not a mark-to-market equity curve)."""
+    state = await game_state.snapshot()
+    return build_sniper_pnl_history(state.sniper_trade_history)
 
 
 @router.get("/events", response_model=list[SniperEvent])

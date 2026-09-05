@@ -136,12 +136,29 @@ class MarketDataProvider(ABC):
         return {symbol: self.get_quote(symbol) for symbol in symbols}
 
     @abstractmethod
-    def get_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
+    def get_candles(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+        *,
+        end_time: datetime | None = None,
+        anchor_price: float | None = None,
+    ) -> list[Candle]:
         """Oldest-first. Raises ValueError for a timeframe this provider
         doesn't support — callers (see app/routers/market.py) turn that
         into a 400 rather than silently substituting a different
         timeframe, per the brief's "only show timeframes actually
-        supported by the data provider"."""
+        supported by the data provider".
+
+        `end_time`/`anchor_price` ("Terminal 2.2" directive — real market
+        chart hardening) let a caller reviewing a CLOSED, historical
+        trade ask for the window that actually surrounded it, instead of
+        always getting "the most recent `limit` bars as of right now"
+        (see MockMarketDataProvider.get_candles's own docstring for why
+        that default was actively misleading for a closed trade's chart).
+        Both default to the prior always-live-window behavior — every
+        existing caller that doesn't pass them sees no change at all."""
         ...
 
     def set_market_regime(self, regime: str | None) -> None:
@@ -409,7 +426,35 @@ class MockMarketDataProvider(MarketDataProvider):
 
         return Quote(symbol=symbol, price=_round_price(state.price), change_pct=round(shock, 2), volume=round(volume, 0))
 
-    def get_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
+    def get_candles(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+        *,
+        end_time: datetime | None = None,
+        anchor_price: float | None = None,
+    ) -> list[Candle]:
+        """"Terminal 2.2" directive — real root cause of a closed Sniper
+        trade's chart showing no visible candle action: this always
+        generated its `limit`-bar window ending at wall-clock *now*, with
+        no way to ask for the window that actually surrounded a trade
+        that closed hours or days ago. For a closed trade that's not a
+        cosmetic issue — it silently returns a window that shares no real
+        time overlap with the trade at all, so the trade's own real
+        entry/exit markers (placed by nearest-timestamp) collapse onto
+        whichever edge candle happens to be closest, and the trade's own
+        real price level (usually many timeframes' worth of walk away
+        from wherever "now" landed) forces the y-axis so wide the actual
+        candle bodies compress to sub-pixel. `end_time` anchors the
+        window's rightmost bar to a real historical instant (the trade's
+        own `closedAt`) instead of `now`; `anchor_price` rescales the
+        series to land on a real historical price (the trade's own
+        `exitPrice`) instead of today's live mock quote. Neither
+        parameter changes the underlying walk (`_step()` never reads wall
+        time) — only which real instant/price the same deterministic
+        series is anchored to — so this fabricates nothing: every
+        existing caller that omits both keeps the exact prior behavior."""
         if timeframe not in TIMEFRAMES:
             raise ValueError(f"Unsupported timeframe {timeframe!r}; supported: {TIMEFRAME_ORDER}")
         minutes_per_candle = TIMEFRAMES[timeframe]
@@ -435,7 +480,7 @@ class MockMarketDataProvider(MarketDataProvider):
         # scale-invariant) while landing exactly on the live price.
         state = _WalkState(price=self._seed_price(symbol))
         time_scale = math.sqrt(max(1.0, minutes_per_candle) / 60.0)
-        now = datetime.now(timezone.utc)
+        now = end_time if end_time is not None else datetime.now(timezone.utc)
         candles: list[Candle] = []
         for i in range(limit):
             open_price = state.price
@@ -470,19 +515,24 @@ class MockMarketDataProvider(MarketDataProvider):
                 )
             )
 
-        # Rescale the whole series so it lands exactly on get_quote()'s
-        # live mock price at the newest bar, if one exists — keeps the
-        # chart continuous with the same price the watchlist/opportunity
-        # cards are showing, rather than two independently-random numbers
-        # that happen to both be labeled the same symbol. A proportional
+        # Rescale the whole series so it lands exactly on a real target
+        # price at the newest bar, if one exists — keeps the chart
+        # continuous with the same price something else in this codebase
+        # already knows is real, rather than two independently-random
+        # numbers that happen to both be labeled the same symbol.
+        # `anchor_price` (a real historical price, e.g. a closed trade's
+        # own exitPrice) takes priority when given; otherwise this falls
+        # back to the live mock quote (`get_quote()`'s own walk, or
+        # `set_live_price_override()`), exactly as before. A proportional
         # rescale (every OHLC value in every bar multiplied by the same
         # factor) is used instead of only patching the last candle: since
         # percentage moves are scale-invariant, this preserves every bar's
         # real relative shape/volatility/wick proportions exactly, and
         # produces zero discontinuity anywhere in the series — not just at
         # the rightmost edge.
-        if candles and symbol in self._prices and candles[-1].close:
-            scale = self._prices[symbol] / candles[-1].close
+        target_price = anchor_price if anchor_price is not None and anchor_price > 0 else self._prices.get(symbol)
+        if candles and target_price is not None and candles[-1].close:
+            scale = target_price / candles[-1].close
             if scale != 1.0:
                 candles = [
                     Candle(
@@ -499,11 +549,12 @@ class MockMarketDataProvider(MarketDataProvider):
                     for c in candles
                 ]
             # Rounding after rescale can leave the final close a cent or
-            # two off the live price; force an exact match on just that
+            # two off the target price; force an exact match on just that
             # one field so the chart's rightmost point is bit-for-bit
-            # identical to what get_quote() reports elsewhere in the UI.
+            # identical to the real value it was anchored to (get_quote()'s
+            # live price, or the given anchor_price).
             last = candles[-1]
-            live_close = _round_price(self._prices[symbol])
+            live_close = _round_price(target_price)
             candles[-1] = Candle(
                 symbol=last.symbol,
                 timeframe=last.timeframe,
@@ -693,12 +744,25 @@ class ExternalMarketDataProvider(MarketDataProvider):
             f"Real quote retrieval for {symbol!r} is not implemented against any specific vendor in this generic adapter — see this class's own docstring."
         )
 
-    def get_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
+    def get_candles(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+        *,
+        end_time: datetime | None = None,
+        anchor_price: float | None = None,
+    ) -> list[Candle]:
         """Never falls back to mock data — raises
         `ExternalMarketDataProviderUnavailable` on missing configuration,
         an exhausted-retry transport failure, a rate limit, or a
         malformed/incomplete response, always with a real, specific,
-        secret-free reason."""
+        secret-free reason. `end_time`/`anchor_price` exist only to
+        satisfy MarketDataProvider's shared interface (see that class's
+        docstring) — a real vendor adapter would fetch its own genuine
+        historical window/price rather than needing either hint, so both
+        are accepted and ignored here rather than implemented."""
+        del end_time, anchor_price
         if timeframe not in TIMEFRAMES:
             raise ValueError(f"Unsupported timeframe {timeframe!r}; supported: {TIMEFRAME_ORDER}")
         self._require_available()

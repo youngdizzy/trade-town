@@ -13354,6 +13354,27 @@ class SniperTrade(CamelModel):
     data_provenance: Literal["simulated"] = Field(default="simulated", alias="dataProvenance")
 
 
+class SniperPnlHistoryPoint(CamelModel):
+    """"Terminal 2.2" directive, Part X/XI — one real, already-persisted
+    point on the Sniper P&L curve: a closed trade's own `pnlSol`, plus
+    the running cumulative realized total up to and including it. Built
+    from the exact same `trade_history` list `build_engine_status_read()`
+    already reads for the Session P&L/win-rate/expectancy figures on the
+    "Performance (Today)" card — see `build_sniper_pnl_history()` in
+    app/memecoin_sniper.py — so the chart and that card can never
+    silently disagree, because there's only one source. Realized-only:
+    this is NOT a mark-to-market equity curve (no unrealized P&L from
+    still-open positions, no interpolation between trades) — see that
+    function's own docstring for why a true equity-history curve isn't
+    built by this pass."""
+
+    closed_at: str = Field(alias="closedAt")
+    trade_id: str = Field(alias="tradeId")
+    symbol: str
+    realized_pnl_sol: float = Field(alias="realizedPnlSol")
+    cumulative_realized_pnl_sol: float = Field(alias="cumulativeRealizedPnlSol")
+
+
 class SniperEvent(CamelModel):
     """Professional Trading Terminal directive, Part VII (Trade Event
     Timeline) — a real, structured, persisted event. `app/

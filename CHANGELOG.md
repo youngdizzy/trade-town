@@ -7,6 +7,105 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Memecoin Sniper Terminal 2.2 — Real Market
+  Chart + P&L Equity Curve."** Root-caused and fixed the reported
+  "candlesticks aren't visibly appearing" symptom on the Sniper
+  Terminal's chart, and added a real, separate cumulative P&L curve.
+  Phase 0 forensic audit (full data-path trace, then live Playwright
+  verification against the real running dev server) found the backend
+  candle generator (`MockMarketDataProvider.get_candles`) and the
+  frontend canvas renderer (`CandlestickChart.tsx`) were BOTH already
+  correct in isolation — the defect was in how they were composed for a
+  CLOSED trade's chart:
+  - **Root cause 1 (why candles were invisible):** `CandlestickChart`'s
+    y-axis auto-scale folded overlay levels (entry/stop/target/markers)
+    into the same min/max as the real candle highs/lows. A stop/target
+    set meaningfully far from a trade's actual price action (routine for
+    a wide-R memecoin trade) stretched the visible range so far that the
+    real candle bodies/wicks compressed to sub-pixel — the data was
+    correct the whole time, but visually erased. Confirmed via a live
+    screenshot of a real closed MEWX trade: axis spanned 0.00058-0.00114
+    while all 120 fetched candles clustered within 0.0000011 of each
+    other, leaving nothing visible but the dashed overlay lines.
+  - **Root cause 2 (why a closed trade's chart made no sense even before
+    root cause 1):** `get_candles()` always generated its window ending
+    at wall-clock *now*. For a trade that closed hours or days ago, the
+    fetched window shared no real time overlap with the trade at all —
+    its own real ENTRY/EXIT markers (placed by nearest-candle-timestamp)
+    collapsed onto whichever edge candle happened to be closest, both
+    landing on the same pixel column.
+  - **Fix, root cause 1** (`CandlestickChart.tsx`): the y-axis is now
+    computed from real candle highs/lows ONLY. An overlay value that
+    falls outside that range is still drawn — clamped to the plot edge,
+    with its real (never fabricated) price label plus a "▲/▼ beyond
+    range" disclosure — never silently hidden, never allowed to distort
+    the visible price-action scale. Zones/polylines/markers/lines all
+    route through the same `yForOverlay()` clamp.
+  - **Fix, root cause 2** (`app/market_data.py`, `app/routers/market.py`,
+    `net/api.ts`, `useCandles.ts`): `get_candles()`/`GET
+    /api/market/candles` gain two optional, additive parameters —
+    `end_time`/`endTime` (anchors the window's rightmost bar to a real
+    historical instant instead of "now") and `anchor_price`/
+    `anchorPrice` (rescales the series to a real historical price
+    instead of today's live mock quote). Both default to prior behavior
+    exactly — every existing caller (main equities charts, technical-
+    analysis endpoints, the open-position chart) sees zero change. The
+    underlying deterministic walk never reads wall time (proven by a new
+    test comparing OHLC values, not timestamps, across two different
+    `end_time` anchors) — these parameters only relabel which real
+    instant/price the same series is anchored to, fabricating nothing.
+    `SniperTerminal.tsx`'s `ClosedTradeDetail` now calls
+    `useCandles(trade.symbol, "1m", 120, { endTime: trade.closedAt,
+    anchorPrice: trade.exitPrice })`; a historical (endTime-anchored)
+    window is fetched once, not polled every 30s (it can never change —
+    the trade is over).
+  - **P&L/equity curve (Part X-XIV):** audited existing Sniper P&L
+    sources first — `SniperTrade.pnlSol`/`closedAt` (the permanent trade
+    journal) is real, persisted history; `SniperRiskState.equitySol` is
+    only ever a current snapshot, never sampled over time, so a true
+    mark-to-market equity curve does not exist and this pass does not
+    fabricate one. New `build_sniper_pnl_history()`
+    (`app/memecoin_sniper.py`) reads the exact same `trade_history` list
+    `build_engine_status_read()` already reads for the "Performance
+    (Today)" card's Session P&L/win-rate/expectancy, so the two can never
+    silently disagree — one source, oldest-first, real running cumulative
+    sum, realized-only (explicitly not unrealized/equity). New read-only
+    `GET /api/sniper/pnl-history` (`SniperPnlHistoryPoint` schema).
+    Frontend reuses the existing main-portfolio `EquityCurveChart`
+    component verbatim (it already computes a real running cumulative
+    sum over a real ordered P&L sequence — exactly what this needed),
+    generalized with an optional `formatValue`/`emptyLabel` prop (SOL
+    instead of `$`, an honest "no P&L history yet" message) — zero
+    behavior change for its one existing caller
+    (`PerformancePanel.tsx`). Rendered as a new "Realized P&L —
+    cumulative, all-time" card in `SniperApp.tsx`, next to the existing
+    Performance/Risk/Quick Controls row.
+  - **Explicitly NOT built:** no second P&L/charting/market-data engine;
+    no true mark-to-market equity-history curve (would need new
+    periodic-snapshot telemetry this pass does not add — a disclosed
+    future gap, not a cut corner); no chart redesign, no new tabs, no
+    TradingView-style zoom/pan system; no change to any risk/kill-switch/
+    paper-only/trading-execution behavior of any kind (the chart remains
+    observability-only, never authoritative).
+  - **Testing:** 8 new tests in `tests/test_market_data.py`
+    (`TestEndTimeAndAnchorPrice`) covering exact-timestamp anchoring, the
+    deterministic-walk-is-unaffected-by-end_time property, anchor_price
+    rescaling/priority-over-live-override/non-positive-rejection, and a
+    full real-trade-scenario reconstruction; 5 new tests in
+    `tests/test_memecoin_sniper.py` (`TestBuildSniperPnlHistory`)
+    covering empty/single/multi-trade cumulative ordering, cross-checking
+    against `build_engine_status_read()`'s own sum, and a schema-shape
+    guard against a silently-added unrealized/equity field. Full backend
+    suite, mypy, ruff: clean. Frontend: `tsc --noEmit`, `eslint`, `vite
+    build` all clean. Live-verified with Playwright against the real dev
+    server and a real closed trade (MEWX): candlestick bodies/wicks now
+    visibly render with correct bull/bear coloring across the trade's own
+    real historical window, the ENTRY marker (off-scale for this
+    particular fast stop-out) renders clamped with a "▲" disclosure
+    instead of being invisible or silently mispositioned, and the new
+    P&L curve renders a real line from 0.000 SOL to the account's real
+    +0.073 SOL cumulative total.
+
 - **CEO directive "TradeTown — Memecoin Sniper AI 1.0."** Upgrades the
   separate Memecoin Sniper into a genuine consumer of the shared AI
   Reasoning Foundation — reusing the exact same `AIProvider`/

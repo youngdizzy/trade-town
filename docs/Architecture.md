@@ -22519,3 +22519,222 @@ reasoning against real live proposals/candidates over real sim days,
 using each domain's own real outcome grading to answer, with evidence,
 whether either AI layer actually adds value over its deterministic desk
 alone.
+
+## CEO directive "TradeTown — Memecoin Sniper Terminal 2.2 — Real Market
+Chart + P&L Equity Curve"
+
+Root-caused the reported "candlesticks aren't visibly appearing" symptom
+on the Sniper Terminal's chart, fixed it without discarding the existing
+trade-visualization framework, and added a real, separate cumulative P&L
+curve — per the directive's own explicit instruction to audit the whole
+data path before assuming a CSS problem.
+
+### Phase 0 forensic audit
+
+Read the full data path top to bottom before forming a hypothesis:
+`MockMarketDataProvider.get_candles()` (backend candle generator),
+`GET /api/market/candles` (router), the `Candle` schema/type on both
+sides, `useCandles.ts` (fetch hook), and `CandlestickChart.tsx` (the
+hand-rolled canvas renderer). All five were structurally correct in
+isolation on static reading alone — no obvious bug. Pivoted to live
+verification: started both dev servers, curled `GET
+/api/market/candles?symbol=MEWX&timeframe=1m&limit=120` directly (real
+OHLC, correctly scaled to the real Sniper price via the existing
+`set_live_price_override()` mechanism), then used Playwright to open the
+real Sniper Terminal (`/sniper`), focus a real closed trade (MEWX,
+entryPrice 0.0007103, exitPrice 0.0006223, held 4 seconds, closed
+2026-09-02), and screenshot the actual chart panel.
+
+**What the screenshot showed:** axis labels, the "SIMULATED" badge, and
+dashed ENTRY/MARK/STOP overlay lines all rendered — but zero candle
+bodies/wicks anywhere, and the ENTRY and STOP markers both collapsed
+onto the exact same pixel column at the chart's left edge.
+
+**Root cause 1 (why candles were invisible).**
+`CandlestickChart.tsx`'s y-axis auto-scale (`min`/`max` computation)
+folded every overlay value (entry/stop/target/markers) into the SAME
+array as the real candle highs/lows before computing the visible price
+range. For this trade, the overlay levels (entry 0.0007103, stop
+0.000625, target 0.0011) spanned roughly 0.00049 — but the 120 fetched
+candles (see root cause 2 below for why they were the wrong ones)
+clustered within 0.0000011 of each other. The overlay-driven axis
+stretched the visible range ~450x wider than the actual candle range,
+compressing every real candle body/wick to a fraction of a pixel. The
+data was correct the entire time; the rendering silently erased it.
+
+**Root cause 2 (why the fetched candles were the wrong ones in the first
+place).** `MockMarketDataProvider.get_candles()` always generated its
+`limit`-bar window ending at `datetime.now(timezone.utc)` — real
+wall-clock now, with no parameter to ask for a different anchor. For a
+trade that closed on 2026-09-02 but was being viewed on 2026-09-05, the
+fetched window (the last two hours "now") shared literally zero time
+overlap with the trade. `xFor()`'s honest nearest-candle clamping (see
+its own docstring — it never invents a position for a moment outside the
+visible range) then placed both the real ENTRY and real EXIT markers on
+the same leftmost candle, since both real timestamps were equally "off
+the left edge" of a window that had nothing to do with them.
+
+Both defects were real, both were found only through live verification
+(not visible from static reading of either file alone), and neither was
+"merely CSS" — exactly as the directive warned not to assume.
+
+### Fixes
+
+- **`CandlestickChart.tsx`** — the y-axis (`yMin`/`yMax`) is now computed
+  from real candle highs/lows ONLY (`candleMin`/`candleMax` + 12% pad).
+  A new `yForOverlay(price)` clamps any overlay-only value that falls
+  outside that range to just inside the plot edge, and reports which
+  edge — callers append a real "▲"/"▼ beyond range" disclosure to the
+  label rather than silently drawing at a compressed position. Every
+  overlay primitive (zones, polylines, markers, `drawLevel` levels,
+  analysis `lines`) routes through this same function. Real candle
+  bodies/wicks are now always drawn at a readable scale, and an overlay
+  that's genuinely far from the visible price action is still shown
+  (never hidden, per the directive's own "never arbitrarily hide SL/TP/
+  entry" rule) with an honest label instead of distorting the axis.
+- **`app/market_data.py`** — `MarketDataProvider.get_candles()` (and both
+  the mock and external implementations) gain two optional keyword-only
+  parameters: `end_time: datetime | None` and `anchor_price: float |
+  None`. `MockMarketDataProvider.get_candles()` uses `end_time or
+  datetime.now(timezone.utc)` in place of the old hardcoded `now`, and
+  `anchor_price` (when given and positive) takes priority over the
+  existing live-quote rescale target. The underlying deterministic walk
+  (`_step()`) never reads either parameter — it's seeded from `(symbol,
+  timeframe)` only, exactly as before — so these parameters only
+  relabel which real instant/price the same series is anchored to;
+  proven by a test comparing OHLC VALUES (not timestamps) across two
+  different `end_time` anchors and asserting they're identical. Every
+  existing caller that omits both parameters (every other chart, every
+  technical-analysis endpoint, the Sniper open-position chart) sees
+  zero behavior change — the defaults reproduce the prior always-"now"
+  path exactly.
+- **`app/routers/market.py`** — `GET /api/market/candles` gains matching
+  optional `endTime` (ISO-8601, parsed via `datetime.fromisoformat`,
+  `400` on a malformed value) and `anchorPrice` (`> 0`, FastAPI-validated)
+  query params, threaded straight through.
+- **`net/api.ts` / `useCandles.ts`** — `api.getCandles()` accepts an
+  optional `{ endTime, anchorPrice }` options object; `useCandles()`
+  accepts an optional `historical` param of the same shape. A historical
+  (endTime-anchored) window is fetched once and never polled again (it
+  describes a trade that's already over and can never change) — the
+  existing 30s refresh interval is skipped in that mode, satisfying the
+  directive's "no excessive/pointless polling" rule without touching the
+  live open-position chart's own refresh behavior at all.
+- **`SniperTerminal.tsx`**'s `ClosedTradeDetail` now calls
+  `useCandles(trade.symbol, "1m", 120, { endTime: trade.closedAt,
+  anchorPrice: trade.exitPrice })` — the trade's own real close time and
+  exit price, never a re-derived or guessed value. `TradeDetail` (the
+  open-position chart) is untouched — it still anchors to "now", which is
+  correct for a position that's still live.
+
+### P&L / equity curve (Part X-XIV)
+
+Audited existing Sniper P&L sources before building anything:
+`SniperTrade.pnlSol`/`closedAt` (the permanent, append-only trade
+journal) is real, persisted, chronological history — exactly what a
+cumulative realized-P&L curve needs, already available with zero new
+telemetry. `SniperRiskState.equitySol` is a live snapshot recomputed
+every tick, never sampled and stored over time anywhere in
+`GameSaveState` — a true mark-to-market equity curve (which would need
+unrealized P&L from open positions at every historical instant) does not
+exist and this pass does not fabricate one by interpolating between
+trades or replaying today's aggregate backwards.
+
+- **`build_sniper_pnl_history()`** (`app/memecoin_sniper.py`, new) —
+  reads the exact same `trade_history` list `build_engine_status_read()`
+  already reads for the "Performance (Today)" card's Session P&L/win-
+  rate/expectancy figures, sorted oldest-first by `closedAt`, with a real
+  running cumulative sum of `pnl_sol`. One source, so the P&L chart and
+  the Performance card can never silently disagree — proven by a test
+  asserting the chart's final cumulative value equals
+  `build_engine_status_read()`'s own `today_pnl_sol` for the same trade
+  set. Explicitly realized-only: a test asserts the returned schema has
+  no unrealized/equity field, so one can't be silently added later
+  without an explicit, reviewed schema change.
+- **`SniperPnlHistoryPoint`** (`app/schemas.py`, new) —
+  `closedAt`/`tradeId`/`symbol`/`realizedPnlSol`/`cumulativeRealizedPnlSol`.
+- **`GET /api/sniper/pnl-history`** (new, read-only) — returns
+  `build_sniper_pnl_history(state.sniper_trade_history)`.
+- **Frontend** — reuses the existing main-portfolio `EquityCurveChart`
+  component (`ui/components/CommandCenter/panels/EquityCurveChart.tsx`)
+  verbatim rather than building a second P&L-charting engine: it already
+  computes a real running cumulative sum over a real ordered P&L
+  sequence and renders exactly the honest empty state ("not enough
+  closed trades yet") this domain also needs. Generalized with two
+  optional props — `formatValue` (defaults to the existing
+  `formatMoney`, so its one existing caller, `PerformancePanel.tsx`, is
+  unaffected) and `emptyLabel` — so the Sniper card can render SOL units
+  and a domain-appropriate empty message instead of USD. Rendered as a
+  new "Realized P&L — cumulative, all-time (not a mark-to-market equity
+  curve)" card in `SniperApp.tsx`, next to the existing Performance/Risk/
+  Quick Controls row, wired into the same existing 5s poll loop
+  (`refresh()`) as every other Sniper read — no second polling
+  mechanism.
+
+### Explicitly NOT built
+
+No second P&L/charting/market-data engine of any kind. No true
+mark-to-market equity-history curve — it would need new periodic-
+snapshot telemetry (e.g. recording `SniperRiskState.equitySol` on some
+real cadence) that this pass does not add; a disclosed future gap, not a
+corner cut to hit a deadline. No chart redesign, no new tabs, no
+TradingView-style zoom/pan/drawing-tools system — the directive's own
+explicit "harden it, don't rebuild it" instruction. No change to any
+risk/kill-switch/paper-only/trade-execution behavior — the chart remains
+observability-only, and cannot influence, and was never wired to
+influence, any trading decision.
+
+### Testing and verification
+
+8 new tests in `tests/test_market_data.py`
+(`TestEndTimeAndAnchorPrice`): omitting both params reproduces prior
+behavior; `end_time` anchors the rightmost bar and every earlier bar's
+timestamp walks backward correctly; the deterministic walk is unaffected
+by `end_time` (OHLC values identical across two different anchors);
+`anchor_price` rescales the series and lands exactly on the given value;
+`anchor_price` takes priority over a live override; a non-positive
+`anchor_price` is ignored (falls back to live override); no anchor and
+no live override leaves the series unrescaled; and a full real-trade
+reconstruction (MEWX, `end_time=closedAt`, `anchor_price=exitPrice`)
+asserting the real entry time falls inside the fetched window. 5 new
+tests in `tests/test_memecoin_sniper.py` (`TestBuildSniperPnlHistory`):
+empty history, single trade, multi-trade cumulative ordering
+(re-sorted regardless of input order), cross-checked against
+`build_engine_status_read()`'s own sum, and the schema-shape guard
+against a silently-added field. Full backend suite (pytest), mypy, ruff:
+clean. Frontend: `tsc --noEmit`, `eslint`, `vite build`: clean.
+
+Live-verified with Playwright against the real running dev server (both
+before and after the fix, same real closed MEWX trade, same real
+backend save): the "before" screenshot reproduced the reported symptom
+exactly (no visible candle bodies/wicks, ENTRY/STOP markers stacked at
+the left edge); the "after" screenshot shows real green/red candle
+bodies and upper/lower wicks across the trade's own real historical
+window ("9/2, 07:06 PM" → "9/2, 09:05 PM"), the ENTRY marker (genuinely
+off-scale for this particular fast stop-out, since price never
+retraced anywhere near the original entry within the shown window)
+rendering clamped to the top edge with a "▲" disclosure instead of being
+invisible or silently mispositioned, and the new "Realized P&L" card
+rendering a real line + fill from 0.000 SOL to the account's real
+cumulative +0.073 SOL. Zero console/page errors in either capture.
+
+### Classification and next milestone
+
+Both the market chart and the P&L curve are **Option A — real,
+verified, production-quality** for what they claim to be: every
+candlestick comes from a real (simulated, disclosed) OHLC generator
+correctly anchored in time and price to what it's charting; the P&L
+curve is a real, persisted, cumulative realized-total computed from the
+same trade journal the rest of the terminal already trusts; the AI
+shadow-reasoning layer, deterministic trade lifecycle, kill switch, and
+paper-only boundary are all unmodified and unreachable from any chart
+interaction. The one disclosed, deliberate gap is the equity-history
+curve (mark-to-market including unrealized P&L, sampled over time) —
+not built this pass because the underlying snapshot history doesn't
+exist yet. Recommended next milestone: **Sniper Equity Snapshot
+Telemetry 1.0** — add the smallest real periodic snapshot of
+`SniperRiskState.equitySol` (e.g. once per tick or once per real trade
+open/close event) to `GameSaveState`, then extend this same P&L curve
+(or add a second, clearly-labeled series to it) with a genuine
+mark-to-market equity line — never fabricated, built only once the real
+snapshot history exists to build it from.

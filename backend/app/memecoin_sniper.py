@@ -50,6 +50,7 @@ from app.schemas import (
     SniperLead,
     SniperLesson,
     SniperLiveArmingStatus,
+    SniperPnlHistoryPoint,
     SniperPosition,
     SniperRiskState,
     SniperSafetyCheck,
@@ -819,3 +820,41 @@ def build_engine_status_read(
         winRatePct=win_rate_pct,
         expectancyR=expectancy_r,
     )
+
+
+def build_sniper_pnl_history(trade_history: list[SniperTrade]) -> list[SniperPnlHistoryPoint]:
+    """"Terminal 2.2" directive, Part X/XI — the Sniper P&L chart's one
+    real data source. Reads the exact same `trade_history` list
+    `build_engine_status_read()` already reads for the "Performance
+    (Today)" card's Session P&L/win-rate/expectancy, so the chart and
+    that card can never silently disagree.
+
+    Deliberately realized-only, not a mark-to-market equity curve: this
+    codebase has no persisted history of `SniperRiskState.equity_sol`
+    sampled over time (only the current snapshot survives each tick —
+    see app/nexus.py), and a real equity curve would need unrealized P&L
+    from still-open positions at every historical instant, which was
+    never recorded. Fabricating one by interpolating between closed
+    trades or replaying today's aggregate backwards would be exactly the
+    invented history this directive forbids. What genuinely exists,
+    forever, is each closed trade's own real `pnlSol` at its own real
+    `closedAt` — a real (if realized-only) cumulative P&L curve, built
+    fresh from already-persisted records, never a second P&L engine. A
+    true equity-history curve is a disclosed future gap: it would need
+    new periodic-snapshot telemetry this pass does not add (see
+    CHANGELOG.md's entry for this directive)."""
+    ordered = sorted(trade_history, key=lambda t: t.closed_at)
+    points: list[SniperPnlHistoryPoint] = []
+    cumulative = 0.0
+    for trade in ordered:
+        cumulative = round(cumulative + trade.pnl_sol, 6)
+        points.append(
+            SniperPnlHistoryPoint(
+                closedAt=trade.closed_at,
+                tradeId=trade.id,
+                symbol=trade.symbol,
+                realizedPnlSol=trade.pnl_sol,
+                cumulativeRealizedPnlSol=cumulative,
+            )
+        )
+    return points

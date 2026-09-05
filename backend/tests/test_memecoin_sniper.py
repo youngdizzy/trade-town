@@ -11,6 +11,7 @@ from app.memecoin_sniper import (
     DEFAULT_TAKE_PROFIT_PCT,
     RawCandidate,
     build_candidate,
+    build_sniper_pnl_history,
     classify_candidate,
     classify_timing,
     close_position,
@@ -659,3 +660,64 @@ class TestUpdateSniperEngineRequestCamelCase:
 
         payload = UpdateSniperEngineRequest.model_validate({"turbo": True})
         assert payload.copy_trading_enabled is None
+
+
+def _pnl_trade(trade_id: str, closed_at: str, pnl_sol: float, symbol: str = "X") -> SniperTrade:
+    return SniperTrade(
+        id=trade_id, mint="m", symbol=symbol, openedAt=closed_at, closedAt=closed_at, entryPrice=1.0, exitPrice=1.0 + pnl_sol,
+        stopPrice=0.8, targetPrice=1.5, sizeSol=1.0, riskSol=0.1, rMultiple=pnl_sol / 0.1, pnlSol=pnl_sol,
+        maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=0.0, holdTimeSeconds=10.0, exitReason="take_profit",
+        failureCodes=[], thesis="x", thesisValidated=True,
+    )
+
+
+class TestBuildSniperPnlHistory:
+    """"Terminal 2.2" directive, Part X/XI — the real, oldest-first
+    cumulative realized P&L curve, built fresh from the same
+    trade_history build_engine_status_read() already reads for the
+    "Performance (Today)" card. Realized-only: no unrealized/equity
+    component, no interpolation, no fabricated points."""
+
+    def test_empty_history_yields_empty_points(self) -> None:
+        assert build_sniper_pnl_history([]) == []
+
+    def test_single_trade_yields_one_point_with_matching_cumulative(self) -> None:
+        trade = _pnl_trade("t1", "2026-01-01T00:00:00+00:00", 0.5)
+        points = build_sniper_pnl_history([trade])
+        assert len(points) == 1
+        assert points[0].trade_id == "t1"
+        assert points[0].realized_pnl_sol == 0.5
+        assert points[0].cumulative_realized_pnl_sol == 0.5
+
+    def test_cumulative_sum_accrues_across_wins_and_losses_in_time_order(self) -> None:
+        trades = [
+            _pnl_trade("t3", "2026-01-03T00:00:00+00:00", -0.2),
+            _pnl_trade("t1", "2026-01-01T00:00:00+00:00", 0.5),
+            _pnl_trade("t2", "2026-01-02T00:00:00+00:00", 0.3),
+        ]
+        points = build_sniper_pnl_history(trades)
+        # Re-ordered oldest-first by closedAt, regardless of input order.
+        assert [p.trade_id for p in points] == ["t1", "t2", "t3"]
+        assert [p.cumulative_realized_pnl_sol for p in points] == [0.5, 0.8, 0.6]
+
+    def test_matches_the_same_sum_build_engine_status_read_uses_for_todays_pnl(self) -> None:
+        """The Performance (Today) card and the P&L chart must never
+        silently disagree — both read the exact same trade_history."""
+        from datetime import datetime, timezone
+
+        from app.memecoin_sniper import build_engine_status_read
+
+        today_iso = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        trades = [_pnl_trade("t1", today_iso, 0.4), _pnl_trade("t2", today_iso, -0.1)]
+        status = build_engine_status_read(
+            SniperEngineConfig(), SniperRiskState(), [], trades, today_start_iso=today_iso,
+        )
+        points = build_sniper_pnl_history(trades)
+        assert points[-1].cumulative_realized_pnl_sol == status.today_pnl_sol
+
+    def test_never_includes_an_unrealized_or_equity_field(self) -> None:
+        """This is a realized-only curve — it must not silently gain a
+        mark-to-market/equity field later without an explicit schema
+        change (which would be its own reviewed decision, not a default)."""
+        point = build_sniper_pnl_history([_pnl_trade("t1", "2026-01-01T00:00:00+00:00", 0.1)])[0]
+        assert set(point.model_dump().keys()) == {"closed_at", "trade_id", "symbol", "realized_pnl_sol", "cumulative_realized_pnl_sol"}

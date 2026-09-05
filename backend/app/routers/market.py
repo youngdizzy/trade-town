@@ -6,6 +6,8 @@ fix), so it lives behind its own REST endpoint instead of riding along on
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query
 
 from app.asset_discovery import DEFAULT_DISCOVERY_TOP_N, compute_asset_discovery_candidates
@@ -57,11 +59,25 @@ async def get_candles(
     symbol: str = Query(..., min_length=1, max_length=16),
     timeframe: str = Query(...),
     limit: int = Query(150, ge=MIN_LIMIT, le=MAX_LIMIT),
+    end_time: str | None = Query(default=None, alias="endTime"),
+    anchor_price: float | None = Query(default=None, alias="anchorPrice", gt=0),
 ) -> list[Candle]:
+    """"Terminal 2.2" directive — `endTime`/`anchorPrice` are optional,
+    read-only hints so a CLOSED trade's chart can ask for the real
+    historical window/price that actually surrounded it (see
+    MockMarketDataProvider.get_candles's own docstring for why the
+    always-"now" default silently broke that case). Omitting both keeps
+    every existing caller's exact prior behavior."""
     if timeframe not in TIMEFRAME_ORDER:
         raise HTTPException(status_code=400, detail=f"Unsupported timeframe {timeframe!r}. Supported: {TIMEFRAME_ORDER}")
+    parsed_end_time: datetime | None = None
+    if end_time is not None:
+        try:
+            parsed_end_time = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid endTime {end_time!r}; expected ISO-8601.") from None
     try:
-        candles = market_data_provider.get_candles(symbol.upper(), timeframe, limit)
+        candles = market_data_provider.get_candles(symbol.upper(), timeframe, limit, end_time=parsed_end_time, anchor_price=anchor_price)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return [Candle.model_validate(c.__dict__) for c in candles]
