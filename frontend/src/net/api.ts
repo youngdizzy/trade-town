@@ -208,6 +208,7 @@ import type {
   PortfolioResearchReport,
   EvidenceQualityReport,
   LineageIntegrityIssue,
+  SniperAiReasoningResult,
   SniperCandidate,
   SniperEngineStatusRead,
   SniperEvent,
@@ -1410,4 +1411,8 @@ export const api = {
     request<SniperWallet>("/sniper/wallets", { method: "POST", body: JSON.stringify(payload) }),
   removeSniperWallet: (walletId: string) => request<{ removed: boolean }>(`/sniper/wallets/${encodeURIComponent(walletId)}`, { method: "DELETE" }),
   activateSniperWallet: (walletId: string) => request<SniperWallet[]>(`/sniper/wallets/${encodeURIComponent(walletId)}/activate`, { method: "POST" }),
+  // CEO directive "TradeTown — Memecoin Sniper AI 1.0" — human-triggered
+  // only; never called automatically/on a poll interval.
+  runSniperAiReasoning: (candidateId: string) => request<SniperAiReasoningResult>(`/sniper/ai-reasoning/run?candidateId=${encodeURIComponent(candidateId)}`, { method: "POST" }),
+  getSniperAiReasoningResults: (mint?: string) => request<SniperAiReasoningResult[]>(`/sniper/ai-reasoning/results${mint ? `?mint=${encodeURIComponent(mint)}` : ""}`),
 };

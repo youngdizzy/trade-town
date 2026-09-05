@@ -8259,6 +8259,50 @@ export interface SniperCandidate {
   decisionReason: string;
 }
 
+/** CEO directive "TradeTown — Memecoin Sniper AI 1.0" — the Sniper's own
+ * shadow AI reasoning result, reusing the shared backend
+ * AIReasoningResult shape (see app/schemas.py) rather than a second,
+ * duplicated type. Every non-"completed" status leaves the reasoning
+ * fields null/empty — never a fabricated partial answer. No
+ * chain-of-thought field exists here (the backend never stores or
+ * returns one) — only the final structured conclusion. */
+export type SniperAiReasoningStatus = "completed" | "provider_unavailable" | "provider_timeout" | "provider_error" | "invalid_output";
+export type SniperAiRecommendation = "buy" | "wait" | "research_more" | "reject_thesis";
+
+export interface SniperAiReasoningResult {
+  id: string;
+  agentId: string;
+  role: "sniper_analyst";
+  domain: "memecoin_sniper";
+  task: string;
+  proposalId: string | null; // the candidate's real token mint, this domain's own join key
+  symbol: string | null;
+  modelProvider: string;
+  modelName: string | null;
+  modelVersion: string;
+  promptVersion: string;
+  thesis: string | null;
+  supportingEvidence: string[];
+  contradictoryEvidence: string[];
+  assumptions: string[];
+  unknowns: string[];
+  uncertainty: string | null;
+  recommendation: SniperAiRecommendation | null;
+  confidence: number | null;
+  riskFlags: string[];
+  invalidationConditions: string[];
+  alternativeHypotheses: string[];
+  citationValidationPassed: boolean;
+  invalidCitations: string[];
+  deterministicRecommendation: "buy" | "sell" | "wait" | null;
+  status: SniperAiReasoningStatus;
+  failureDetail: string | null;
+  createdAt: string;
+  outcomeStatus: "pending" | "evaluated" | "not_applicable";
+  outcome: "supported" | "contradicted" | "inconclusive" | null;
+  evaluatedAt: string | null;
+}
+
 /** "Terminal 2.1" directive, Phase 1 — never a fabricated version number.
  * "versioned" is a real-but-unreachable value today (nothing in this
  * codebase can ever produce it); every real position/trade honestly

@@ -22445,32 +22445,58 @@ milestone; a natural, disclosed future increment. No full
 Sniper-cited memory — retrieval and lesson promotion are real; the
 equities Knowledge Application Loop's deeper application-grading
 pipeline (linking a specific citation to a specific graded outcome) is
-not replicated for this domain in this pass. No UI surface — deferred,
-matching this project's own "backend first, verify, then decide on UI"
-sequencing. Zero write access to `sniper_engine_config`/risk state/kill
-switch/wallets. No live trading of any kind (paper-only, as always; the
-existing `evaluate_live_arming()` boundary is completely untouched).
+not replicated for this domain in this pass. Zero write access to
+`sniper_engine_config`/risk state/kill switch/wallets. No live trading
+of any kind (paper-only, as always; the existing `evaluate_live_arming()`
+boundary is completely untouched).
+
+### Frontend
+
+A compact "AI shadow reasoning" section added to `SniperApp.tsx`'s
+existing per-candidate "View analysis" expandable toggle in the
+Discovery grid — no new tab, no redesign, matching the same extension-
+not-invention discipline the Knowledge Application Loop's own frontend
+piece already established. An explicit "Ask AI" button (never
+auto-fired, never polled) calls the new `api.runSniperAiReasoning()` →
+`POST /api/sniper/ai-reasoning/run`; the result renders the AI's
+recommendation, a real AGREE/DISAGREE read against
+`deterministicRecommendation` (computed inline, client-side — no new
+endpoint needed since the persisted record already carries both
+fields), confidence (labeled "reasoning quality, not win probability,"
+per Part XIV's own honesty requirement), thesis, risk flags, and
+unknowns. No chain-of-thought field exists anywhere in the type or the
+render path — the backend never stores one. An honest
+`provider_unavailable`/other non-"completed" status renders as plain
+disclosed text, never a fabricated result. New types
+(`SniperAiReasoningResult` in `types.ts`) mirror the backend's shared
+`AIReasoningResult` shape rather than inventing a parallel one.
 
 ### Testing
 
-40 new tests: `tests/test_sniper_ai_context.py` (24 — evidence items
-trace to real candidate fields, market structure is always `UNKNOWN`,
-domain-tagged retrieval and anti-lookahead, all real outcome/comparison
-branches, `promote_sniper_lesson()`'s domain tagging), `tests/test_sniper_ai_reasoning.py`
-(7 — shared-validator reuse, the code-enforced "sell" rejection, the
-structural prompt-injection proof), `tests/test_state_sniper_ai_reasoning.py`
-(7 — unknown-candidate raises, the shared-list append, real deterministic-
-recommendation derivation, all outcome-grading branches, equities-domain
-isolation), `tests/test_nexus_sniper_lesson_promotion.py` (2 — a real
+40 new backend tests: `tests/test_sniper_ai_context.py` (24 — evidence
+items trace to real candidate fields, market structure is always
+`UNKNOWN`, domain-tagged retrieval and anti-lookahead, all real outcome/
+comparison branches, `promote_sniper_lesson()`'s domain tagging),
+`tests/test_sniper_ai_reasoning.py` (7 — shared-validator reuse, the
+code-enforced "sell" rejection, the structural prompt-injection proof),
+`tests/test_state_sniper_ai_reasoning.py` (7 — unknown-candidate raises,
+the shared-list append, real deterministic-recommendation derivation,
+all outcome-grading branches, equities-domain isolation),
+`tests/test_nexus_sniper_lesson_promotion.py` (2 — a real
 `nexus.tick()` promotes a new lesson and never re-promotes an existing
 one), plus one new regression test in the pre-existing
 `tests/test_state_ai_reasoning.py` for the domain-isolation bug above.
-Full backend suite, mypy, ruff: clean. Live-verified against the running
-dev server with the real live save (day 206): a real candidate's
+Full backend suite, mypy, ruff: clean. Frontend: `tsc --noEmit`,
+`eslint`, `vite build` all clean. Live-verified against the running dev
+server with the real live save (day 206): a real candidate's
 `POST .../run` returned an honest `provider_unavailable` status (no
 `TRADETOWN_AI_PROVIDER_API_KEY` configured in this environment), the
 equities/Sniper domain isolation held after the fix, and both results
-survived a real backend restart.
+survived a real backend restart. The UI itself was verified with
+Playwright against a running Vite dev server with mocked API routes
+(the live save's real Sniper discovery is random and had no qualified
+candidate at the moment of verification) — expand → Ask AI → the real
+honest unavailable message renders correctly, zero console errors.
 
 ### Final Classification: B — REAL, WIRED, NOT YET LIVE-PROVEN
 

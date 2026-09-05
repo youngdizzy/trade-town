@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
-import type { SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEvent, SniperLead, SniperLesson, SniperPosition, SniperSafetyStatus, SniperTrade, SniperWallet } from "@/types";
+import type { SniperAiReasoningResult, SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEvent, SniperLead, SniperLesson, SniperPosition, SniperSafetyStatus, SniperTrade, SniperWallet } from "@/types";
 import { AnimatedGrid, DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
 import { SniperTerminal } from "./SniperTerminal";
 
@@ -91,6 +91,14 @@ export function SniperApp() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
+  // CEO directive "TradeTown — Memecoin Sniper AI 1.0" — real, human-
+  // triggered shadow reasoning, keyed by the candidate's own real
+  // `mint` (this domain's own real join key; see
+  // app/sniper_ai_context.py's own module docstring). Never polled
+  // automatically — only ever populated by an explicit "Ask AI" click.
+  const [aiResultsByMint, setAiResultsByMint] = useState<Record<string, SniperAiReasoningResult[]>>({});
+  const [aiLoadingMint, setAiLoadingMint] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const refresh = () => {
     api.getSniperStatus().then(setStatus).catch(() => undefined);
@@ -150,6 +158,19 @@ export function SniperApp() {
       api.getSniperStatus().then(setStatus).catch(() => undefined);
     } catch (e) {
       setWalletError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function runAiAnalysis(candidate: SniperCandidate) {
+    setAiLoadingMint(candidate.mint);
+    setAiError(null);
+    try {
+      const result = await api.runSniperAiReasoning(candidate.id);
+      setAiResultsByMint((prev) => ({ ...prev, [candidate.mint]: [...(prev[candidate.mint] ?? []), result] }));
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAiLoadingMint(null);
     }
   }
 
@@ -331,6 +352,60 @@ export function SniperApp() {
                         </div>
                       ))}
                       <div className="mt-1 text-cmd-textDim">{c.decisionReason}</div>
+
+                      {/* CEO directive "TradeTown — Memecoin Sniper AI 1.0" —
+                          real, human-triggered shadow reasoning. Never
+                          auto-fired; the CEO decides when to spend a real
+                          provider call. */}
+                      <div className="mt-2 border-t border-cmd-border/60 pt-2">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-cmd-purple">AI shadow reasoning</span>
+                          <button
+                            type="button"
+                            disabled={aiLoadingMint === c.mint}
+                            onClick={() => void runAiAnalysis(c)}
+                            className="rounded-sm border border-cmd-purple/50 px-1.5 py-0.5 text-[8px] uppercase tracking-wide text-cmd-purple hover:bg-cmd-purple/10 disabled:opacity-50"
+                          >
+                            {aiLoadingMint === c.mint ? "Asking…" : "Ask AI"}
+                          </button>
+                        </div>
+                        {(aiResultsByMint[c.mint] ?? []).slice(-1).map((result) => (
+                          <div key={result.id} className="mt-1 space-y-1">
+                            {result.status !== "completed" ? (
+                              <div className="text-cmd-textDim">
+                                {result.status === "provider_unavailable" ? "AI provider not configured in this environment." : `AI reasoning: ${result.status.replace(/_/g, " ")}.`}
+                                {result.failureDetail && <span className="block text-cmd-textDim/70">{result.failureDetail}</span>}
+                              </div>
+                            ) : (
+                              <>
+                                <DataRow
+                                  label="AI recommendation"
+                                  value={
+                                    <StatusPill tone={result.recommendation === "buy" ? "green" : result.recommendation === "reject_thesis" ? "red" : "amber"}>
+                                      {(result.recommendation ?? "unclear").replace(/_/g, " ")}
+                                    </StatusPill>
+                                  }
+                                />
+                                <DataRow
+                                  label="vs. deterministic engine"
+                                  value={
+                                    result.recommendation && result.deterministicRecommendation
+                                      ? (result.recommendation === "buy") === (result.deterministicRecommendation === "buy")
+                                        ? "AGREE"
+                                        : "DISAGREE"
+                                      : "—"
+                                  }
+                                />
+                                {result.confidence !== null && <DataRow label="AI confidence (reasoning quality, not win probability)" value={`${result.confidence.toFixed(0)}/100`} />}
+                                {result.thesis && <div className="mt-1 text-cmd-text">{result.thesis}</div>}
+                                {result.riskFlags.length > 0 && <div className="text-cmd-red">Risk flags: {result.riskFlags.join("; ")}</div>}
+                                {result.unknowns.length > 0 && <div className="text-cmd-textDim">Unknowns: {result.unknowns.join("; ")}</div>}
+                              </>
+                            )}
+                          </div>
+                        ))}
+                        {aiError && <div className="mt-1 text-cmd-red">{aiError}</div>}
+                      </div>
                     </div>
                   )}
                 </div>

@@ -92,17 +92,31 @@ development milestones, not semver releases.
     contradiction-flagging loop for Sniper-cited memory (retrieval and
     lesson promotion are real; the equities Knowledge Application Loop's
     deeper application-grading pipeline is not replicated for this domain
-    in this pass); no UI surface (deferred, matching this project's own
-    "backend first, verify, then decide on UI" sequencing); zero write
-    access to `sniper_engine_config`/risk state/kill switch/wallets; no
-    live trading of any kind (paper-only, as always).
-  - **Testing:** 40 new tests across `tests/test_sniper_ai_context.py`
+    in this pass); zero write access to `sniper_engine_config`/risk
+    state/kill switch/wallets; no live trading of any kind (paper-only,
+    as always).
+  - **Frontend** (`frontend/src/sniper/SniperApp.tsx`, `net/api.ts`,
+    `types.ts`): a compact "AI shadow reasoning" section added to the
+    Discovery grid's existing per-candidate "View analysis" expandable
+    toggle — no new tab, no redesign. An explicit "Ask AI" button (never
+    auto-fired) triggers `POST /api/sniper/ai-reasoning/run`; the result
+    renders the AI's recommendation, an AGREE/DISAGREE read against the
+    deterministic engine's own action, confidence (labeled "reasoning
+    quality, not win probability," per the directive's own Part XIV),
+    thesis, risk flags, and unknowns — never raw chain-of-thought (the
+    backend never stores one). An honest `provider_unavailable` status
+    renders as plain text, never a fabricated result. Live-verified with
+    Playwright (mocked routes, since live discovery is random and the
+    real dev-server save had no qualified candidate at verification
+    time): expand → Ask AI → the real honest unavailable message
+    renders, zero console errors.
+  - **Testing:** 40 new backend tests across `tests/test_sniper_ai_context.py`
     (24), `tests/test_sniper_ai_reasoning.py` (7),
     `tests/test_state_sniper_ai_reasoning.py` (7), and
     `tests/test_nexus_sniper_lesson_promotion.py` (2), plus a new
     domain-isolation regression test added to the existing
     `tests/test_state_ai_reasoning.py`. Full backend suite, mypy, ruff:
-    clean.
+    clean. Frontend: `tsc --noEmit`, `eslint`, `vite build` all clean.
 
 - **CEO directive "TradeTown — True AI Agent Reasoning Foundation 1.0."**
   The first real, non-deterministic, non-rule-based model-reasoning
