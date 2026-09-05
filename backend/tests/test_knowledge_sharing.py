@@ -52,10 +52,12 @@ def _risk_warning(*, warning_id: str = "risk-1") -> RiskWarning:
     )
 
 
-def _challenge_report(*, report_id: str = "challenge-1", historical_comparisons: list[str] | None = None, assigned_agent: str = "coach") -> ChallengeReport:
+def _challenge_report(
+    *, report_id: str = "challenge-1", retrieved_memory_id: str | None = None, assigned_agent: str = "coach", proposal_id: str = "proposal-1"
+) -> ChallengeReport:
     return ChallengeReport(
         id=report_id,
-        proposalId="proposal-1",
+        proposalId=proposal_id,
         symbol="NEXA",
         assignedAgent=assigned_agent,  # type: ignore[arg-type]
         tradeSummary="test summary",
@@ -64,7 +66,8 @@ def _challenge_report(*, report_id: str = "challenge-1", historical_comparisons:
         hiddenRisks=[],
         weakAssumptions=[],
         missingEvidence=[],
-        historicalComparisons=historical_comparisons or [],
+        historicalComparisons=[],
+        retrievedMemoryId=retrieved_memory_id,
         worstCaseScenario="test worst case",
         suggestedImprovements=[],
         severity="minor",  # type: ignore[arg-type]
@@ -149,32 +152,31 @@ class TestShareLessonWithRelevantAgents:
 
 
 class TestRecordKnowledgeApplicationFromChallenge:
-    def test_no_event_when_nothing_was_cited(self) -> None:
-        report = _challenge_report(historical_comparisons=[])
-        assert record_knowledge_application_from_challenge(report, [], [], sim_day=10) is None
+    def test_no_event_when_nothing_was_retrieved(self) -> None:
+        report = _challenge_report(retrieved_memory_id=None)
+        assert record_knowledge_application_from_challenge(report, [], sim_day=10) is None
 
-    def test_no_event_when_the_citation_does_not_resolve_to_a_real_promoted_entry(self) -> None:
-        case_study = _case_study(case_id="case-1", title="Broke below support too early")
-        report = _challenge_report(historical_comparisons=["Broke below support too early"])
-        # institutional_memory deliberately empty — the citation exists in case_studies
-        # but was never actually promoted into institutional memory.
-        assert record_knowledge_application_from_challenge(report, [case_study], [], sim_day=10) is None
+    def test_no_event_when_the_retrieved_id_does_not_resolve_to_a_real_entry(self) -> None:
+        report = _challenge_report(retrieved_memory_id="im-case-does-not-exist")
+        assert record_knowledge_application_from_challenge(report, [], sim_day=10) is None
 
-    def test_real_citation_resolves_to_knowledge_applied(self) -> None:
+    def test_real_retrieval_resolves_to_knowledge_applied(self) -> None:
         case_study = _case_study(case_id="case-1", title="Broke below support too early")
         promoted = promote_case_study(case_study)
-        report = _challenge_report(historical_comparisons=["Broke below support too early"], assigned_agent="coach")
-        event = record_knowledge_application_from_challenge(report, [case_study], [promoted], sim_day=10)
+        report = _challenge_report(retrieved_memory_id=promoted.id, assigned_agent="coach")
+        event = record_knowledge_application_from_challenge(report, [promoted], sim_day=10)
         assert event is not None
         assert event.type == "knowledge_applied"
         assert event.lesson_id == promoted.id
         assert event.agent_id == "coach"
+        assert event.context_ref == report.proposal_id
+        assert event.application_status == "pending"
 
     def test_idempotent_on_the_same_challenge_report(self) -> None:
         case_study = _case_study(case_id="case-1", title="Broke below support too early")
         promoted = promote_case_study(case_study)
-        report = _challenge_report(historical_comparisons=["Broke below support too early"])
-        first = record_knowledge_application_from_challenge(report, [case_study], [promoted], sim_day=10)
-        second = record_knowledge_application_from_challenge(report, [case_study], [promoted], sim_day=10)
+        report = _challenge_report(retrieved_memory_id=promoted.id)
+        first = record_knowledge_application_from_challenge(report, [promoted], sim_day=10)
+        second = record_knowledge_application_from_challenge(report, [promoted], sim_day=10)
         assert first is not None and second is not None
         assert first.id == second.id

@@ -58,6 +58,24 @@ research assumption (this module's own choice, not a value already
 load-bearing elsewhere in this codebase) rather than presented as an
 established statistical fact — the same provenance discipline
 app/model_validation.py's own threshold table already uses.
+
+CEO directive "TradeTown — Knowledge Application Loop 1.0" — this
+milestone's own Phase 0 forensic audit found `retrieve_relevant_memory()`
+fully built, fully tested, and never once called from the live pipeline
+(dead code) — the one real consumer that plausibly should have used it,
+Devil's Advocate's `historical_comparisons`, instead reimplemented a
+cruder raw same-symbol title match directly over `CaseStudy` records.
+This milestone makes it the canonical retrieval path for that consumer
+(see app/devils_advocate.py), which required one honest, additive
+schema change: `InstitutionalMemoryEntry.symbol`, populated only where
+the real source record actually has one, so a symbol-scoped query is a
+real filter, never a guess. It also adds the one new status transition
+this codebase previously had no real signal to justify —
+`apply_contradiction_evidence()`, called only after real, repeated,
+net-negative graded evidence (see app/knowledge_sharing.py's
+`grade_knowledge_applications()`/`lessons_needing_contradiction_flag()`)
+— closing the "contradicted is never chosen here" gap this module's own
+docstring above used to disclose.
 """
 from __future__ import annotations
 
@@ -131,6 +149,7 @@ def promote_case_study(case_study: CaseStudy) -> InstitutionalMemoryEntry:
         provenance=f"Promoted from CaseStudy {case_study.id} ({case_study.category}) on trade {case_study.decision_id}, sim day {case_study.sim_day}.",
         relevancePct=0.0,
         supportingEvidence=case_study.department_opinions,
+        symbol=case_study.symbol,
     )
 
 
@@ -234,6 +253,7 @@ def promote_risk_event(warning: RiskWarning, *, sim_day: int) -> InstitutionalMe
         provenance=f"Promoted from RiskWarning {warning.id} ({warning.symbol}, {warning.severity}), sim day {sim_day}.",
         relevancePct=0.0,
         supportingEvidence=[],
+        symbol=warning.symbol,
     )
 
 
@@ -286,6 +306,7 @@ def promote_prediction_outcome(record: PredictionRecord) -> InstitutionalMemoryE
         provenance=f"Promoted from PredictionRecord {record.id} (trade_direction, {record.predicted_direction}), resolved sim day {record.sim_day}.",
         relevancePct=0.0,
         supportingEvidence=list(record.attributed_agents),
+        symbol=record.symbol,
     )
 
 
@@ -315,6 +336,7 @@ def promote_failure_classification(classification: FailureClassification) -> Ins
         provenance=f"Promoted from FailureClassification {classification.id} ({classification.reason}) on trade {classification.trade_id}, sim day {classification.sim_day}.",
         relevancePct=0.0,
         supportingEvidence=list(classification.attributed_agents),
+        symbol=classification.symbol,
     )
 
 
@@ -499,6 +521,7 @@ def retrieve_relevant_memory(
     current_sim_day: int,
     source: InstitutionalMemorySource | None = None,
     market_regime: MarketEnvironmentRegime | None = None,
+    symbol: str | None = None,
 ) -> InstitutionalMemoryEntry | None:
     """Returns the single most relevant+corroborated active entry
     matching the query, with confidence/relevance recomputed fresh
@@ -507,12 +530,26 @@ def retrieve_relevant_memory(
     None — NOT ENOUGH EVIDENCE — when nothing matches the query at all,
     or when the best match's freshly recomputed relevance has decayed
     below MIN_RELEVANCE_FOR_RETRIEVAL. Never forces an answer from weak
-    or absent evidence."""
+    or absent evidence.
+
+    CEO directive "TradeTown — Knowledge Application Loop 1.0" — `symbol`
+    is a new, optional, additive filter (this is the canonical retrieval
+    function's ONLY consumer-facing change for that milestone): when
+    given, only entries whose own real `symbol` field matches are
+    considered. An entry with `symbol=None` (a source that genuinely
+    isn't symbol-specific, e.g. a strategy-family or market-wide record)
+    is correctly excluded from a symbol-scoped query — it was never
+    honestly about that symbol in the first place. Every prior caller
+    (there were none — this function was previously dead code, per that
+    directive's own Phase 0 audit) is unaffected, since omitting `symbol`
+    reproduces the exact old behavior."""
     candidates = [e for e in memory if e.status == "active"]
     if source is not None:
         candidates = [e for e in candidates if e.source == source]
     if market_regime is not None:
         candidates = [e for e in candidates if e.market_regime == market_regime]
+    if symbol is not None:
+        candidates = [e for e in candidates if e.symbol == symbol]
     if not candidates:
         return None
 
@@ -526,3 +563,23 @@ def retrieve_relevant_memory(
     if relevance_pct < MIN_RELEVANCE_FOR_RETRIEVAL:
         return None
     return best.model_copy(update={"relevance_pct": relevance_pct, "confidence": confidence})
+
+
+def apply_contradiction_evidence(memory: list[InstitutionalMemoryEntry], *, memory_id: str) -> list[InstitutionalMemoryEntry]:
+    """CEO directive "TradeTown — Knowledge Application Loop 1.0" — the
+    one new status transition this milestone finally has a real signal
+    to justify: `app/knowledge_sharing.py`'s
+    `lessons_needing_contradiction_flag()` only ever names a memory id
+    here after real, graded `knowledge_applied` outcomes show repeated,
+    net-negative evidence against it (never a single disagreeing
+    example — see that function's own docstring for the exact
+    conservative threshold). Flips ONLY that one entry's `status` to
+    "contradicted" — never deletes it, never rewrites its `observation`/
+    `lesson` text, and is NOT `supersede_memory()`: a contradiction is
+    evidence about the SAME claim, not a replacement by a new, better
+    one, so no new row is created. A no-op if `memory_id` doesn't exist
+    or is no longer `active` (already superseded/contradicted/stale —
+    never re-flagged). Once contradicted, `retrieve_relevant_memory()`'s
+    own `status == "active"` filter naturally stops surfacing it as
+    current truth, per this directive's own Part XV."""
+    return [e.model_copy(update={"status": "contradicted"}) if e.id == memory_id and e.status == "active" else e for e in memory]

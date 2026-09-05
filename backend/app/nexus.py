@@ -130,6 +130,7 @@ from app.audit_log import compute_audit_log
 from app.compliance_incidents import sync_incidents_from_audit_log
 from app.override_governance import sync_override_evaluations, refresh_override_outcomes
 from app.institutional_memory import (
+    apply_contradiction_evidence,
     promote_case_study,
     promote_failure_classification,
     promote_market_regime_shift,
@@ -139,8 +140,10 @@ from app.institutional_memory import (
 )
 from app.collaboration_intelligence import average_collaboration_case_score, compute_collaboration_case_summaries
 from app.knowledge_sharing import (
+    grade_knowledge_applications,
     lesson_confirmed_event,
     lesson_created_event,
+    lessons_needing_contradiction_flag,
     record_knowledge_application_from_challenge,
     record_knowledge_event,
     share_lesson_with_relevant_agents,
@@ -2144,18 +2147,26 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # Challenge Report generated up front, the same "ready the
         # instant Executive Voting opens" convention Feature 17's Debate
         # below already establishes for approved candidates.
-        new_challenge_report = generate_challenge_report(proposal, provider=market_data_provider, case_studies=case_studies, existing_count=len(challenge_reports))
-        # "TradeTown — Learning Organization 1.0" — the Devil's Advocate's
-        # own real historical_comparisons field (set just above) is the
-        # one real, non-behavior-changing "an agent cited a documented
-        # past lesson" signal this codebase has; recording it here never
-        # feeds back into the challenge report or the decision it
-        # informs.
+        new_challenge_report = generate_challenge_report(
+            proposal,
+            provider=market_data_provider,
+            case_studies=case_studies,
+            existing_count=len(challenge_reports),
+            institutional_memory=institutional_memory,
+            current_sim_day=new_time.day,
+        )
+        # "TradeTown — Knowledge Application Loop 1.0" — the Devil's
+        # Advocate's own real retrieved_memory_id (set just above, via
+        # the canonical retrieve_relevant_memory()) is the real,
+        # non-behavior-changing "an agent retrieved and cited a
+        # documented past lesson" signal this codebase has; recording it
+        # here never feeds back into the challenge report or the
+        # decision it informs. Grading (below, near the end of this
+        # tick) is what eventually turns this into real, evidence-backed
+        # SUPPORTED/CONTRADICTED/INCONCLUSIVE evidence.
         knowledge_events = record_knowledge_event(
             knowledge_events,
-            record_knowledge_application_from_challenge(
-                new_challenge_report, case_studies, institutional_memory, sim_day=new_time.day
-            ),
+            record_knowledge_application_from_challenge(new_challenge_report, institutional_memory, sim_day=new_time.day),
         )
 
         # v0.7 Feature 55 — the Executive Decision Simulator's Digital
@@ -3670,6 +3681,23 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         current_sim_day=new_time.day,
     )
     compliance_incidents = sync_incidents_from_audit_log(compliance_incidents, audit_entries_for_incidents)
+
+    # CEO directive "TradeTown — Knowledge Application Loop 1.0" — real
+    # outcome grading for every pending `knowledge_applied` event,
+    # placed here (immediately before the tick's final return) so
+    # `decisions`/`paper_trade_journal` have already reached their fully-
+    # updated value for this tick, same placement reasoning the
+    # Compliance Incident sync immediately above already uses. Recomputed
+    # fresh every tick from the complete real event history — never a
+    # persisted running counter — so this is naturally idempotent: an
+    # already-"evaluated" event is left untouched, and grading a decision
+    # that hasn't changed since last tick reproduces the identical
+    # result.
+    knowledge_events = grade_knowledge_applications(
+        knowledge_events, institutional_memory=institutional_memory, decisions=decisions, paper_trade_journal=paper_trade_journal
+    )
+    for lesson_id in lessons_needing_contradiction_flag(knowledge_events):
+        institutional_memory = apply_contradiction_evidence(institutional_memory, memory_id=lesson_id)
 
     # CEO directive "Features 31-35," Feature 32 — sync new
     # CeoOverrideEvaluations from this tick's own final ceo_decisions/

@@ -23,6 +23,18 @@ elsewhere:
   historical comparisons - real past CaseStudy titles (Library of
                            Mistakes, app/mistakes.py) for this same
                            symbol — an honest empty list if none exist.
+  retrieved memory id     - CEO directive "TradeTown — Knowledge
+                           Application Loop 1.0" — the real id of the
+                           single best ACTIVE InstitutionalMemoryEntry
+                           (app/institutional_memory.py's
+                           retrieve_relevant_memory(), any real source
+                           type, not just CaseStudy) for this same
+                           symbol, additive to historical_comparisons
+                           above, honestly None when nothing qualifies.
+                           This is the real, traceable retrieval signal
+                           app/knowledge_sharing.py's
+                           record_knowledge_application_from_challenge()
+                           now keys off of.
   worst case scenario     - one line drawn from the What-If Simulation
                            Lab's own real worst named scenario
                            (app/whatif.py). Only that one line is kept —
@@ -51,8 +63,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.constitution import articles_for_challenge
+from app.institutional_memory import retrieve_relevant_memory
 from app.market_data import MarketDataProvider
-from app.schemas import AgentId, CaseStudy, ChallengeReport, ChallengeSeverity, TradeProposal
+from app.schemas import AgentId, CaseStudy, ChallengeReport, ChallengeSeverity, InstitutionalMemoryEntry, TradeProposal
 from app.whatif import run_whatif_simulation
 
 MAX_CHALLENGE_REPORTS = 60
@@ -79,6 +92,8 @@ def generate_challenge_report(
     provider: MarketDataProvider,
     case_studies: list[CaseStudy],
     existing_count: int,
+    institutional_memory: list[InstitutionalMemoryEntry] | None = None,
+    current_sim_day: int = 0,
 ) -> ChallengeReport:
     assigned = _assign_devils_advocate(existing_count)
 
@@ -105,6 +120,21 @@ def generate_challenge_report(
     missing_evidence = [f"The {v.role} vote has no supporting evidence on record." for v in proposal.analyst_votes if not v.evidence]
 
     historical_comparisons = [cs.title for cs in case_studies if cs.symbol == proposal.symbol][:3]
+
+    # CEO directive "TradeTown — Knowledge Application Loop 1.0" — the
+    # real, canonical, confidence/relevance-ranked retrieval this
+    # milestone routes through instead of leaving `retrieve_relevant_
+    # memory()` unused: additive to `historical_comparisons` above
+    # (which stays exactly as it was — raw same-symbol CaseStudy
+    # titles), this is a single best ACTIVE memory of ANY real source
+    # type for this proposal's own symbol, honestly `None` when nothing
+    # qualifies. Its id is what makes a later KNOWLEDGE_APPLIED event
+    # traceable to a specific, real retrieval (see app/knowledge_sharing.py's
+    # record_knowledge_application_from_challenge()) instead of the
+    # prior, fragile title-string reverse-match.
+    retrieved_memory = retrieve_relevant_memory(
+        institutional_memory or [], current_sim_day=current_sim_day, symbol=proposal.symbol
+    )
 
     candles = provider.get_candles(proposal.symbol, PROPOSAL_TIMEFRAME, PROPOSAL_CANDLE_COUNT)
     whatif = run_whatif_simulation(proposal.symbol, candles)
@@ -148,6 +178,7 @@ def generate_challenge_report(
         weakAssumptions=weak_assumptions,
         missingEvidence=missing_evidence,
         historicalComparisons=historical_comparisons,
+        retrievedMemoryId=retrieved_memory.id if retrieved_memory is not None else None,
         worstCaseScenario=worst_case_scenario,
         suggestedImprovements=suggested_improvements,
         severity=severity,

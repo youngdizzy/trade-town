@@ -157,6 +157,7 @@ def build_collaboration_case_summary(
         evidenceReusePairs=[f"{a}->{b}" for a, b in evidence_pairs],
         challengeSeverity=challenge_report.severity if challenge_report is not None else None,
         challengeHeeded=challenge_heeded,
+        knowledgeApplied=challenge_report is not None and challenge_report.retrieved_memory_id is not None,
         recommendedAction=entry.recommended_action,
         ceoDecision=entry.ceo_decision,
         networkAgreed=entry.network_agreed,

@@ -21966,3 +21966,149 @@ Autonomous Research Orchestrator keep running until a real champion is
 organically promoted on the live save, then observe the full, now-fully-
 disposition-tracked bridge end to end for the first time under real
 conditions.
+
+## CEO directive "TradeTown — Knowledge Application Loop 1.0"
+
+Closes the previously write-only half of the knowledge-sharing loop:
+`KNOWLEDGE_APPLIED` was a real event, generated from a real signal, and
+then read by nothing else in the codebase — Institutional Memory's write
+side, relabeled, not a genuine "did this actually help" answer. This
+directive turns that into: real retrieval → real, id-linked application
+→ real outcome grading against real subsequent trade evidence →
+real, evidence-backed memory contradiction — reusing every existing
+primitive, building none new.
+
+### Phase 0 re-verification
+
+Re-traced from source, not trusted from the prior audit's own summary:
+- `app/institutional_memory.py::retrieve_relevant_memory()` — fully
+  built, fully tested, confirmed zero callers anywhere in the codebase.
+- `app/devils_advocate.py`'s `historical_comparisons` — a raw
+  `[cs.title for cs in case_studies if cs.symbol == proposal.symbol][:3]`
+  filter directly over `CaseStudy` records, never touching Institutional
+  Memory's retrieval/confidence/relevance machinery at all.
+- `app/knowledge_sharing.py::record_knowledge_application_from_challenge()`
+  — reverse-matched `historical_comparisons` titles back to `CaseStudy`
+  ids, then to an `InstitutionalMemoryEntry` by `event_ref` — fragile
+  (title-based, `CaseStudy`-source-only) and, per the module's own
+  comment, deliberately never read again by anything downstream.
+- `InstitutionalMemoryStatus.contradicted` — schema-defined, never once
+  set by any code path; the module's own docstring disclosed this as an
+  intentional gap pending "real valence evidence."
+
+### The fix
+
+- **`InstitutionalMemoryEntry.symbol`** (new, optional) — populated only
+  where the real source record actually has one
+  (`CaseStudy`/`RiskWarning`/`PredictionRecord`/`FailureClassification`);
+  `None` for a genuinely symbol-agnostic source (strategy-family,
+  market-wide). This is the one schema change that makes
+  `retrieve_relevant_memory()`'s new optional `symbol` filter honest
+  rather than fabricated.
+- **`generate_challenge_report()`** now calls the canonical
+  `retrieve_relevant_memory()` for the proposal's own symbol and records
+  the real result as `ChallengeReport.retrieved_memory_id` — additive to
+  `historical_comparisons`, which is completely unchanged (existing
+  tests pass with zero modification). Works for any real memory source
+  type, not only `CaseStudy` — a genuine capability upgrade.
+- **`record_knowledge_application_from_challenge()`** rewritten to key
+  directly off `retrieved_memory_id` — simpler, more general, and
+  removes the title-matching fragility. Now stamps `KnowledgeEvent.context_ref`
+  (the real proposal id) and `application_status="pending"`.
+- **`grade_knowledge_applications()`** (new) — reuses the exact "grade
+  later, against real subsequent evidence" pattern
+  `grade_opportunity_rejections()`/`grade_gatekeeper_rejections()`
+  already established, but keyed to a real EXECUTED trade's own real
+  P&L (`PaperTradeJournalEntry`, joined by `proposal_id`) — a strictly
+  more precise signal than those two functions' price-change-window
+  proxy, since no proxy is needed once a real trade has actually closed.
+  Resolution path per event: no matching `TradeDecision` yet → still
+  pending; `decision.outcome == "no_trade"` (CEO waited, or the
+  Gatekeeper rejected it — `app/executive.py`'s own
+  `outcome="trade" if order_id is not None else "no_trade"` collapses
+  both) → a real terminal state, graded `"inconclusive"`, never left
+  pending forever; a real trade placed but not yet closed → still
+  pending; a matching journal entry → graded via one disclosed,
+  conservative valence rule: `behavioral_mistake` (a documented warning)
+  is `"supported"` by a real loss and `"contradicted"` by a real win
+  (inverted for `behavioral_success`); breakeven or any other memory
+  source → honestly `"inconclusive"`, never a guessed direction.
+- **`lessons_needing_contradiction_flag()`** + **`apply_contradiction_evidence()`**
+  (new) — the first real, evidence-backed use of
+  `InstitutionalMemoryStatus.contradicted` this codebase has had.
+  Conservative, disclosed threshold: net-negative, repeated real
+  evidence only — never a single disagreeing example. Recomputed fresh
+  every tick from the complete real event history, never a persisted,
+  driftable counter. Once flagged, the existing `status == "active"`
+  filter in `retrieve_relevant_memory()` naturally stops surfacing it.
+- **`CollaborationCaseSummary.knowledge_applied`** (new, computed
+  fresh) — the minimal linkage this directive's Part XVIII asked for:
+  true only when a case's own real `ChallengeReport` actually retrieved
+  a real memory. Never claims causality.
+- **API**: `GET /api/institutional-memory/retrieve` gains an optional
+  `symbol` filter; new `GET /api/institutional-memory/applications`
+  (read-only) surfaces every real `knowledge_applied` event with its
+  graded outcome, for a future AI context builder or the UI to consume
+  as structured evidence rather than scraped text.
+
+### Explicitly NOT built
+
+No free-text/NLP contradiction detection (grading is real-trade-outcome
+based, never a claim-valence parser — a memory's "claim direction" is
+inferred only from its own real `source` field, `behavioral_mistake`
+vs. `behavioral_success`, never from parsing its `lesson` text). No
+change to `app/wisdom.py`'s Sharing Knowledge/Documenting Lessons
+formulas — both remain disclosed, cumulative, one-way-ratchet counters;
+fixing that is a distinct, deferred piece of work, explicitly out of
+this directive's own scope. No deeper Collaboration Intelligence causal
+linkage beyond the one boolean. No LLM/AI-reasoning layer of any kind —
+this milestone only builds the evidence substrate; Part XX's "future AI
+context builder" is future work.
+
+### Testing
+
+39 new tests (`tests/test_knowledge_application_loop.py`): symbol-scoped
+retrieval (including a real non-`CaseStudy`-source retrieval, proving
+the "any source type" capability), every real grading branch (pending,
+inconclusive-terminal, still-pending-open-position, supported/
+contradicted in both memory-source directions, breakeven, non-behavioral
+source), idempotent re-grading (an evaluated event is never re-graded),
+the conservative contradiction threshold (a single disagreement never
+flags; net-negative repeated evidence does; equal supports/contradictions
+never flags), non-destructive status flipping (observation/lesson text
+untouched, an already-superseded entry never re-flagged), the
+Collaboration linkage, JSON round-trip and backward-compatible
+defaulting on old payloads missing every new field entirely, and one
+full, real `nexus.tick()` wiring test exercising the actual production
+call path (pre-existing pending application + a resolved trade + prior
+contradicting evidence → graded outcome + a real memory status flip, all
+inside one real tick). 5 existing tests in `test_knowledge_sharing.py`
+updated to the new mechanism (the old one they tested no longer exists);
+every other existing test across `test_devils_advocate.py`,
+`test_institutional_memory.py`, and `test_collaboration_intelligence.py`
+passes with zero modification. Full backend suite, mypy (228 files),
+ruff: clean.
+
+### Final Classification: A — REAL, OPERATIONAL, VERIFIED
+
+Every stage of `KNOWLEDGE_CREATED → SHARED → RECEIVED → RETRIEVED →
+APPLIED → OUTCOME_OBSERVED → VALIDATED/CONTRADICTED/INCONCLUSIVE →
+MEMORY_UPDATED` this directive's own canonical lifecycle names is now a
+real, traceable, id-linked, tested code path — except OUTCOME grading
+remains genuinely narrow (only `behavioral_mistake`/`behavioral_success`
+memories have a defined valence rule, since those are the only source
+types the one real consumer, Devil's Advocate, retrieves against a
+trade context today). On the live save, no `knowledge_applied` event has
+yet been graded to a real outcome (no promoted `InstitutionalMemoryEntry`
+has yet been cited AND carried through to a closed trade) — this is
+honestly disclosed as insufficient live evidence to date, not fabricated
+as a demonstration. Recommended next milestone: per this directive's own
+Part XXXVIII rule, only if this loop is genuinely closed and verified —
+confirmed here — **True AI Agent Reasoning Foundation 1.0**: a bounded
+LLM-reasoning layer behind Devil's Advocate and/or the Researcher role,
+reading exclusively from this now-real evidence/outcome substrate
+(structured retrieval + graded application history), producing only a
+structured recommendation (thesis/evidence/counter-evidence/assumptions/
+uncertainty), never touching authoritative state directly — sequenced
+here, not before, so the first real AI reasoning in this codebase
+reasons over proven-real evidence rather than dead telemetry.

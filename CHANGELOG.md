@@ -7,6 +7,92 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Knowledge Application Loop 1.0."** Closes
+  the previously write-only half of the knowledge-sharing lifecycle,
+  reusing every existing primitive rather than building a second
+  memory/citation/outcome-grading system. Phase 0 re-verified every
+  claim from source: `KnowledgeEvent.knowledge_applied` was real but
+  consumed by nothing; `app/institutional_memory.py`'s fully-built,
+  fully-tested `retrieve_relevant_memory()` had zero real callers;
+  `app/devils_advocate.py`'s `historical_comparisons` instead reimplemented
+  a cruder raw same-symbol `CaseStudy` title match; `InstitutionalMemoryStatus.contradicted`
+  had never once been set by any code path.
+  - **`InstitutionalMemoryEntry.symbol`** (new, optional) — the real
+    single symbol a memory's own source record actually carried
+    (`CaseStudy`/`RiskWarning`/`PredictionRecord`/`FailureClassification`
+    all have one; a strategy-family or market-wide source honestly
+    stays `None`). This is what makes `retrieve_relevant_memory()`'s new
+    optional `symbol` filter a real capability rather than a guess.
+  - **`app/devils_advocate.py::generate_challenge_report()`** now also
+    calls the canonical `retrieve_relevant_memory()` for the proposal's
+    own symbol, recording the real result on a new
+    `ChallengeReport.retrieved_memory_id` field — additive to
+    `historical_comparisons`, which keeps its exact prior behavior
+    unchanged. Works for ANY real memory source type, not just
+    `CaseStudy` — a genuine capability upgrade over the mechanism it
+    supersedes.
+  - **`app/knowledge_sharing.py::record_knowledge_application_from_challenge()`**
+    rewritten to key directly off `retrieved_memory_id` (a real, direct
+    id link) instead of a fragile title-string reverse-match, and now
+    stamps the new `KnowledgeEvent.context_ref` (the real proposal id)
+    and `application_status="pending"` so the application can later be
+    graded.
+  - **`app/knowledge_sharing.py::grade_knowledge_applications()`** (new)
+    — the real outcome grader, reusing the same "grade later, against
+    real subsequent evidence, never fabricated" pattern
+    `grade_opportunity_rejections()`/`grade_gatekeeper_rejections()`
+    already established, keyed here to a real executed trade's own real
+    P&L (`PaperTradeJournalEntry`) rather than a price-change proxy. A
+    resolved `"no_trade"` decision (CEO chose wait, or the Gatekeeper
+    rejected it) grades as a real, disclosed `"inconclusive"` — never
+    left pending forever, never forced into a directional verdict with
+    no real trade to check it against. A `behavioral_mistake` memory is
+    `"supported"` by a real losing trade and `"contradicted"` by a real
+    winning one (inverted for `behavioral_success`); any other memory
+    source has no honest valence rule defined and stays
+    `"inconclusive"` rather than a guessed verdict.
+  - **`app/knowledge_sharing.py::lessons_needing_contradiction_flag()`**
+    + **`app/institutional_memory.py::apply_contradiction_evidence()`**
+    (new) — the first real, evidence-backed use of
+    `InstitutionalMemoryStatus.contradicted` this codebase has ever had,
+    gated by a conservative, disclosed threshold (net-negative, repeated
+    real evidence — never a single disagreeing example). Once flagged,
+    `retrieve_relevant_memory()`'s own existing `status == "active"`
+    filter naturally stops surfacing it as current truth.
+  - **`CollaborationCaseSummary.knowledge_applied`** (new, computed
+    fresh) — the minimal, real linkage this directive's own Part XVIII
+    asked for: true only when a case's own real `ChallengeReport`
+    actually retrieved a real memory. Never claims the retrieval caused
+    the collaboration's outcome.
+  - **API**: `GET /api/institutional-memory/retrieve` gains an optional
+    `symbol` filter; new `GET /api/institutional-memory/applications`
+    (read-only) surfaces every real `knowledge_applied` event with its
+    graded outcome.
+  - **Explicitly NOT built:** no free-text/NLP contradiction detection
+    (grading is trade-outcome-based, never a claim-valence parser); no
+    change to `app/wisdom.py`'s Sharing Knowledge/Documenting Lessons
+    formulas (both remain disclosed one-way-ratchet cumulative counters
+    — a known, separate limitation, not addressed here per this
+    directive's own explicit scope boundary); no deeper Collaboration
+    Intelligence causal linkage; no LLM/AI-reasoning layer of any kind —
+    this milestone only builds the evidence substrate a future one could
+    use.
+  - **Testing:** 39 new tests (`tests/test_knowledge_application_loop.py`)
+    covering symbol-filtered retrieval, any-source-type retrieval
+    (not just `CaseStudy`), every real grading branch (pending/
+    inconclusive/supported/contradicted/breakeven/non-behavioral-source),
+    idempotent re-grading, the conservative contradiction threshold
+    (single disagreement never flags; net-negative, repeated evidence
+    does), non-destructive status flipping, the Collaboration linkage,
+    JSON round-trip and backward-compatible defaulting on old payloads
+    missing every new field, and a full real `nexus.tick()` wiring test.
+    5 existing tests in `tests/test_knowledge_sharing.py` updated to the
+    new `retrieved_memory_id`-based mechanism (the fragile title-match
+    they exercised no longer exists); every other existing test in that
+    file, `test_devils_advocate.py`, `test_institutional_memory.py`, and
+    `test_collaboration_intelligence.py` passes completely unchanged.
+    Full backend suite: mypy (228 files)/ruff clean.
+
 - **CEO directive "TradeTown — Champion → Live Signal → TradeProposal /
   Forensic Architecture Gate + Safe Production Bridge 1.0."** A fresh,
   adversarial Phase 0 re-audit of the Champion-Sourced Trade Proposal

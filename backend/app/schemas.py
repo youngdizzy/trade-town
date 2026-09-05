@@ -3561,6 +3561,18 @@ class ChallengeReport(CamelModel):
     historical_comparisons: list[str] = Field(
         default_factory=list, alias="historicalComparisons"
     )
+    # CEO directive "TradeTown — Knowledge Application Loop 1.0" — the
+    # real id of the single InstitutionalMemoryEntry
+    # retrieve_relevant_memory() returned for this proposal's own symbol
+    # (app/institutional_memory.py), if any — a genuine, traceable
+    # retrieval, additive to `historical_comparisons` above (which stays
+    # exactly as it was: raw same-symbol CaseStudy titles). `None` when
+    # no active memory qualified (insufficient evidence), never a guess.
+    # This is what makes a real, id-linked KNOWLEDGE_APPLIED event
+    # possible (see app/knowledge_sharing.py's
+    # record_knowledge_application_from_challenge()) instead of the
+    # prior, fragile title-string reverse-matching approach.
+    retrieved_memory_id: str | None = Field(default=None, alias="retrievedMemoryId")
     # One line drawn from the What-If Simulation Lab's own real worst
     # named scenario (app/whatif.py) — never the full simulation, which
     # this codebase has already been bitten once by persisting unbounded
@@ -3764,6 +3776,15 @@ class CollaborationCaseSummary(CamelModel):
     # challenge. Never a new heuristic — exposing a relationship this
     # codebase already computes.
     challenge_heeded: bool = Field(alias="challengeHeeded")
+    # CEO directive "TradeTown — Knowledge Application Loop 1.0," Part
+    # XVIII — the minimal, real linkage this milestone adds: true only
+    # when this case's own real ChallengeReport actually retrieved a
+    # real InstitutionalMemoryEntry (`retrieved_memory_id is not None`).
+    # Never claims the retrieved knowledge CAUSED the collaboration's
+    # outcome — only that a real retrieval occurred within it. See
+    # app/collaboration_intelligence.py's own module docstring for why a
+    # deeper causal linkage is explicitly deferred, not built here.
+    knowledge_applied: bool = Field(alias="knowledgeApplied")
     recommended_action: ExecutiveAction = Field(alias="recommendedAction")
     ceo_decision: AnalystChoice = Field(alias="ceoDecision")
     network_agreed: bool = Field(alias="networkAgreed")
@@ -9396,6 +9417,17 @@ class InstitutionalMemoryEntry(CamelModel):
     confidence: float
     provenance: str
     relevance_pct: float = Field(alias="relevancePct")
+    # CEO directive "TradeTown — Knowledge Application Loop 1.0" — the
+    # real single symbol this memory is about, when its source record
+    # honestly has one (CaseStudy/RiskWarning/PredictionRecord/
+    # FailureClassification all carry `.symbol`). `None` for a source
+    # that is genuinely not symbol-specific (a strategy family spans many
+    # symbols; a market-regime shift is market-wide) — never guessed.
+    # This is what makes retrieve_relevant_memory()'s new optional
+    # `symbol` filter a real, honest capability rather than a fabricated
+    # one: it can only ever filter on a symbol that was truly on the
+    # source record.
+    symbol: str | None = None
     status: InstitutionalMemoryStatus = "active"
     supersedes_id: str | None = Field(default=None, alias="supersedesId")
     superseded_by_id: str | None = Field(default=None, alias="supersededById")
@@ -9447,6 +9479,32 @@ KnowledgeEventType = Literal[
     "lesson_contradicted",
 ]
 
+# CEO directive "TradeTown — Knowledge Application Loop 1.0" — a
+# `knowledge_applied` event's own real grading state, set at creation
+# ("pending" — a real application happened, but no real subsequent
+# evidence exists yet to grade it against) and flipped to "evaluated"
+# exactly once, by app/knowledge_sharing.py's grade_knowledge_applications(),
+# the moment real qualifying evidence exists (see KnowledgeApplicationOutcome
+# below for what "qualifying" means). Every other KnowledgeEventType
+# (lesson_created/shared/received/confirmed/contradicted) leaves both
+# this and `outcome` `None` — grading only ever applies to an actual
+# application, never to a mere sharing/receipt/corroboration event.
+KnowledgeApplicationStatus = Literal["pending", "evaluated"]
+
+# The one real, disclosed, conservative evaluation rule this milestone
+# can honestly support (see grade_knowledge_applications()'s own
+# docstring for the exact source-type-vs-real-P&L-sign logic):
+#   supported     — real subsequent evidence agrees with the cited
+#                    memory's own claim direction.
+#   contradicted  — real subsequent evidence disagrees with it.
+#   inconclusive  — a terminal state was reached (e.g. the proposal
+#                    never became a trade) with no real evidence to
+#                    grade the claim against either way — an honest
+#                    "no answer," never forced into supported/contradicted.
+# Never a bare boolean success/failure, per this directive's own explicit
+# instruction against forcing a binary outcome.
+KnowledgeApplicationOutcome = Literal["supported", "contradicted", "inconclusive"]
+
 
 class KnowledgeEvent(CamelModel):
     """One real, timestamped, attributable, idempotent (id-deduplicated
@@ -9463,6 +9521,23 @@ class KnowledgeEvent(CamelModel):
     sim_day: int = Field(alias="simDay")
     detail: str
     created_at: str = Field(alias="createdAt")
+    # CEO directive "TradeTown — Knowledge Application Loop 1.0" — the
+    # five fields below ONLY ever populate for type=="knowledge_applied";
+    # every other event type leaves all five None, honestly (a share/
+    # receipt/confirmation is not an application and has nothing to
+    # grade). `context_ref` is the real TradeProposal.id this application
+    # happened in — the "downstream artifact" identity Part IV/V require
+    # — set once at creation, never guessed after the fact from free text.
+    context_ref: str | None = Field(default=None, alias="contextRef")
+    application_status: KnowledgeApplicationStatus | None = Field(default=None, alias="applicationStatus")
+    outcome: KnowledgeApplicationOutcome | None = Field(default=None, alias="outcome")
+    # The real id of the evidence grade_knowledge_applications() actually
+    # graded this against — a TradeDecision id (a terminal no-trade
+    # outcome) or a PaperTradeJournalEntry id (a real closed trade's real
+    # P&L) — so `outcome` is itself traceable to real evidence, never a
+    # bare unexplained label.
+    outcome_ref: str | None = Field(default=None, alias="outcomeRef")
+    evaluated_at: str | None = Field(default=None, alias="evaluatedAt")
 
 
 # v0.7 Feature 55 (the brief self-numbered it "Feature 54," already used
