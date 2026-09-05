@@ -211,6 +211,7 @@ import type {
   SniperAiReasoningResult,
   SniperCandidate,
   SniperEngineStatusRead,
+  SniperEquitySnapshot,
   SniperEvent,
   SniperLead,
   SniperLesson,
@@ -1401,6 +1402,11 @@ export const api = {
   // realized P&L curve (see app/memecoin_sniper.py::build_sniper_pnl_history's
   // own docstring for why this is realized-only, not equity history).
   getSniperPnlHistory: () => request<SniperPnlHistoryPoint[]>("/sniper/pnl-history"),
+  // "Equity Snapshot Telemetry 1.0" directive — real, oldest-first,
+  // periodic mark-to-market equity readings (see
+  // app/memecoin_sniper.py::build_sniper_equity_snapshot's own
+  // docstring). Distinct from getSniperPnlHistory above (realized-only).
+  getSniperEquityHistory: (limit = 500) => request<SniperEquitySnapshot[]>(`/sniper/equity-history?limit=${limit}`),
   getSniperEvents: (opts?: { mint?: string; limit?: number }) => {
     const params = new URLSearchParams();
     if (opts?.mint) params.set("mint", opts.mint);

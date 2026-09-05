@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
-import type { SniperAiReasoningResult, SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEvent, SniperLead, SniperLesson, SniperPnlHistoryPoint, SniperPosition, SniperSafetyStatus, SniperTrade, SniperWallet } from "@/types";
+import type { SniperAiReasoningResult, SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEquitySnapshot, SniperEvent, SniperLead, SniperLesson, SniperPnlHistoryPoint, SniperPosition, SniperSafetyStatus, SniperTrade, SniperWallet } from "@/types";
 import { EquityCurveChart } from "@/ui/components/CommandCenter/panels/EquityCurveChart";
 import { AnimatedGrid, DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
 import { SniperTerminal } from "./SniperTerminal";
@@ -90,6 +90,10 @@ export function SniperApp() {
   // realized-P&L history (never the 20-trade-capped `trades` list above,
   // which would misrepresent the true cumulative total).
   const [pnlHistory, setPnlHistory] = useState<SniperPnlHistoryPoint[]>([]);
+  // "Equity Snapshot Telemetry 1.0" directive — real, periodic
+  // mark-to-market readings, distinct from pnlHistory above (realized-
+  // only). Never merged into one chart/line with it (Part XIX).
+  const [equityHistory, setEquityHistory] = useState<SniperEquitySnapshot[]>([]);
   const [walletLabel, setWalletLabel] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
   const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null);
@@ -115,6 +119,7 @@ export function SniperApp() {
     api.getSniperEvents({ limit: 15 }).then(setEvents).catch(() => undefined);
     api.getSniperWallets().then(setWallets).catch(() => undefined);
     api.getSniperPnlHistory().then(setPnlHistory).catch(() => undefined);
+    api.getSniperEquityHistory().then(setEquityHistory).catch(() => undefined);
   };
 
   useEffect(() => {
@@ -324,16 +329,47 @@ export function SniperApp() {
             build_sniper_pnl_history's own docstring for why this is
             realized-only, not a mark-to-market equity curve, and for the
             disclosed future gap that would be needed for one). */}
-        <Glass className="p-3">
-          <TerminalLabel>Realized P&L — cumulative, all-time (not a mark-to-market equity curve)</TerminalLabel>
-          <EquityCurveChart
-            startingBalance={0}
-            pnls={pnlHistory.map((p) => p.realizedPnlSol)}
-            formatValue={(v) => fmtSol(v)}
-            emptyLabel="No P&L history yet — no Sniper trades have closed this session."
-            height={120}
-          />
-        </Glass>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <Glass className="p-3">
+            <TerminalLabel>Realized P&L — cumulative, all-time (not a mark-to-market equity curve)</TerminalLabel>
+            <EquityCurveChart
+              startingBalance={0}
+              pnls={pnlHistory.map((p) => p.realizedPnlSol)}
+              formatValue={(v) => fmtSol(v)}
+              emptyLabel="No P&L history yet — no Sniper trades have closed this session."
+              height={120}
+            />
+          </Glass>
+
+          {/* "Equity Snapshot Telemetry 1.0" directive, Part XIX — a
+              SEPARATE, clearly labeled chart, never merged into the
+              realized-P&L line above. Each point is a real, periodic
+              mark-to-market reading (realized equity + live unrealized
+              P&L from open positions) — see
+              build_sniper_equity_snapshot's own docstring. The series fed
+              to EquityCurveChart is the real snapshot-to-snapshot delta,
+              so walking forward from the first real snapshot's own
+              totalEquitySol reproduces every later real value exactly —
+              no interpolation, no invented points. Rolling recent window
+              (see MAX_SNIPER_EQUITY_SNAPSHOTS, app/nexus.py) — never the
+              full permanent lifetime, disclosed via the "history begins"
+              note below rather than implied to be complete. */}
+          <Glass className="p-3">
+            <TerminalLabel>Account equity — mark-to-market (realized + live unrealized, rolling recent window)</TerminalLabel>
+            <EquityCurveChart
+              startingBalance={equityHistory[0]?.totalEquitySol ?? 0}
+              pnls={equityHistory.slice(1).map((s, i) => s.totalEquitySol - (equityHistory[i]?.totalEquitySol ?? 0))}
+              formatValue={(v) => fmtSol(v)}
+              emptyLabel="No equity history yet — telemetry begins once the Sniper engine starts running or paused."
+              height={120}
+            />
+            {equityHistory.length > 0 && (
+              <p className="mt-1 text-[8px] text-cmd-textDim">
+                History begins {new Date(equityHistory[0]?.timestamp ?? "").toLocaleTimeString()} — a rolling recent window, not permanent lifetime history.
+              </p>
+            )}
+          </Glass>
+        </div>
 
         {/* Discovery */}
         <Glass className="p-3">

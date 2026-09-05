@@ -8392,6 +8392,27 @@ export interface SniperPnlHistoryPoint {
   cumulativeRealizedPnlSol: number;
 }
 
+/** "Equity Snapshot Telemetry 1.0" directive — one real, periodic
+ * mark-to-market equity reading: realizedEquitySol (the account's own
+ * real, realized-only balance) + unrealizedPnlSol (the live sum of
+ * every currently-open position's own real pnlSol) = totalEquitySol.
+ * Never confuse this with SniperPnlHistoryPoint above (realized-only,
+ * no mark-to-market) — see backend/app/memecoin_sniper.py's
+ * build_sniper_equity_snapshot for the full derivation. */
+export interface SniperEquitySnapshot {
+  id: string;
+  simDay: number;
+  simHour: number;
+  simMinute: number;
+  timestamp: string;
+  realizedEquitySol: number;
+  unrealizedPnlSol: number;
+  totalEquitySol: number;
+  openPositionCount: number;
+  mode: "dry_run" | "live";
+  dataProvenance: "simulated";
+}
+
 export interface SniperLead {
   id: string;
   walletLabel: string;
