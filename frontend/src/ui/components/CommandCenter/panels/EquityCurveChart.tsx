@@ -26,7 +26,24 @@ const COLORS = {
   zero: "#3a4d61",
 };
 
-export function EquityCurveChart({ startingBalance, pnls, height = 140 }: { startingBalance: number; pnls: number[]; height?: number }) {
+export function EquityCurveChart({
+  startingBalance,
+  pnls,
+  height = 140,
+  formatValue = formatMoney,
+  emptyLabel = "Not enough closed trades yet for an equity curve.",
+}: {
+  startingBalance: number;
+  pnls: number[];
+  height?: number;
+  /** "Terminal 2.2" directive — the Sniper P&L chart reuses this exact
+   * component for its own real cumulative-realized-P&L curve, but its
+   * unit is SOL, not USD; `formatMoney`'s `$` prefix would misrepresent
+   * that. Defaults to `formatMoney` — zero behavior change for the
+   * existing main-portfolio equity curve. */
+  formatValue?: (v: number) => string;
+  emptyLabel?: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +84,7 @@ export function EquityCurveChart({ startingBalance, pnls, height = 140 }: { star
         ctx.fillStyle = COLORS.text;
         ctx.font = "10px monospace";
         ctx.textAlign = "center";
-        ctx.fillText("Not enough closed trades yet for an equity curve.", width / 2, height / 2);
+        ctx.fillText(emptyLabel, width / 2, height / 2);
         return;
       }
 
@@ -112,17 +129,17 @@ export function EquityCurveChart({ startingBalance, pnls, height = 140 }: { star
       ctx.fillStyle = COLORS.text;
       ctx.font = "9px monospace";
       ctx.textAlign = "left";
-      ctx.fillText(formatMoney(startingBalance), plotLeft, y(startingBalance) - 3);
+      ctx.fillText(formatValue(startingBalance), plotLeft, y(startingBalance) - 3);
       ctx.textAlign = "right";
       ctx.fillStyle = endEquity >= startingBalance ? COLORS.textPositive : COLORS.textNegative;
-      ctx.fillText(formatMoney(endEquity), plotRight, y(endEquity) - 4);
+      ctx.fillText(formatValue(endEquity), plotRight, y(endEquity) - 4);
     };
 
     draw();
     const observer = new ResizeObserver(draw);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [startingBalance, pnls, height]);
+  }, [startingBalance, pnls, height, formatValue, emptyLabel]);
 
   return (
     <div ref={containerRef} className="w-full">

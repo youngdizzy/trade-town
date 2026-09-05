@@ -215,6 +215,7 @@ import type {
   SniperLead,
   SniperLesson,
   SniperLiveArmingStatus,
+  SniperPnlHistoryPoint,
   SniperPosition,
   SniperRiskState,
   SniperTrade,
@@ -262,8 +263,12 @@ export const api = {
       body: JSON.stringify({ displayName: displayName ?? null }),
     }),
   activateRun: (runId: string) => request<GameSaveState>(`/runs/${encodeURIComponent(runId)}/activate`, { method: "POST" }),
-  getCandles: (symbol: string, timeframe: string, limit = 150) =>
-    request<Candle[]>(`/market/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`),
+  getCandles: (symbol: string, timeframe: string, limit = 150, options?: { endTime?: string; anchorPrice?: number }) => {
+    let url = `/market/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`;
+    if (options?.endTime) url += `&endTime=${encodeURIComponent(options.endTime)}`;
+    if (options?.anchorPrice !== undefined) url += `&anchorPrice=${options.anchorPrice}`;
+    return request<Candle[]>(url);
+  },
   getTimeframes: () => request<string[]>("/market/timeframes"),
   getRegimeReconciliation: () => request<RegimeReconciliation>("/market/regime-reconciliation"),
   // CEO directive "Session Trading Education & Agent Training". Read-only,
@@ -1392,6 +1397,10 @@ export const api = {
   getSniperCandidates: (limit = 30) => request<SniperCandidate[]>(`/sniper/candidates?limit=${limit}`),
   getSniperPositions: (openOnly = false) => request<SniperPosition[]>(`/sniper/positions${openOnly ? "?openOnly=true" : ""}`),
   getSniperTrades: (limit = 100) => request<SniperTrade[]>(`/sniper/trades?limit=${limit}`),
+  // "Terminal 2.2" directive — the real, oldest-first cumulative
+  // realized P&L curve (see app/memecoin_sniper.py::build_sniper_pnl_history's
+  // own docstring for why this is realized-only, not equity history).
+  getSniperPnlHistory: () => request<SniperPnlHistoryPoint[]>("/sniper/pnl-history"),
   getSniperEvents: (opts?: { mint?: string; limit?: number }) => {
     const params = new URLSearchParams();
     if (opts?.mint) params.set("mint", opts.mint);

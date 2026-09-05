@@ -8379,6 +8379,19 @@ export interface SniperTrade {
   dataProvenance: "simulated";
 }
 
+/** "Terminal 2.2" directive — one real point on the Sniper P&L curve: a
+ * closed trade's own pnlSol plus the running cumulative realized total.
+ * Realized-only, never a mark-to-market equity curve — see
+ * backend/app/memecoin_sniper.py::build_sniper_pnl_history's own
+ * docstring. */
+export interface SniperPnlHistoryPoint {
+  closedAt: string;
+  tradeId: string;
+  symbol: string;
+  realizedPnlSol: number;
+  cumulativeRealizedPnlSol: number;
+}
+
 export interface SniperLead {
   id: string;
   walletLabel: string;

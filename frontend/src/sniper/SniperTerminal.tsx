@@ -274,7 +274,13 @@ function ClosedTradeDetail({ trade, matchingCandidate, onClose }: { trade: Snipe
     targetPrice: trade.targetPrice ?? undefined,
     markers: buildTradeMarkers(trade, trade),
   };
-  const candles = useCandles(trade.symbol, "1m", 120);
+  // "Terminal 2.2" directive — anchor the chart to the real window/price
+  // this trade actually happened in (its own closedAt/exitPrice), not
+  // "now": a closed trade can be hours or days old, and the always-"now"
+  // default meant the fetched candles shared no real time overlap with
+  // the trade at all (see useCandles's own docstring for the root cause
+  // this fixed).
+  const candles = useCandles(trade.symbol, "1m", 120, { endTime: trade.closedAt, anchorPrice: trade.exitPrice });
   const events = useSniperEvents(trade.mint);
 
   return (

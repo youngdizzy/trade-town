@@ -163,22 +163,37 @@ export function CandlestickChart({
       const plotWidth = Math.max(1, plotRight - plotLeft);
       const plotHeight = Math.max(1, plotBottom - plotTop);
 
-      const values = candles.flatMap((c) => [c.high, c.low]);
-      if (overlays?.entry !== undefined) values.push(overlays.entry);
-      if (overlays?.currentPrice !== undefined) values.push(overlays.currentPrice);
-      if (overlays?.stopPrice !== undefined) values.push(overlays.stopPrice);
-      if (overlays?.targetPrice !== undefined) values.push(overlays.targetPrice);
-      overlays?.lines?.forEach((l) => values.push(l.price));
-      overlays?.zones?.forEach((z) => values.push(z.priceLow, z.priceHigh));
-      overlays?.polylines?.forEach((p) => p.points.forEach((pt) => values.push(pt.price)));
-      overlays?.markers?.forEach((m) => values.push(m.price));
-      const min = Math.min(...values);
-      const max = Math.max(...values);
-      const span = max - min || 1;
-      const pad = span * 0.08;
-      const yMin = min - pad;
-      const yMax = max + pad;
+      // "Terminal 2.2" directive — the y-axis is driven ONLY by real
+      // candle highs/lows, never by overlay levels (entry/stop/target/
+      // markers). A prior version folded every overlay value into this
+      // same min/max, which meant a stop/target set far from the actual
+      // price action (a normal thing for a wide-R memecoin trade) could
+      // stretch the visible range so far that the real candle bodies/
+      // wicks compressed to sub-pixel — i.e. "no candles visible" while
+      // the data was correct all along. Overlay levels outside this
+      // candle-driven range are still drawn (see `yForOverlay` below),
+      // clamped to the plot edge with a real price label and a "beyond
+      // range" arrow — never silently hidden, never allowed to distort
+      // the actual price-action scale.
+      const candleValues = candles.flatMap((c) => [c.high, c.low]);
+      const candleMin = Math.min(...candleValues);
+      const candleMax = Math.max(...candleValues);
+      const candleSpan = candleMax - candleMin || candleMax * 0.02 || 1;
+      const pad = candleSpan * 0.12;
+      const yMin = candleMin - pad;
+      const yMax = candleMax + pad;
       const yFor = (price: number) => plotBottom - ((price - yMin) / (yMax - yMin)) * plotHeight;
+      // For overlay-only values (never candle highs/lows, which are by
+      // construction always inside [yMin, yMax]): clamps the drawn
+      // position to just inside the plot area and reports which edge it
+      // clamped to, so callers can render an honest "beyond visible
+      // range" indicator instead of quietly drawing at the wrong price.
+      const yForOverlay = (price: number): { y: number; clampedAbove: boolean; clampedBelow: boolean } => {
+        const raw = yFor(price);
+        if (raw < plotTop) return { y: plotTop + 1, clampedAbove: true, clampedBelow: false };
+        if (raw > plotBottom) return { y: plotBottom - 1, clampedAbove: false, clampedBelow: true };
+        return { y: raw, clampedAbove: false, clampedBelow: false };
+      };
       const slotWidth = plotWidth / candles.length;
       // Maps a real overlay timestamp to the x-position of its nearest
       // real candle (index-based slotting, the same spacing every candle
@@ -204,8 +219,8 @@ export function CandlestickChart({
       overlays?.zones?.forEach((z) => {
         const xStart = xFor(z.from);
         const xEnd = z.to !== null ? xFor(z.to) : plotRight;
-        const yTop = yFor(z.priceHigh);
-        const yBottom = yFor(z.priceLow);
+        const yTop = yForOverlay(z.priceHigh).y;
+        const yBottom = yForOverlay(z.priceLow).y;
         ctx.fillStyle = z.color;
         ctx.globalAlpha = 0.18;
         ctx.fillRect(Math.min(xStart, xEnd), yTop, Math.max(2, Math.abs(xEnd - xStart)), Math.max(1, yBottom - yTop));
@@ -266,7 +281,7 @@ export function CandlestickChart({
         ctx.beginPath();
         p.points.forEach((pt, i) => {
           const x = xFor(pt.timestamp);
-          const y = yFor(pt.price);
+          const y = yForOverlay(pt.price).y;
           if (i === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         });
@@ -276,7 +291,7 @@ export function CandlestickChart({
         if (last) {
           ctx.fillStyle = p.color;
           ctx.font = "8px monospace";
-          ctx.fillText(p.label, xFor(last.timestamp) + 3, yFor(last.price));
+          ctx.fillText(p.label, xFor(last.timestamp) + 3, yForOverlay(last.price).y);
           ctx.font = "9px monospace";
         }
       });
@@ -287,7 +302,7 @@ export function CandlestickChart({
       // candle, never a fabricated position.
       overlays?.markers?.forEach((m) => {
         const x = xFor(m.timestamp);
-        const y = yFor(m.price);
+        const { y, clampedAbove, clampedBelow } = yForOverlay(m.price);
         ctx.fillStyle = m.color;
         ctx.strokeStyle = m.color;
         ctx.beginPath();
@@ -305,13 +320,18 @@ export function CandlestickChart({
         ctx.closePath();
         ctx.fill();
         ctx.font = "8px monospace";
-        ctx.fillText(m.label, x + 6, m.shape === "down" ? y - 4 : y + 4);
+        // A marker whose real price falls outside the candle-driven
+        // visible range is still drawn (clamped to the plot edge), with
+        // an arrow disclosing that its real price lies further off in
+        // that direction — never silently repositioned without saying so.
+        const offScale = clampedAbove ? " ▲" : clampedBelow ? " ▼" : "";
+        ctx.fillText(`${m.label}${offScale}`, x + 6, m.shape === "down" ? y - 4 : y + 4);
         ctx.font = "9px monospace";
       });
 
       // Overlays — only ever real values (entry fill price / live mark price)
       const drawLevel = (price: number, color: string, label: string) => {
-        const y = yFor(price);
+        const { y, clampedAbove, clampedBelow } = yForOverlay(price);
         ctx.strokeStyle = color;
         ctx.setLineDash([4, 3]);
         ctx.beginPath();
@@ -320,7 +340,12 @@ export function CandlestickChart({
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = color;
-        ctx.fillText(label, plotLeft + 2, y - 6);
+        const offScale = clampedAbove ? " ▲ beyond range" : clampedBelow ? " ▼ beyond range" : "";
+        // Keep the label inside the plot area even when clamped to the
+        // very top edge (a fixed y-6 offset would otherwise draw above
+        // plotTop and get clipped by the canvas).
+        const labelY = clampedAbove ? y + 10 : y - 6;
+        ctx.fillText(`${label}${offScale}`, plotLeft + 2, labelY);
       };
       if (overlays?.entry !== undefined) drawLevel(overlays.entry, COLORS.entry, `ENTRY ${fmtPrice(overlays.entry)}`);
       if (overlays?.currentPrice !== undefined) drawLevel(overlays.currentPrice, COLORS.current, `MARK ${fmtPrice(overlays.currentPrice)}`);
@@ -332,7 +357,7 @@ export function CandlestickChart({
       // fill/mark price never gets visually confused with an analysis
       // read that has no claim of being acted on.
       overlays?.lines?.forEach((l) => {
-        const y = yFor(l.price);
+        const y = yForOverlay(l.price).y;
         ctx.strokeStyle = l.color;
         ctx.setLineDash([2, 4]);
         ctx.globalAlpha = 0.7;

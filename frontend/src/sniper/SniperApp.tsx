@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
-import type { SniperAiReasoningResult, SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEvent, SniperLead, SniperLesson, SniperPosition, SniperSafetyStatus, SniperTrade, SniperWallet } from "@/types";
+import type { SniperAiReasoningResult, SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEvent, SniperLead, SniperLesson, SniperPnlHistoryPoint, SniperPosition, SniperSafetyStatus, SniperTrade, SniperWallet } from "@/types";
+import { EquityCurveChart } from "@/ui/components/CommandCenter/panels/EquityCurveChart";
 import { AnimatedGrid, DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
 import { SniperTerminal } from "./SniperTerminal";
 
@@ -85,6 +86,10 @@ export function SniperApp() {
   const [lessons, setLessons] = useState<SniperLesson[]>([]);
   const [events, setEvents] = useState<SniperEvent[]>([]);
   const [wallets, setWallets] = useState<SniperWallet[]>([]);
+  // "Terminal 2.2" directive — the real, full, oldest-first cumulative
+  // realized-P&L history (never the 20-trade-capped `trades` list above,
+  // which would misrepresent the true cumulative total).
+  const [pnlHistory, setPnlHistory] = useState<SniperPnlHistoryPoint[]>([]);
   const [walletLabel, setWalletLabel] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
   const [expandedCandidateId, setExpandedCandidateId] = useState<string | null>(null);
@@ -109,6 +114,7 @@ export function SniperApp() {
     api.getSniperLessons().then(setLessons).catch(() => undefined);
     api.getSniperEvents({ limit: 15 }).then(setEvents).catch(() => undefined);
     api.getSniperWallets().then(setWallets).catch(() => undefined);
+    api.getSniperPnlHistory().then(setPnlHistory).catch(() => undefined);
   };
 
   useEffect(() => {
@@ -311,6 +317,23 @@ export function SniperApp() {
             {status && !status.liveArming.armed && <p className="mt-2 text-[8px] leading-relaxed text-cmd-textDim">Live trading locked: {status.liveArming.blockingReasons[0]}</p>}
           </Glass>
         </div>
+
+        {/* "Terminal 2.2" directive, Part X/XI — real cumulative realized
+            P&L, built server-side from the exact same trade journal the
+            Performance (today) card above reads (see
+            build_sniper_pnl_history's own docstring for why this is
+            realized-only, not a mark-to-market equity curve, and for the
+            disclosed future gap that would be needed for one). */}
+        <Glass className="p-3">
+          <TerminalLabel>Realized P&L — cumulative, all-time (not a mark-to-market equity curve)</TerminalLabel>
+          <EquityCurveChart
+            startingBalance={0}
+            pnls={pnlHistory.map((p) => p.realizedPnlSol)}
+            formatValue={(v) => fmtSol(v)}
+            emptyLabel="No P&L history yet — no Sniper trades have closed this session."
+            height={120}
+          />
+        </Glass>
 
         {/* Discovery */}
         <Glass className="p-3">
