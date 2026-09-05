@@ -89,11 +89,13 @@ from app.schemas import (
     FailureClassification,
     InstitutionalMemoryEntry,
     InstitutionalMemorySource,
+    KnowledgeDomain,
     MarketEnvironmentRegime,
     ModelValidationReport,
     PredictionRecord,
     ResearchLessonRecord,
     RiskWarning,
+    SniperLesson,
     StrategyHallOfFameEntry,
     SUCCESS_CASE_STUDY_CATEGORIES,
 )
@@ -382,6 +384,45 @@ def promote_research_lesson(record: ResearchLessonRecord, *, sim_day: int) -> In
     )
 
 
+def promote_sniper_lesson(lesson: SniperLesson, *, sim_day: int) -> InstitutionalMemoryEntry:
+    """Bridges app/memecoin_sniper.py's SniperLesson — a real, sample-
+    gated statistical correlation over the actual Sniper trade journal
+    (see generate_lesson_from_history()'s own real min_sample=20 floor)
+    — into the SAME canonical institutional-memory hub every other
+    domain's lessons already promote into, mirroring
+    promote_research_lesson() above exactly (a SniperLesson is the same
+    real shape: a disclosed sample size, a measured effect, a confidence
+    tier, an advisory recommendation). Tagged `domain="memecoin_sniper"`
+    (Part XIX's own mandatory cross-domain metadata) so this can never be
+    mistaken for — or silently reused as — an equities rule.
+    `source="research_lesson"` is reused as-is rather than inventing a
+    new InstitutionalMemorySource value: both are the same real category
+    (a statistically-gated correlation over a real trade journal), and
+    `domain` already provides the honest disambiguation a caller needs."""
+    return InstitutionalMemoryEntry(
+        id=f"im-sniperlesson-{lesson.id}",
+        source="research_lesson",
+        createdAt=lesson.created_at,
+        simDay=sim_day,
+        originatingAgent=None,
+        eventRef=lesson.id,
+        marketRegime=None,
+        observation=lesson.observation,
+        interpretation=f"Effect: {lesson.effect} (regime: {lesson.regime}).",
+        lesson=lesson.recommendation,
+        # Real `confidence`/`relevancePct` are stamped fresh by
+        # record_institutional_memory()/record_and_link_institutional_memory()
+        # at write time (see their own docstrings) — 0.0 here is a
+        # placeholder immediately overwritten, same as promote_research_lesson()
+        # above; the lesson's own real "low"/"medium"/"high" tier and
+        # sample size are preserved honestly in `provenance` instead.
+        confidence=0.0,
+        provenance=f"Promoted from SniperLesson {lesson.id}, sample size {lesson.sample_size}, {lesson.confidence} confidence.",
+        relevancePct=0.0,
+        domain="memecoin_sniper",
+    )
+
+
 def _compute_confidence(entry: InstitutionalMemoryEntry, all_entries: list[InstitutionalMemoryEntry]) -> float:
     matches = 0
     for other in all_entries:
@@ -522,6 +563,7 @@ def retrieve_relevant_memory(
     source: InstitutionalMemorySource | None = None,
     market_regime: MarketEnvironmentRegime | None = None,
     symbol: str | None = None,
+    domain: KnowledgeDomain | None = None,
 ) -> InstitutionalMemoryEntry | None:
     """Returns the single most relevant+corroborated active entry
     matching the query, with confidence/relevance recomputed fresh
@@ -542,7 +584,14 @@ def retrieve_relevant_memory(
     honestly about that symbol in the first place. Every prior caller
     (there were none — this function was previously dead code, per that
     directive's own Phase 0 audit) is unaffected, since omitting `symbol`
-    reproduces the exact old behavior."""
+    reproduces the exact old behavior.
+
+    CEO directive "TradeTown — Memecoin Sniper AI 1.0" — `domain`, same
+    additive convention: when given, only entries tagged with that real
+    `domain` are considered, so a memecoin-specific lesson can never be
+    surfaced as equities knowledge (or vice versa) unless a caller
+    explicitly asks across domains by omitting this filter. Every
+    pre-existing caller is unaffected."""
     candidates = [e for e in memory if e.status == "active"]
     if source is not None:
         candidates = [e for e in candidates if e.source == source]
@@ -550,6 +599,8 @@ def retrieve_relevant_memory(
         candidates = [e for e in candidates if e.market_regime == market_regime]
     if symbol is not None:
         candidates = [e for e in candidates if e.symbol == symbol]
+    if domain is not None:
+        candidates = [e for e in candidates if e.domain == domain]
     if not candidates:
         return None
 

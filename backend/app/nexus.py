@@ -136,6 +136,7 @@ from app.institutional_memory import (
     promote_market_regime_shift,
     promote_prediction_outcome,
     promote_risk_event,
+    promote_sniper_lesson,
     record_and_link_institutional_memory,
 )
 from app.collaboration_intelligence import average_collaboration_case_score, compute_collaboration_case_summaries
@@ -1811,12 +1812,26 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     sniper_positions = sniper_tick_result.positions
     sniper_trade_history = sniper_tick_result.trade_history
     sniper_leads = sniper_tick_result.leads
+    # CEO directive "TradeTown — Memecoin Sniper AI 1.0," Part XIX — bridge
+    # any genuinely NEW SniperLesson (generate_lesson_from_history()'s own
+    # real, sample-gated statistical correlation — nothing AI-generated,
+    # never the LLM writing memory directly) into the SAME canonical
+    # institutional-memory hub every other domain's lessons already
+    # promote into, domain-tagged so it can never be mistaken for an
+    # equities rule. Diffed by id against the pre-tick list so a lesson
+    # already on file is never re-promoted.
+    previous_sniper_lesson_ids = {lesson.id for lesson in sniper_lessons}
+    new_sniper_lessons = [lesson for lesson in sniper_tick_result.lessons if lesson.id not in previous_sniper_lesson_ids]
     sniper_lessons = sniper_tick_result.lessons
     sniper_risk_state = sniper_tick_result.risk_state
     if sniper_tick_result.events:
         sniper_events = [*sniper_events, *sniper_tick_result.events]
         if len(sniper_events) > MAX_SNIPER_EVENTS:
             sniper_events = sniper_events[-MAX_SNIPER_EVENTS:]
+    for new_lesson in new_sniper_lessons:
+        institutional_memory, knowledge_events = _promote_and_share_lesson(
+            institutional_memory, knowledge_events, promote_sniper_lesson(new_lesson, sim_day=new_time.day), sim_day=new_time.day
+        )
 
     # Memecoin Sniper Professional Trading Terminal directive — the
     # Sniper's own price walk (memecoin_sniper.py's _simulate_price_step)

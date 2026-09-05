@@ -7,6 +7,103 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Memecoin Sniper AI 1.0."** Upgrades the
+  separate Memecoin Sniper into a genuine consumer of the shared AI
+  Reasoning Foundation — reusing the exact same `AIProvider`/
+  `AIEvidencePacket`/`AIReasoningResult` architecture, never a second AI
+  platform — with its own domain-specific evidence builder and reasoning
+  adapter. Shadow-mode-first (Part XVI): human-triggered only, never
+  called from `tick_sniper_engine()`, never changes whether a trade
+  executes.
+  - **Phase 0 forensic finding, disclosed structurally, not worked
+    around:** `SniperCandidate` carries no raw candle series — only
+    scalar snapshot fields — so genuine market-structure (higher-highs/
+    lows) analysis is impossible from real data; every evidence packet
+    reports it `UNKNOWN`, never fabricated. A second finding shaped the
+    whole design: `tick_sniper_engine()` evaluates entry exactly once, at
+    discovery, in the SAME tick a candidate is created, so a candidate's
+    deterministic fate is already permanent by the time any (necessarily
+    later, human-triggered) AI reasoning call could exist — shadow mode
+    here is a structural property of the existing engine, not merely a
+    policy choice.
+  - **`app/sniper_ai_context.py`** (new) — `build_sniper_evidence_packet()`
+    builds real fact items from `SniperCandidate` (token identity,
+    liquidity, buy pressure, momentum, manipulation risk derived only
+    from creator-risk + holder-concentration, whale/social signals,
+    the deterministic engine's own score/classification) plus, when they
+    exist, the matching real `SniperPosition`/`SniperTrade` (joined by
+    `mint`, this domain's own existing real key — no new field added).
+    `deterministic_sniper_recommendation()`/`resolve_sniper_deterministic_outcome()`
+    reuse `AnalystChoice`'s existing buy/wait vocabulary and grade
+    against real trade P&L; a candidate the engine never entered grades
+    `"inconclusive"` immediately (never "pending forever" — no further
+    tick will ever evaluate it). `compare_sniper_ai_to_deterministic()`
+    is a real, computed-fresh (never persisted) AGREE/DISAGREE/PARTIAL/
+    INCONCLUSIVE read.
+  - **`app/sniper_ai_reasoning.py`** (new) — `run_sniper_analyst_reasoning()`,
+    reusing `app/ai_reasoning.py`'s now-public `build_reasoning_result()`
+    verbatim for citation/schema validation (no second, duplicated
+    validator). A domain-specific system prompt reasons through
+    liquidity/momentum/entry-location/invalidation/risk-reward for a
+    professional memecoin analyst persona (reusing "Vector," the
+    existing Chief Quantitative Strategist, as `agent_id="quant"` —
+    no invented character). "sell" is never valid for this domain
+    (it never shorts) — enforced in code, not just the prompt, as
+    defense in depth.
+  - **Shared schema additions** (`app/schemas.py`): `AIReasoningRole`
+    gains `"sniper_analyst"`; `AIReasoningResult`/`AIEvidencePacket` gain
+    a `domain` field (`"equities"` default — every pre-existing
+    record/save unaffected); `InstitutionalMemoryEntry`/`KnowledgeEvent`
+    gain the same `domain` field (Part XIX's own mandatory cross-domain
+    metadata). No second `ai_reasoning_results` list — both domains share
+    the one list, disambiguated by `domain`.
+  - **`GameState.submit_sniper_ai_reasoning_request()`/
+    `refresh_sniper_ai_reasoning_outcomes()`** (`app/state.py`) — the
+    live entry point, mirroring the equities layer's own snapshot-under-
+    lock/slow-work-outside-lock/merge-under-lock convention. A real bug
+    was caught and fixed during this same pass: the pre-existing equities
+    `GameState.refresh_ai_reasoning_outcomes()` and
+    `GET /api/ai-reasoning/results` didn't filter by domain once a second
+    domain existed on the same shared list, so a Sniper result leaked
+    into the equities read surface (and would have been mis-graded
+    against unrelated equities decisions). Both now filter to
+    `domain == "equities"` explicitly — caught by live verification
+    against the running dev server, not by a test alone.
+  - **`app/institutional_memory.py`**: `retrieve_relevant_memory()` gains
+    an optional `domain` filter (same additive convention as its earlier
+    `symbol` filter — every pre-existing, domain-omitting caller is
+    unaffected). `promote_sniper_lesson()` bridges a real, sample-gated
+    `SniperLesson` (`generate_lesson_from_history()`'s own existing
+    ≥20-trade statistical floor — nothing AI-generated) into the SAME
+    canonical institutional-memory hub, domain-tagged — wired into
+    `app/nexus.py`'s real tick alongside every other domain's lesson
+    promotion, diffed by id so an already-promoted lesson is never
+    re-promoted.
+  - **API** (`app/routers/sniper_ai_reasoning.py`, new): `POST
+    /api/sniper/ai-reasoning/run?candidateId=...`, `GET
+    /api/sniper/ai-reasoning/results`, `POST
+    /api/sniper/ai-reasoning/refresh-outcomes`, `GET
+    /api/sniper/ai-reasoning/comparison`.
+  - **Explicitly NOT built:** no second AI provider/memory/risk/execution
+    engine of any kind (the CEO directive's own hard requirement); no
+    Sniper-side Devil's Advocate adversarial pass (one real reasoning
+    role for this domain this milestone, a natural disclosed future
+    increment); no full `knowledge_applied` citation-grading/
+    contradiction-flagging loop for Sniper-cited memory (retrieval and
+    lesson promotion are real; the equities Knowledge Application Loop's
+    deeper application-grading pipeline is not replicated for this domain
+    in this pass); no UI surface (deferred, matching this project's own
+    "backend first, verify, then decide on UI" sequencing); zero write
+    access to `sniper_engine_config`/risk state/kill switch/wallets; no
+    live trading of any kind (paper-only, as always).
+  - **Testing:** 40 new tests across `tests/test_sniper_ai_context.py`
+    (24), `tests/test_sniper_ai_reasoning.py` (7),
+    `tests/test_state_sniper_ai_reasoning.py` (7), and
+    `tests/test_nexus_sniper_lesson_promotion.py` (2), plus a new
+    domain-isolation regression test added to the existing
+    `tests/test_state_ai_reasoning.py`. Full backend suite, mypy, ruff:
+    clean.
+
 - **CEO directive "TradeTown — True AI Agent Reasoning Foundation 1.0."**
   The first real, non-deterministic, non-rule-based model-reasoning
   capability in TradeTown — scoped to exactly two agent roles

@@ -278,6 +278,8 @@ from app.ai_provider import get_ai_provider
 from app.ai_context_builder import build_evidence_packet_for_proposal, resolve_deterministic_outcome
 from app.ai_reasoning import run_devils_advocate_reasoning, run_researcher_reasoning
 from app.devils_advocate import ELIGIBLE_DEVILS_ADVOCATES
+from app.sniper_ai_context import build_sniper_evidence_packet, deterministic_sniper_recommendation, resolve_sniper_deterministic_outcome
+from app.sniper_ai_reasoning import run_sniper_analyst_reasoning
 
 MAX_DIALOGUE_HISTORY = 200
 # CEO directive "TradeTown — True AI Agent Reasoning Foundation 1.0", Part
@@ -3527,7 +3529,13 @@ class GameState:
         already established (mirroring, never duplicating, the Knowledge
         Application Loop's own grading convention) — never touches a
         result that is not pending, never invents an outcome for a
-        proposal that has no real decision/journal entry yet."""
+        proposal that has no real decision/journal entry yet. CEO
+        directive "TradeTown — Memecoin Sniper AI 1.0" — `domain !=
+        "equities"` results (e.g. a Sniper result, whose `proposal_id`
+        actually holds a real token `mint`, a different id space
+        entirely) are skipped here exactly like any other non-completed
+        result — see `refresh_sniper_ai_reasoning_outcomes()` for that
+        domain's own real grading pass over the SAME shared list."""
         async with self.lock:
             decisions = self.data.decisions
             paper_trade_journal = self.data.paper_trade_journal
@@ -3535,13 +3543,115 @@ class GameState:
             updated: list[AIReasoningResult] = []
             changed = False
             for r in results:
-                if r.status != "completed" or r.proposal_id is None:
+                if r.domain != "equities" or r.status != "completed" or r.proposal_id is None:
                     updated.append(r)
                     continue
                 if r.outcome_status == "evaluated":
                     updated.append(r)
                     continue
                 outcome, outcome_ref = resolve_deterministic_outcome(r.proposal_id, decisions=decisions, paper_trade_journal=paper_trade_journal)
+                if outcome == "pending":
+                    updated.append(r if r.outcome_status == "pending" else r.model_copy(update={"outcome_status": "pending"}))
+                    if r.outcome_status != "pending":
+                        changed = True
+                    continue
+                changed = True
+                updated.append(
+                    r.model_copy(
+                        update={
+                            "outcome_status": "evaluated",
+                            "outcome": outcome,
+                            "outcome_ref": outcome_ref,
+                            "evaluated_at": _now_iso(),
+                        }
+                    )
+                )
+            if changed:
+                self.data = self.data.model_copy(update={"ai_reasoning_results": updated})
+            return self.data
+
+    async def submit_sniper_ai_reasoning_request(self, candidate_id: str) -> tuple[GameSaveState, AIReasoningResult]:
+        """CEO directive "TradeTown — Memecoin Sniper AI 1.0" — the
+        Memecoin Sniper's own live entry point, reusing the exact same
+        snapshot-under-lock / slow-work-outside-lock / merge-under-lock
+        convention `submit_ai_reasoning_request()` above already
+        established for the identical real reason: the real provider
+        network call must never block `nexus.py::tick()`'s synchronous
+        Sniper engine.
+
+        Human-triggered only (Part XVI shadow-mode-first) — nothing in
+        `tick_sniper_engine()` calls this. Because that engine evaluates
+        entry exactly once, at discovery, in the SAME tick a candidate is
+        created (see app/memecoin_sniper.py's own module docstring), the
+        deterministic fate of `candidate_id` is ALREADY permanent by the
+        time this method can even be called — this is a structural
+        property of the existing engine, not merely a policy choice, so
+        there is no possible code path where this reasoning call could
+        arrive in time to influence that decision.
+
+        Never places an order, never alters `sniper_engine_config`/risk
+        state, never writes institutional memory directly — its only
+        effect is appending one new, structured, fully-provenanced
+        `AIReasoningResult` (domain="memecoin_sniper") to the SAME shared
+        `self.data.ai_reasoning_results` list the equities reasoning
+        layer already uses (no second, duplicated result list for this
+        domain)."""
+        async with self.lock:
+            candidate = next((c for c in self.data.sniper_candidates if c.id == candidate_id), None)
+            if candidate is None:
+                raise KeyError(f"No sniper candidate with id {candidate_id!r}")
+            institutional_memory = self.data.institutional_memory
+            current_sim_day = self.data.time.day
+            cutoff_sim_minutes = sim_minutes(self.data.time)
+            position = next((p for p in self.data.sniper_positions if p.mint == candidate.mint), None)
+            trade = next((t for t in self.data.sniper_trade_history if t.mint == candidate.mint), None)
+            deterministic_recommendation = deterministic_sniper_recommendation(
+                candidate.mint, positions=self.data.sniper_positions, trade_history=self.data.sniper_trade_history
+            )
+
+        packet_id = f"aipacket-{uuid.uuid4().hex[:16]}"
+        task = f"Evaluate memecoin candidate {candidate.symbol} ({candidate.mint})"
+        packet = build_sniper_evidence_packet(
+            candidate,
+            packet_id=packet_id,
+            task=task,
+            cutoff_sim_minutes=cutoff_sim_minutes,
+            institutional_memory=institutional_memory,
+            current_sim_day=current_sim_day,
+            position=position,
+            trade=trade,
+        )
+        provider = get_ai_provider()
+        result = await run_sniper_analyst_reasoning(packet, provider=provider, deterministic_recommendation=deterministic_recommendation)
+
+        async with self.lock:
+            updated_results = [*self.data.ai_reasoning_results, result][-MAX_AI_REASONING_RESULTS:]
+            self.data = self.data.model_copy(update={"ai_reasoning_results": updated_results})
+            return self.data, result
+
+    async def refresh_sniper_ai_reasoning_outcomes(self) -> GameSaveState:
+        """CEO directive "TradeTown — Memecoin Sniper AI 1.0," Part XVIII
+        — the Sniper-domain shadow-outcome grading pass, mirroring
+        `refresh_ai_reasoning_outcomes()` above exactly, filtered to
+        `domain == "memecoin_sniper"` and resolved against this domain's
+        own real evidence (`resolve_sniper_deterministic_outcome()`,
+        keyed by `mint` — see that function's own docstring for why a
+        candidate the deterministic engine never entered grades
+        `"inconclusive"`, not `"pending"`)."""
+        async with self.lock:
+            positions = self.data.sniper_positions
+            trade_history = self.data.sniper_trade_history
+            results = self.data.ai_reasoning_results
+            updated: list[AIReasoningResult] = []
+            changed = False
+            for r in results:
+                if r.domain != "memecoin_sniper" or r.status != "completed" or r.proposal_id is None:
+                    updated.append(r)
+                    continue
+                if r.outcome_status == "evaluated":
+                    updated.append(r)
+                    continue
+                outcome, outcome_ref = resolve_sniper_deterministic_outcome(r.proposal_id, positions=positions, trade_history=trade_history)
                 if outcome == "pending":
                     updated.append(r if r.outcome_status == "pending" else r.model_copy(update={"outcome_status": "pending"}))
                     if r.outcome_status != "pending":

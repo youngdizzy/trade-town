@@ -48,11 +48,14 @@ async def run_ai_reasoning(proposal_id: str = Query(alias="proposalId"), role: A
 
 @router.get("/results", response_model=list[AIReasoningResult])
 async def list_ai_reasoning_results(proposal_id: str | None = Query(default=None, alias="proposalId")) -> list[AIReasoningResult]:
-    """The full, real, permanent AI reasoning history, optionally filtered
-    to one real proposal. Read-only, computed fresh from the same
-    already-persisted `ai_reasoning_results` list."""
+    """The full, real, permanent equities AI reasoning history
+    (`domain == "equities"` only — CEO directive "TradeTown — Memecoin
+    Sniper AI 1.0" added a second domain onto the SAME shared
+    `ai_reasoning_results` list; see `routers/sniper_ai_reasoning.py`'s
+    own `/results` for that domain's equivalent read), optionally
+    filtered to one real proposal. Read-only, computed fresh."""
     state = await game_state.snapshot()
-    results = state.ai_reasoning_results
+    results = [r for r in state.ai_reasoning_results if r.domain == "equities"]
     if proposal_id is not None:
         results = [r for r in results if r.proposal_id == proposal_id]
     return results
@@ -60,10 +63,13 @@ async def list_ai_reasoning_results(proposal_id: str | None = Query(default=None
 
 @router.post("/refresh-outcomes", response_model=list[AIReasoningResult])
 async def refresh_ai_reasoning_outcomes() -> list[AIReasoningResult]:
-    """Grades every real, still-pending `AIReasoningResult` against the
-    same real decision/journal-entry evidence the Knowledge Application
-    Loop already uses (`resolve_deterministic_outcome()`); never touches a
-    result that isn't pending. Returns the full, refreshed list."""
+    """Grades every real, still-pending equities `AIReasoningResult`
+    against the same real decision/journal-entry evidence the Knowledge
+    Application Loop already uses (`resolve_deterministic_outcome()`);
+    never touches a result that isn't pending, and never touches a
+    non-equities-domain result (see `refresh_sniper_ai_reasoning_outcomes()`
+    for that domain's own pass over the SAME shared list). Returns the
+    full, refreshed equities-domain list."""
     state = await game_state.refresh_ai_reasoning_outcomes()
     persist_modules(state)
-    return state.ai_reasoning_results
+    return [r for r in state.ai_reasoning_results if r.domain == "equities"]

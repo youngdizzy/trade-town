@@ -107,6 +107,18 @@ AGENT_IDS: tuple[AgentId, ...] = (
     "forge",
 )
 
+# CEO directive "TradeTown — Memecoin Sniper AI 1.0" — a small, shared,
+# structural discriminator between TradeTown's two separate trading
+# product domains. Defined this early (not next to AIReasoningResult
+# below) because `InstitutionalMemoryEntry`/`KnowledgeEvent` — both
+# defined much earlier in this file than the AI-reasoning schemas — need
+# it too; `schemas.py` resolves type hints eagerly at class-definition
+# time, so a class here can never reference a name defined later in the
+# file (see the file's own precedent near MarketIntelligenceLearningEntry).
+# Defaults to "equities" wherever used, so every pre-existing record/save
+# is completely unaffected.
+KnowledgeDomain = Literal["equities", "memecoin_sniper"]
+
 # Every room an agent's schedule (or a meeting/break override) can place them in.
 AgentLocation = Literal[
     "scout-office",
@@ -9432,6 +9444,12 @@ class InstitutionalMemoryEntry(CamelModel):
     supersedes_id: str | None = Field(default=None, alias="supersedesId")
     superseded_by_id: str | None = Field(default=None, alias="supersededById")
     supporting_evidence: list[str] = Field(default_factory=list, alias="supportingEvidence")
+    # CEO directive "TradeTown — Memecoin Sniper AI 1.0," Part XIX — real
+    # cross-domain metadata so a memecoin lesson never automatically
+    # becomes an equities rule (or vice versa). Every pre-existing entry/
+    # save defaults to "equities" (this codebase's only domain before
+    # this directive), which is honestly correct for all of them.
+    domain: KnowledgeDomain = "equities"
 
 
 # "TradeTown — Learning Organization 1.0." The Phase 0 forensic audit for
@@ -9538,6 +9556,9 @@ class KnowledgeEvent(CamelModel):
     # bare unexplained label.
     outcome_ref: str | None = Field(default=None, alias="outcomeRef")
     evaluated_at: str | None = Field(default=None, alias="evaluatedAt")
+    # CEO directive "TradeTown — Memecoin Sniper AI 1.0," Part XIX — same
+    # real cross-domain metadata as InstitutionalMemoryEntry.domain above.
+    domain: KnowledgeDomain = "equities"
 
 
 # v0.7 Feature 55 (the brief self-numbered it "Feature 54," already used
@@ -13494,7 +13515,11 @@ class SniperEngineStatusRead(CamelModel):
 # build and populate these.
 # ============================================================================
 
-AIReasoningRole = Literal["researcher", "devils_advocate"]
+# "sniper_analyst" added by CEO directive "TradeTown — Memecoin Sniper AI
+# 1.0" — the ONE new role the shared reasoning foundation gained for a
+# second domain (Memecoin Sniper), reusing every other part of this
+# schema/pipeline unchanged. See app/sniper_ai_reasoning.py.
+AIReasoningRole = Literal["researcher", "devils_advocate", "sniper_analyst"]
 
 # Every non-terminal state is "this reasoning never happened" — never
 # fabricated as if it had. "completed" is the only status where
@@ -13550,6 +13575,7 @@ class AIEvidencePacket(CamelModel):
     id: str
     task: str
     agent_role: AIReasoningRole = Field(alias="agentRole")
+    domain: KnowledgeDomain = "equities"
     proposal_id: str | None = Field(default=None, alias="proposalId")
     symbol: str | None = None
     # Part VI — the hard anti-lookahead boundary: no `items` entry's own
@@ -13582,10 +13608,19 @@ class AIReasoningResult(CamelModel):
     id: str
     agent_id: AgentId = Field(alias="agentId")
     role: AIReasoningRole
+    # CEO directive "TradeTown — Memecoin Sniper AI 1.0" — defaults to
+    # "equities" so every pre-existing result/save is unaffected. See
+    # AIReasoningDomain's own docstring.
+    domain: KnowledgeDomain = "equities"
     task: str
     evidence_packet_id: str = Field(alias="evidencePacketId")
-    # Real, existing TradeProposal linkage when this reasoning was run
-    # against one — None for a standalone/test reasoning call.
+    # Real, existing linkage to the record this reasoning was run
+    # against — a TradeProposal.id when domain=="equities", or a
+    # SniperCandidate.mint when domain=="memecoin_sniper" (Sniper has no
+    # separate candidate_id field on SniperPosition/SniperTrade; `mint`
+    # is the one real join key that already links
+    # candidate->position->trade->event in that domain — see
+    # app/sniper_ai_context.py). None for a standalone/test reasoning call.
     proposal_id: str | None = Field(default=None, alias="proposalId")
     symbol: str | None = None
 

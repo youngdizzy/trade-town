@@ -205,3 +205,25 @@ def test_refresh_outcomes_leaves_a_result_with_no_real_decision_yet_pending() ->
         assert still.outcome is None
 
     asyncio.run(_run())
+
+
+def test_refresh_outcomes_never_touches_a_sniper_domain_result() -> None:
+    """CEO directive "TradeTown — Memecoin Sniper AI 1.0" added a second
+    domain onto this SAME shared `ai_reasoning_results` list. A Sniper
+    result's `proposal_id` holds a real token mint, never a real
+    TradeDecision id — this equities-only pass must skip it entirely
+    (never misgrade it against unrelated equities decisions/journal
+    entries), leaving it for `refresh_sniper_ai_reasoning_outcomes()`
+    instead."""
+    async def _run() -> None:
+        state = GameState()
+        sniper_result = _existing_result(result_id="res-sniper", outcome_status="not_applicable").model_copy(
+            update={"domain": "memecoin_sniper", "proposal_id": "m" * 32}
+        )
+        state.data = state.data.model_copy(update={"ai_reasoning_results": [sniper_result]})
+        updated = await state.refresh_ai_reasoning_outcomes()
+        still = next(r for r in updated.ai_reasoning_results if r.id == "res-sniper")
+        assert still.outcome_status == "not_applicable"
+        assert still.outcome is None
+
+    asyncio.run(_run())

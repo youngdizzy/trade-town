@@ -4286,16 +4286,62 @@ is appending one new, persisted `AIReasoningResult`.
 
 ### `GET /api/ai-reasoning/results?proposalId=...`
 
-Read-only, computed fresh from `ai_reasoning_results`. `proposalId`
-(optional) filters to one proposal's history. Not broadcast over WS —
-same precedent as `factory_runs`/`research_iterations`, a real,
-growing audit trail meant to be queried, not pushed on every tick.
+Read-only, computed fresh from `ai_reasoning_results`, filtered to
+`domain == "equities"` (CEO directive "TradeTown — Memecoin Sniper AI
+1.0" added a second domain onto this same shared list — see
+`GET /api/sniper/ai-reasoning/results` for that domain's equivalent
+read). `proposalId` (optional) further filters to one proposal's
+history. Not broadcast over WS — same precedent as `factory_runs`/
+`research_iterations`, a real, growing audit trail meant to be queried,
+not pushed on every tick.
 
 ### `POST /api/ai-reasoning/refresh-outcomes`
 
-Grades every real, still-pending completed `AIReasoningResult` against
-the same real decision/journal-entry evidence
+Grades every real, still-pending completed equities `AIReasoningResult`
+against the same real decision/journal-entry evidence
 `resolve_deterministic_outcome()` mirrors from the Knowledge Application
-Loop's own grading convention; never touches an already-evaluated result
-and never invents an outcome for a proposal with no real decision/
-journal entry yet. Returns the full, refreshed `AIReasoningResult[]`.
+Loop's own grading convention; never touches an already-evaluated
+result, never touches a non-equities-domain result, and never invents an
+outcome for a proposal with no real decision/journal entry yet. Returns
+the full, refreshed equities-domain `AIReasoningResult[]`.
+
+### `POST /api/sniper/ai-reasoning/run?candidateId=...`
+
+CEO directive "TradeTown — Memecoin Sniper AI 1.0" — human-triggered
+only; nothing in `tick_sniper_engine()` calls this. Runs one real Sniper
+Analyst reasoning call (`app/sniper_ai_reasoning.py`) against a real,
+currently-listed `SniperCandidate` (`candidateId`) — whether it was
+sniped, rejected, or is still on watch; a "NO TRADE" candidate is a
+first-class input, not a degraded one. Uses a bounded, domain-specific
+`AIEvidencePacket` (`app/sniper_ai_context.py`) as the model's only
+input. Returns the full `AIReasoningResult` (`domain: "memecoin_sniper"`,
+`role: "sniper_analyst"`) regardless of outcome — an honest `status:
+"provider_unavailable"` is a 200, not an error. 404 only when
+`candidateId` doesn't match any real, currently-listed candidate. Never
+places an order, never alters `sniperEngineConfig`/risk state, never
+writes institutional memory directly.
+
+### `GET /api/sniper/ai-reasoning/results?mint=...`
+
+Read-only, computed fresh, filtered to `domain == "memecoin_sniper"`
+out of the SAME shared `ai_reasoning_results` list the equities layer
+also uses. `mint` (optional) filters to one real token's history — this
+domain's own real join key across candidate → position → trade → event
+(there is no separate `candidateId` field to filter by; see
+`app/sniper_ai_context.py`'s own module docstring).
+
+### `POST /api/sniper/ai-reasoning/refresh-outcomes`
+
+Grades every real, still-pending completed Sniper `AIReasoningResult`
+against this domain's own real position/trade evidence
+(`resolve_sniper_deterministic_outcome()`, keyed by `mint`); never
+touches an already-evaluated result or a non-Sniper-domain result.
+Returns the full, refreshed Sniper-domain `AIReasoningResult[]`.
+
+### `GET /api/sniper/ai-reasoning/comparison?mint=...`
+
+A real, computed-fresh (never persisted) map of `{resultId: "agree" |
+"disagree" | "partial" | "inconclusive"}` — one comparison per real
+Sniper `AIReasoningResult`, never a single aggregate score. See
+`app/sniper_ai_context.py::compare_sniper_ai_to_deterministic()`'s own
+docstring for exactly how each value is derived.
