@@ -8295,6 +8295,14 @@ export interface SniperAiReasoningResult {
   citationValidationPassed: boolean;
   invalidCitations: string[];
   deterministicRecommendation: "buy" | "sell" | "wait" | null;
+  /** "Sniper AI Shadow Reasoning Burn-In 1.0" directive — true only when
+   * this candidate's trade had already closed (its real outcome already
+   * knowable) at the moment this reasoning was requested. The evidence
+   * packet itself never leaks that outcome to the model either way (see
+   * backend/app/sniper_ai_context.py), but a human choosing to ask about
+   * an already-resolved candidate means any AGREE/DISAGREE read below is
+   * not a blind prediction — this flag makes that honest, never silent. */
+  requestedAfterOutcomeKnown: boolean;
   status: SniperAiReasoningStatus;
   failureDetail: string | null;
   createdAt: string;

@@ -455,6 +455,9 @@ export function SniperApp() {
                                       : "—"
                                   }
                                 />
+                                {result.requestedAfterOutcomeKnown && (
+                                  <div className="text-cmd-amber">⚠ Asked after this candidate's real outcome was already known — not a blind, decision-time prediction.</div>
+                                )}
                                 {result.confidence !== null && <DataRow label="AI confidence (reasoning quality, not win probability)" value={`${result.confidence.toFixed(0)}/100`} />}
                                 {result.thesis && <div className="mt-1 text-cmd-text">{result.thesis}</div>}
                                 {result.riskFlags.length > 0 && <div className="text-cmd-red">Risk flags: {result.riskFlags.join("; ")}</div>}
