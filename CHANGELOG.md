@@ -7,6 +7,72 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Memecoin Sniper AI Burn-In + Provider
+  Activation 1.0."** A second, fresh forensic audit (not trusting the
+  immediately-prior "Shadow Reasoning Burn-In 1.0" pass's own report)
+  re-examined that pass's hindsight-leak fix using genuine temporal
+  semantics rather than field-name checks, and found the fix had closed
+  the SYMPTOM but not the ROOT CAUSE.
+  - **Real residual bug found: the evidence cutoff itself was still
+    anchored to "now."** The prior pass correctly stopped the leaked
+    trade *outcome value* (pnl/R-multiple/exit-reason/MFE/MAE) from
+    reaching the model, but `submit_sniper_ai_reasoning_request()` still
+    computed `cutoff_sim_minutes` as `sim_minutes(self.data.time)` — the
+    sim-minute at REQUEST time, not the candidate's own real discovery/
+    decision instant. Institutional memory promoted between a
+    candidate's discovery and a later "Ask AI" click could therefore
+    still pass the (day-granular) `sim_day * 1440 <= cutoff_sim_minutes`
+    check and be surfaced as if it had existed before the candidate was
+    even found — a genuine, if narrower, instance of the same hindsight-
+    leak class the prior pass only partially closed.
+  - **Fix**: `SniperCandidate.discoveredSimMinutes` (`app/schemas.py`) —
+    a new, optional (`None` only for legacy pre-migration candidates),
+    real, fixed-at-creation field: this domain's own analog of the
+    equities pipeline's `TradeProposal.createdSimMinutes`, which Sniper
+    never had. Stamped once, in `app/nexus.py`'s real tick (which
+    already computes `sim_minutes(new_time)` for other purposes), never
+    re-derived later. Threaded through `build_candidate()` and
+    `tick_sniper_engine()`'s new optional `discovery_sim_minutes`
+    parameter (both default to `None` so all ~34 existing test call
+    sites are unaffected — the one real caller, `app/nexus.py`, always
+    passes the genuine value). `submit_sniper_ai_reasoning_request()`
+    now anchors `cutoff_sim_minutes` to `candidate.discovered_sim_minutes`
+    when available, falling back to current sim time only for the
+    narrow, disclosed, self-resolving legacy-candidate case.
+  - **New regression tests proving genuine temporal semantics** (not
+    just field-name absence), per the directive's own explicit demand:
+    `tests/test_sniper_ai_context.py::test_memory_promoted_after_discovery_but_before_now_is_excluded_from_evidence`
+    constructs memory promoted strictly after a candidate's discovery
+    but strictly before a later "now," and asserts it is excluded when
+    the real discovery-time cutoff is used — while proving, in the same
+    test, that the identical memory WOULD have leaked under the old
+    "cutoff = now" behavior (so the test is a genuine regression check,
+    not a tautology). A companion end-to-end test,
+    `tests/test_state_sniper_ai_reasoning.py::test_reasoning_request_anchors_cutoff_to_candidates_own_discovery_time`,
+    drives the real `submit_sniper_ai_reasoning_request()` entry point
+    with the game clock advanced past the candidate's discovery time and
+    a fake provider that cites the leaked memory's evidence id; the
+    citation is correctly rejected as invalid, proving the memory was
+    never in the packet the model actually saw. Both tests were manually
+    confirmed to FAIL against the pre-fix cutoff logic before being
+    committed against the fix.
+  - **No live burn-in run.** Reconfirmed via direct environment
+    inspection: `TRADETOWN_AI_PROVIDER_API_KEY` remains unset in this
+    environment. Per the directive's own explicit instruction, this is
+    reported honestly as **"AI PROVIDER UNAVAILABLE — BURN-IN NOT
+    STARTED"** rather than faked in any way — no synthetic reasoning
+    result, cohort, or evidence-quality sample was fabricated to
+    simulate one.
+  - **Explicitly NOT built this pass** (deferred to a future,
+    separately-scoped milestone — see this pass's own final forensic
+    report): burn-in cohort identity/experiment versioning; a burn-in
+    observability/"experiment health" endpoint; checkpointed sample-size
+    gates (N=10/25/50/100); AI-reasoning-quality-dimension scoring;
+    failure-taxonomy classification. None of these have a real evidence
+    source to build against while the provider remains unavailable, and
+    building any of them now would risk exactly the "second system with
+    nothing real to show" the Development Rules forbid.
+
 - **CEO directive "TradeTown — Memecoin Sniper AI Shadow Reasoning
   Burn-In 1.0."** A fresh, from-scratch forensic audit of the existing
   Sniper AI reasoning architecture (not relying on the prior "Sniper AI

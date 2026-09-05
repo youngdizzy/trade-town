@@ -13215,6 +13215,22 @@ class SniperCandidate(CamelModel):
     symbol: str
     name: str
     discovered_at: str = Field(alias="discoveredAt")
+    # "Sniper AI Burn-In + Provider Activation 1.0" directive, Part VII —
+    # the real, fixed simulated-clock minute this candidate was actually
+    # discovered at, stamped once in app/nexus.py's real tick (never
+    # re-derived later). This is this domain's own analog of
+    # `TradeProposal.created_sim_minutes` (equities), which the Sniper
+    # pipeline never had — see app/sniper_ai_context.py's own module
+    # docstring for why. Its existence lets Sniper AI reasoning finally
+    # anchor `knowledge_cutoff_sim_minutes` to the candidate's own real
+    # decision instant instead of "whenever a human happens to ask,"
+    # closing the residual half of the hindsight-leak class of bug the
+    # prior pass only partially fixed (that pass redacted the LEAKED
+    # OUTCOME value; this field fixes the CUTOFF itself). `None` only for
+    # a candidate that existed before this field was added — an honest
+    # "temporal metadata unavailable" for a handful of already-rolling
+    # legacy records, never a fabricated 0/now.
+    discovered_sim_minutes: int | None = Field(default=None, alias="discoveredSimMinutes")
     age_seconds: float = Field(alias="ageSeconds")
     price_usd: float = Field(alias="priceUsd")
     market_cap_usd: float = Field(alias="marketCapUsd")

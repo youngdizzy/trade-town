@@ -3602,7 +3602,16 @@ class GameState:
                 raise KeyError(f"No sniper candidate with id {candidate_id!r}")
             institutional_memory = self.data.institutional_memory
             current_sim_day = self.data.time.day
-            cutoff_sim_minutes = sim_minutes(self.data.time)
+            # "Sniper AI Burn-In + Provider Activation 1.0" directive,
+            # Part VII — the real decision-time cutoff is this
+            # candidate's OWN discovery instant, never "whenever a human
+            # happens to click Ask AI." Falls back to current sim time
+            # only for a legacy candidate that predates
+            # `discovered_sim_minutes` existing at all (an honestly
+            # disclosed, narrow, self-resolving gap — see that field's
+            # own schema docstring) — never a fabricated value either
+            # way.
+            cutoff_sim_minutes = candidate.discovered_sim_minutes if candidate.discovered_sim_minutes is not None else sim_minutes(self.data.time)
             position = next((p for p in self.data.sniper_positions if p.mint == candidate.mint), None)
             trade = next((t for t in self.data.sniper_trade_history if t.mint == candidate.mint), None)
             deterministic_recommendation = deterministic_sniper_recommendation(

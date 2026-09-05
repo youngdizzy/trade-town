@@ -17,7 +17,7 @@ import pytest
 
 import app.state as state_module
 from app.ai_provider import ProviderCallResult
-from app.schemas import AIReasoningResult, SniperCandidate, SniperScoreComponent, SniperTrade
+from app.schemas import AIReasoningResult, InstitutionalMemoryEntry, SniperCandidate, SniperScoreComponent, SniperTrade, TimeState
 from app.state import GameState
 
 _CREATED_AT = "2026-01-01T00:00:00+00:00"
@@ -120,6 +120,46 @@ def test_requested_after_outcome_known_true_when_trade_already_closed(monkeypatc
         state.data = state.data.model_copy(update={"sniper_candidates": [candidate], "sniper_trade_history": [trade]})
         _updated, result = await state.submit_sniper_ai_reasoning_request(candidate.id)
         assert result.requested_after_outcome_known is True
+
+    asyncio.run(_run())
+
+
+def test_reasoning_request_anchors_cutoff_to_candidates_own_discovery_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """"Sniper AI Burn-In + Provider Activation 1.0" directive, Part VII/
+    VIII/XXXVI — end-to-end regression test (through the REAL entry
+    point, not the context-builder unit directly) proving
+    `submit_sniper_ai_reasoning_request()` anchors the evidence cutoff to
+    the candidate's own real `discovered_sim_minutes`, never to
+    "whenever the request happens to be made." Sets the game clock to
+    day 1 (sim-minute 1440+, well after the candidate's own discovery at
+    minute 100) and promotes institutional memory at sim_day=1 (minute
+    1440) — strictly after discovery, strictly before "now." A fake
+    provider cites that memory's evidence-packet id
+    ("knowledge-im-1"); if the memory had wrongly leaked into the packet
+    (the pre-fix "cutoff = now" behavior), that citation would validate.
+    Because the fix correctly excludes it, the citation is invalid and
+    `citation_validation_passed` is False — proof the memory was never
+    in the packet the model actually saw."""
+    monkeypatch.setattr(state_module, "get_ai_provider", lambda: _FakeProvider(
+        raw_text='{"thesis": "A real thesis.", "recommendation": "buy", "knowledge_ids_used": ["knowledge-im-1"]}'
+    ))
+
+    async def _run() -> None:
+        state = GameState()
+        candidate = _candidate().model_copy(update={"discovered_sim_minutes": 100})
+        memory = InstitutionalMemoryEntry(
+            id="im-1", source="research_lesson", createdAt=_CREATED_AT, simDay=1, eventRef="event-1",
+            observation="A real observed pattern.", lesson="A real, actionable lesson.", confidence=70.0,
+            provenance="test provenance", relevancePct=90.0, symbol="MEWPEPE", domain="memecoin_sniper",  # type: ignore[arg-type]
+        )
+        state.data = state.data.model_copy(update={
+            "sniper_candidates": [candidate],
+            "institutional_memory": [memory],
+            "time": TimeState(day=1, hour=1, minute=0),
+        })
+        _updated, result = await state.submit_sniper_ai_reasoning_request(candidate.id)
+        assert result.citation_validation_passed is False
+        assert "knowledge-im-1" in result.invalid_citations
 
     asyncio.run(_run())
 

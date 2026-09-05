@@ -294,9 +294,16 @@ def classify_timing(raw: RawCandidate) -> SniperTimingState:
     return "watch"
 
 
-def build_candidate(candidate_id: str, discovered_at: str) -> SniperCandidate:
+def build_candidate(candidate_id: str, discovered_at: str, discovered_sim_minutes: int | None = None) -> SniperCandidate:
     """The one real entry point that runs the full pipeline (Sections
-    5/6/11/16/17) over one freshly simulated raw candidate."""
+    5/6/11/16/17) over one freshly simulated raw candidate.
+    `discovered_sim_minutes` ("Sniper AI Burn-In + Provider Activation
+    1.0" directive) is optional here purely for test-call convenience —
+    every REAL caller (app/nexus.py's tick, via tick_sniper_engine()'s
+    own `discovery_sim_minutes` parameter) always passes the real,
+    current simulated-clock minute; `None` only reaches a genuinely
+    real SniperCandidate through the same disclosed legacy-migration
+    path as the schema field's own default."""
     raw = _generate_raw_candidate()
     safety_status, safety_checks = run_safety_firewall(raw)
     score, components = score_candidate(raw)
@@ -316,6 +323,7 @@ def build_candidate(candidate_id: str, discovered_at: str) -> SniperCandidate:
         symbol=raw.symbol,
         name=raw.name,
         discoveredAt=discovered_at,
+        discoveredSimMinutes=discovered_sim_minutes,
         ageSeconds=raw.age_seconds,
         priceUsd=raw.price_usd,
         marketCapUsd=raw.market_cap_usd,
@@ -705,8 +713,17 @@ def tick_sniper_engine(
     lessons: list[SniperLesson],
     *,
     tick_seconds: float,
+    discovery_sim_minutes: int | None = None,
 ) -> SniperTickResult:
-    """One tick of the engine. Only mutates state when
+    """One tick of the engine. `discovery_sim_minutes` ("Sniper AI
+    Burn-In + Provider Activation 1.0" directive) is the real, current
+    simulated-clock minute (app/nexus.py's own `new_time`), stamped onto
+    any candidate discovered THIS tick — optional here (defaulting to
+    `None`, matching `build_candidate()`'s own default) purely so
+    existing direct-call tests that don't care about temporal-cutoff
+    correctness don't need updating; the one real caller
+    (app/nexus.py) always passes the genuine value. Only mutates state
+    when
     `config.status == "running"` — `"stopped"`/`"paused"` returns every
     input list unchanged (Section 21/28: paused entries stop, existing
     positions may still be managed by the exit engine — see the
@@ -762,7 +779,7 @@ def tick_sniper_engine(
     risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
 
     if config.status == "running" and random.random() < DISCOVERY_CHANCE_PER_TICK:
-        candidate = build_candidate(f"cand-{uuid.uuid4().hex[:10]}", now)
+        candidate = build_candidate(f"cand-{uuid.uuid4().hex[:10]}", now, discovery_sim_minutes)
         candidates = [candidate, *candidates][:MAX_CANDIDATES]
         events.append(_event("discovered", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"score {candidate.opportunity_score}, {candidate.classification}"))
         if candidate.safety_status == "rejected":

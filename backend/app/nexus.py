@@ -1825,6 +1825,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         sniper_leads,
         sniper_lessons,
         tick_seconds=settings.tick_interval_seconds,
+        # "Sniper AI Burn-In + Provider Activation 1.0" directive, Part
+        # VII — the real, current simulated-clock minute, stamped onto
+        # any candidate discovered this tick as its own real decision-
+        # time anchor (this domain's analog of TradeProposal's own
+        # created_sim_minutes), never re-derived later from "now."
+        discovery_sim_minutes=sim_minutes(new_time),
     )
     sniper_candidates = sniper_tick_result.candidates
     sniper_positions = sniper_tick_result.positions

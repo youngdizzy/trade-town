@@ -160,6 +160,47 @@ def test_domain_tagged_memory_before_cutoff_is_retrieved_as_knowledge() -> None:
     assert knowledge_items[0].id == "knowledge-im-1"
 
 
+def test_memory_promoted_after_discovery_but_before_now_is_excluded_from_evidence() -> None:
+    """"Sniper AI Burn-In + Provider Activation 1.0" directive, Part VII/
+    VIII/XXXVI — regression-tests the RESIDUAL hindsight-leak this pass's
+    own fresh audit found: the prior pass redacted the leaked trade
+    OUTCOME value but left `cutoff_sim_minutes` itself anchored to
+    "whenever a human happens to click Ask AI" rather than the
+    candidate's own real discovery instant. This test proves actual
+    temporal semantics, not just a field-name check: institutional
+    memory promoted strictly AFTER a candidate's real discovery time but
+    strictly BEFORE some later "now" must be excluded from that
+    candidate's evidence packet when the caller correctly passes the
+    candidate's own discovery-time cutoff — even though the memory
+    predates "now." Under the old (pre-fix) behavior of always passing
+    `cutoff_sim_minutes = sim_minutes(now)`, this exact memory would have
+    been WRONGLY included (1440 <= 1500) — this test would have failed
+    then and must pass now."""
+    candidate = _candidate().model_copy(update={"discovered_sim_minutes": 100})
+    # Institutional memory promoted at sim_day=1 (minute 1440) — strictly
+    # after the candidate's own discovery at minute 100, and strictly
+    # before a hypothetical "now" at minute 1500 (still day 1).
+    memory = _memory(sim_day=1)
+    assert 100 < memory.sim_day * 1440 < 1500
+
+    # The REAL caller (app/state.py's submit_sniper_ai_reasoning_request)
+    # now passes the candidate's own discovery-time cutoff, not "now".
+    packet_using_discovery_cutoff = build_sniper_evidence_packet(
+        candidate, packet_id="pkt-1", task="x", cutoff_sim_minutes=candidate.discovered_sim_minutes,
+        institutional_memory=[memory], current_sim_day=1,
+    )
+    assert not [item for item in packet_using_discovery_cutoff.items if item.kind == "knowledge"]
+
+    # Sanity check that the memory genuinely WOULD have leaked under the
+    # old "cutoff = now" behavior, proving this is a real regression test
+    # and not a tautology.
+    packet_using_now_cutoff = build_sniper_evidence_packet(
+        candidate, packet_id="pkt-2", task="x", cutoff_sim_minutes=1500,
+        institutional_memory=[memory], current_sim_day=1,
+    )
+    assert any(item.kind == "knowledge" for item in packet_using_now_cutoff.items)
+
+
 def test_equities_domain_memory_is_never_surfaced_to_sniper_ai() -> None:
     candidate = _candidate()
     equities_memory = _memory(sim_day=0, domain="equities")

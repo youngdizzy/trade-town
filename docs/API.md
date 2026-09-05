@@ -4393,6 +4393,17 @@ agreement/disagreement or outcome-alignment analysis filter out or
 label a candidate a human specifically asked about after already
 knowing how it turned out.
 
+"Sniper AI Burn-In + Provider Activation 1.0" directive — the evidence
+packet's institutional-memory cutoff is anchored to the candidate's own
+real `discoveredSimMinutes` (its fixed discovery instant), never to the
+sim-minute this endpoint happens to be called at. A second fresh audit
+found the prior pass's fix had closed the leaked outcome VALUE but left
+the cutoff itself still anchored to request time — meaning memory
+promoted between a candidate's discovery and a later call here could
+still have been wrongly surfaced as pre-existing knowledge. Fixed; see
+CHANGELOG.md and docs/Architecture.md for the full regression-test
+detail.
+
 ### `GET /api/sniper/ai-reasoning/results?mint=...`
 
 Read-only, computed fresh, filtered to `domain == "memecoin_sniper"`

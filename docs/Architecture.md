@@ -23204,3 +23204,160 @@ Part XXXVII), grade every completed result via the now-hindsight-safe
 evidence pipeline, and report real agreement/disagreement and outcome-
 alignment statistics — honestly bounded by Part XVI's own sample-size
 tiers, starting from true zero.
+
+## CEO directive "TradeTown — Memecoin Sniper AI Burn-In + Provider
+Activation 1.0"
+
+A second, independent fresh forensic audit (per the directive's own
+explicit instruction, not trusting the immediately-prior "Shadow
+Reasoning Burn-In 1.0" pass's own report) re-examined that pass's fix
+using genuine temporal semantics — the exact test discipline Part VIII/
+XXXVI of this directive demands ("Do not merely test field names. Test
+actual temporal semantics.") — and found the fix had closed the
+SYMPTOM but left the ROOT CAUSE standing.
+
+### The residual bug
+
+The prior pass's fix (above) correctly stopped the leaked trade
+*outcome value* from reaching the model. But `cutoff_sim_minutes` itself
+— the value that gates whether a piece of institutional memory is
+"before" or "after" the candidate, at the `retrieve_relevant_memory()`
+call inside `build_sniper_evidence_packet()` — was still computed in
+`GameState.submit_sniper_ai_reasoning_request()` as
+`sim_minutes(self.data.time)`: the sim-minute at REQUEST time, not the
+candidate's own real discovery/decision instant. The equities pipeline
+never had this problem because `app/ai_context_builder.py` anchors to
+`TradeProposal.created_sim_minutes` — a real, fixed, historical value
+set once at proposal creation. Sniper had no equivalent field at all:
+`SniperCandidate` carries only a real wall-clock `discovered_at` ISO
+string, with no sim-minute analog.
+
+**Consequence**: any institutional-memory lesson promoted between a
+candidate's real discovery and a later "Ask AI" click — still safely
+"in the past" relative to the request, so not caught by any check the
+prior pass added — could be surfaced to the model as pre-existing
+knowledge, even though it did not yet exist at the moment the candidate
+was actually found. A narrower, subtler instance of the same hindsight-
+leak class the prior pass only partially closed.
+
+### The fix
+
+- **`SniperCandidate.discoveredSimMinutes`** (`app/schemas.py`, new,
+  `int | None`, default `None`) — Sniper's own analog of
+  `TradeProposal.createdSimMinutes`: the real, fixed simulated-clock
+  minute the candidate was actually discovered at, stamped once. `None`
+  only for a candidate that existed before this field was added — an
+  honest "temporal metadata unavailable" for legacy records, never a
+  fabricated `0`/`now`.
+- **`app/nexus.py`** — the real tick already computes
+  `sim_minutes(new_time)` for other purposes; this value is now also
+  passed as `tick_sniper_engine()`'s new `discovery_sim_minutes`
+  keyword-only parameter, which `app/memecoin_sniper.py` forwards into
+  `build_candidate()`'s new `discovered_sim_minutes` parameter (both
+  default `None` purely for test-call convenience — the one real caller
+  always passes the genuine value, so all ~34 pre-existing test call
+  sites needed zero changes).
+- **`app/state.py`** — `submit_sniper_ai_reasoning_request()` now
+  computes `cutoff_sim_minutes = candidate.discovered_sim_minutes if
+  candidate.discovered_sim_minutes is not None else
+  sim_minutes(self.data.time)` — the candidate's own real discovery
+  instant first, falling back to "now" only for the narrow, disclosed,
+  self-resolving legacy-candidate case (a save containing a candidate
+  discovered before this field existed).
+
+### Regression tests proving genuine temporal semantics
+
+Per the directive's explicit demand, two new tests were written to
+prove actual temporal behavior, not merely that a field is populated:
+
+- `tests/test_sniper_ai_context.py::test_memory_promoted_after_discovery_but_before_now_is_excluded_from_evidence`
+  — constructs a candidate discovered at sim-minute 100 and
+  institutional memory promoted at sim-minute 1440 (`sim_day=1`),
+  strictly after discovery but strictly before a hypothetical "now" at
+  minute 1500. Asserts the memory is excluded when
+  `cutoff_sim_minutes=candidate.discovered_sim_minutes` is used, AND —
+  in the same test — asserts the identical memory WOULD be included if
+  `cutoff_sim_minutes=1500` ("now") were used instead, proving this is a
+  genuine differential regression test rather than a tautology.
+- `tests/test_state_sniper_ai_reasoning.py::test_reasoning_request_anchors_cutoff_to_candidates_own_discovery_time`
+  — drives the REAL end-to-end entry point
+  (`submit_sniper_ai_reasoning_request()`), not the context-builder unit
+  directly: sets the game clock to day 1, gives a candidate
+  `discovered_sim_minutes=100`, promotes memory at `sim_day=1`, and uses
+  a fake provider that cites that memory's evidence-packet id
+  (`"knowledge-im-1"`) in its response. Because the fix correctly
+  excludes the memory from the packet, the citation is rejected as
+  invalid by the shared `build_reasoning_result()` validator
+  (`citation_validation_passed=False`) — proof, via the existing
+  citation-integrity mechanism, that the memory was never in the packet
+  the model actually saw.
+
+Both new tests were manually verified to FAIL when run against the
+pre-fix cutoff logic (`cutoff_sim_minutes = sim_minutes(self.data.time)`
+unconditionally) and PASS against the fix, confirmed by temporarily
+reverting `app/state.py`'s cutoff line and re-running each test in
+isolation before restoring the fix.
+
+### Verification
+
+`python -m mypy app/` and `python -m ruff check app/ tests/` both clean.
+Full backend suite (`python -m pytest -q`) passes, including all ~254
+pre-existing Sniper-domain tests unchanged (the `= None` default
+strategy for the two new threaded parameters means none of the ~34
+existing `build_candidate()`/`tick_sniper_engine()` call sites needed
+updating) plus the two new regression tests above.
+
+No live burn-in was run: `TRADETOWN_AI_PROVIDER_API_KEY` remains unset
+in this environment (reconfirmed by direct inspection). Per the
+directive's own explicit instruction this is reported honestly as **AI
+PROVIDER UNAVAILABLE — BURN-IN NOT STARTED**, not faked.
+
+### Explicitly NOT built this pass
+
+The directive's remaining, much larger scope — burn-in cohort identity/
+experiment versioning (Part IV/V), a burn-in observability/"experiment
+health" view (Part XXXI/XXXII), checkpointed sample-size gates (N=10/
+25/50/100), AI reasoning-quality-dimension scoring, and a failure
+taxonomy — was deliberately NOT started this pass. Each of those needs
+either a genuinely configured provider (to have any real reasoning
+results to version/observe/checkpoint/score) or a much larger, separate
+scoping pass of its own; building any of them now, with zero completed
+real model calls in this environment, would be exactly the "second
+system with nothing real to show" the Development Rules forbid. This
+pass's own scope was deliberately narrowed to the one concrete,
+verifiable defect its fresh audit actually found: the residual cutoff-
+anchoring gap above.
+
+### Classification
+
+Unchanged from the prior pass's own classification table (reproduced
+above) in every dimension except the one this pass touched:
+
+- Evidence integrity (fact/unknown separation, anti-hindsight,
+  anti-lookahead, citation validation): **A** — the prior pass's fix
+  closed the outcome-value leak; this pass closed the residual
+  cutoff-anchoring gap underneath it, both now regression-tested with
+  genuine temporal semantics, not just field-name checks.
+- AI reasoning quality / real burn-in evidence: **E**, unchanged — zero
+  real model calls have ever completed in this environment; the fix in
+  this pass affects what evidence a FUTURE real call would see, but
+  cannot itself produce or simulate one.
+
+**Is the AI actually useful yet?** Still genuinely NOT ENOUGH DATA — the
+answer has not changed, because no provider credential exists to
+generate any real evidence either way. What changed is that the
+evidence-cutoff boundary itself is now provably correct at the sim-
+minute level, not merely "probably fine" — a precondition for any future
+burn-in statistic to be trustworthy at all, not a burn-in result itself.
+
+Recommended next milestone (not implemented in this pass, per the
+directive's own explicit closing instruction): **Sniper AI Burn-In
+Cohort Identity 1.0** — add a real, versioned, immutable-per-cohort
+identity to `AIReasoningResult` (analogous to how `promptVersion`/
+`CONTEXT_BUILDER_VERSION` are already real, disclosed version constants)
+so that once a provider is genuinely configured, every future reasoning
+result can be attributed to exactly one burn-in cohort and never
+silently mixed with results collected under a different prompt/context-
+builder version — the concrete, minimal precondition Part IV/V of this
+directive actually needs before any checkpointed sample-size gate
+(N=10/25/50/100) or cross-cohort comparison could be built honestly.
