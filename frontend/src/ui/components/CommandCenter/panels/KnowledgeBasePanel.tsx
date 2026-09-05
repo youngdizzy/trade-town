@@ -58,9 +58,27 @@ const MEMORY_STATUS_TONE: Record<InstitutionalMemoryStatus, "neutral" | "cyan" |
  * relational node/edge view.
  */
 export function KnowledgeBasePanel() {
-  const { caseStudies, strategyReports, constitution, coachReports, academyProjects, reflectionSessions, institutionalMemory } = useGameStore();
+  const { caseStudies, strategyReports, constitution, coachReports, academyProjects, reflectionSessions, institutionalMemory, knowledgeEvents } = useGameStore();
   const [sourceFilter, setSourceFilter] = useState<KnowledgeBaseSource | "all">("all");
   const [memorySourceFilter, setMemorySourceFilter] = useState<InstitutionalMemorySource | "all">("all");
+
+  // "TradeTown — Knowledge Application Loop 1.0" — real per-memory
+  // application counts, grouped once from the same real knowledgeEvents
+  // list already broadcast in full (never a second fetch/derivation
+  // pipeline). Only "knowledge_applied" events carry a graded outcome;
+  // every other event type is irrelevant here.
+  const applicationsByMemoryId = useMemo(() => {
+    const byId = new Map<string, { supported: number; contradicted: number; pending: number }>();
+    for (const event of knowledgeEvents) {
+      if (event.type !== "knowledge_applied") continue;
+      const counts = byId.get(event.lessonId) ?? { supported: 0, contradicted: 0, pending: 0 };
+      if (event.applicationStatus === "evaluated" && event.outcome === "supported") counts.supported += 1;
+      else if (event.applicationStatus === "evaluated" && event.outcome === "contradicted") counts.contradicted += 1;
+      else counts.pending += 1;
+      byId.set(event.lessonId, counts);
+    }
+    return byId;
+  }, [knowledgeEvents]);
 
   const sortedMemory = useMemo(
     () => [...institutionalMemory].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
@@ -157,6 +175,18 @@ export function KnowledgeBasePanel() {
                 <div className="text-cmd-text">{entry.observation}</div>
                 {entry.interpretation && <div className="mt-0.5 text-cmd-textDim">Interpretation: {entry.interpretation}</div>}
                 {entry.lesson && <div className="mt-0.5 text-cmd-cyan">Lesson: {entry.lesson}</div>}
+                {applicationsByMemoryId.has(entry.id) && (
+                  <div className="mt-0.5 text-cmd-textDim/80">
+                    Applied {(() => {
+                      const c = applicationsByMemoryId.get(entry.id)!;
+                      const parts: string[] = [];
+                      if (c.supported) parts.push(`${c.supported} supported`);
+                      if (c.contradicted) parts.push(`${c.contradicted} contradicted`);
+                      if (c.pending) parts.push(`${c.pending} pending`);
+                      return parts.join(" · ");
+                    })()}
+                  </div>
+                )}
                 <div className="mt-1 text-cmd-textDim/70">
                   {entry.originatingAgent ? `${AGENT_PROFILES[entry.originatingAgent].name} — ` : ""}
                   {new Date(entry.createdAt).toLocaleString()}

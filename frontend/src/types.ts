@@ -3414,6 +3414,11 @@ export interface ChallengeReport {
   weakAssumptions: string[];
   missingEvidence: string[];
   historicalComparisons: string[];
+  /** "TradeTown — Knowledge Application Loop 1.0" — the real id of the
+   * single best ACTIVE InstitutionalMemoryEntry retrieved for this
+   * proposal's own symbol (any real source type), or null when nothing
+   * qualified. Additive to historicalComparisons above, unchanged. */
+  retrievedMemoryId: string | null;
   worstCaseScenario: string;
   suggestedImprovements: string[];
   severity: ChallengeSeverity;
@@ -3998,6 +4003,10 @@ export interface CollaborationCaseSummary {
   evidenceReusePairs: string[];
   challengeSeverity: ChallengeSeverity | null;
   challengeHeeded: boolean;
+  /** "TradeTown — Knowledge Application Loop 1.0" — true only when this
+   * case's own real ChallengeReport actually retrieved a real
+   * InstitutionalMemoryEntry. Never implies causality. */
+  knowledgeApplied: boolean;
   recommendedAction: ExecutiveAction;
   ceoDecision: AnalystChoice;
   networkAgreed: boolean;
@@ -5281,6 +5290,10 @@ export interface InstitutionalMemoryEntry {
   supersedesId: string | null;
   supersededById: string | null;
   supportingEvidence: string[];
+  /** "TradeTown — Knowledge Application Loop 1.0" — the real single
+   * symbol this memory's own source record carried, or null when the
+   * source is genuinely symbol-agnostic (strategy-family, market-wide). */
+  symbol: string | null;
 }
 
 /** "TradeTown — Learning Organization 1.0" — real, timestamped,
@@ -5288,6 +5301,10 @@ export interface InstitutionalMemoryEntry {
  * (backend/app/knowledge_sharing.py). Deliberately distinct from
  * LearningEvent (Academy tier crossings) — a different real concept. */
 export type KnowledgeEventType = "lesson_created" | "lesson_shared" | "knowledge_received" | "knowledge_applied" | "lesson_confirmed" | "lesson_contradicted";
+
+/** "TradeTown — Knowledge Application Loop 1.0" */
+export type KnowledgeApplicationStatus = "pending" | "evaluated";
+export type KnowledgeApplicationOutcome = "supported" | "contradicted" | "inconclusive";
 
 export interface KnowledgeEvent {
   id: string;
@@ -5297,6 +5314,13 @@ export interface KnowledgeEvent {
   simDay: number;
   detail: string;
   createdAt: string;
+  /** Only ever populated for type === "knowledge_applied"; every other
+   * event type leaves all five null. */
+  contextRef: string | null;
+  applicationStatus: KnowledgeApplicationStatus | null;
+  outcome: KnowledgeApplicationOutcome | null;
+  outcomeRef: string | null;
+  evaluatedAt: string | null;
 }
 
 /** v0.7 Feature 54 (the brief self-numbered it "Feature 53," already used
