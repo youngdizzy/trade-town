@@ -459,6 +459,15 @@ export function SniperApp() {
                                   <div className="text-cmd-amber">⚠ Asked after this candidate's real outcome was already known — not a blind, decision-time prediction.</div>
                                 )}
                                 {result.confidence !== null && <DataRow label="AI confidence (reasoning quality, not win probability)" value={`${result.confidence.toFixed(0)}/100`} />}
+                                {/* "Sniper AI Burn-In Cohort Identity 1.0" directive — a
+                                    real, deterministic identity for the exact model/
+                                    prompt/context/schema configuration behind this
+                                    result, so a future burn-in can attribute it to one
+                                    real experiment and never silently mix cohorts. Only
+                                    a "completed" result carries one. */}
+                                {result.cohortId && (
+                                  <DataRow label="Burn-in cohort" value={<span className="font-mono text-cmd-textDim">{result.cohortId.slice(0, 15)}</span>} />
+                                )}
                                 {result.thesis && <div className="mt-1 text-cmd-text">{result.thesis}</div>}
                                 {result.riskFlags.length > 0 && <div className="text-cmd-red">Risk flags: {result.riskFlags.join("; ")}</div>}
                                 {result.unknowns.length > 0 && <div className="text-cmd-textDim">Unknowns: {result.unknowns.join("; ")}</div>}

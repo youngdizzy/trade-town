@@ -8281,6 +8281,15 @@ export interface SniperAiReasoningResult {
   modelName: string | null;
   modelVersion: string;
   promptVersion: string;
+  /** "Sniper AI Burn-In Cohort Identity 1.0" directive — a real,
+   * deterministic identity for the exact model/prompt/context/schema
+   * configuration that produced this result (backend
+   * app/ai_reasoning.py::compute_cohort_id()). `null` for every non-
+   * "completed" status and for any result predating this field — never
+   * backfilled or guessed client-side. */
+  cohortId: string | null;
+  contextBuilderVersion: string | null;
+  reasoningSchemaVersion: string | null;
   thesis: string | null;
   supportingEvidence: string[];
   contradictoryEvidence: string[];
