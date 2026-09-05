@@ -79,6 +79,7 @@ async def run_sniper_analyst_reasoning(
     provider: AIProvider,
     agent_id: AgentId = "quant",
     deterministic_recommendation: AnalystChoice | None = None,
+    requested_after_outcome_known: bool = False,
 ) -> AIReasoningResult:
     """The one real Memecoin Sniper reasoning entry point. `agent_id`
     defaults to "quant" (Vector, TradeTown's existing Chief Quantitative
@@ -88,9 +89,18 @@ async def run_sniper_analyst_reasoning(
     function's only effect is to return a structured, persisted
     `AIReasoningResult`; app/state.py's submit_sniper_ai_reasoning_request()
     decides whether/how to record it, always additively, never in place
-    of the deterministic Sniper engine."""
+    of the deterministic Sniper engine. `requested_after_outcome_known`
+    ("Sniper AI Shadow Reasoning Burn-In 1.0" directive, Part XI/XXVI) is
+    a real, caller-computed disclosure — whether `packet`'s own candidate
+    had already closed at request time — never derived here; it changes
+    nothing about what the model is shown (the evidence packet itself
+    never includes a resolved trade's real outcome, see
+    app/sniper_ai_context.py) but is recorded so later evaluation can
+    filter out any candidate a human specifically chose to ask about
+    after already knowing how it turned out."""
     call_result = await provider.call(system_prompt=SNIPER_ANALYST_SYSTEM_PROMPT, user_content=_serialize_sniper_packet(packet))
     return build_reasoning_result(
         call_result=call_result, packet=packet, agent_id=agent_id, role="sniper_analyst", domain="memecoin_sniper", task=packet.task,
         prompt_version=SNIPER_ANALYST_PROMPT_VERSION, deterministic_recommendation=deterministic_recommendation,
+        requested_after_outcome_known=requested_after_outcome_known,
     )

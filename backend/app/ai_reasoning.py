@@ -153,6 +153,7 @@ def build_reasoning_result(
     task: str,
     prompt_version: str,
     deterministic_recommendation: AnalystChoice | None,
+    requested_after_outcome_known: bool = False,
 ) -> AIReasoningResult:
     """Part VIII/IX/X — the one real server-side validation gate, shared
     by every domain's reasoning module (originally equities-only; CEO
@@ -161,7 +162,11 @@ def build_reasoning_result(
     schema validation rather than a second, duplicated implementation).
     Never trusts the model's own output beyond what this function
     explicitly checks. `role`/`task`/`domain` are already real values
-    from the caller (not model-controlled)."""
+    from the caller (not model-controlled). `requested_after_outcome_known`
+    ("Sniper AI Shadow Reasoning Burn-In 1.0" directive) is likewise
+    already a real, caller-computed fact (never derived from anything in
+    `call_result`) — see `AIReasoningResult.requested_after_outcome_known`'s
+    own docstring."""
     result_id = f"aireasoning-{uuid.uuid4().hex[:16]}"
     base = dict(
         id=result_id,
@@ -177,6 +182,7 @@ def build_reasoning_result(
         modelVersion=call_result.model or "VERSION_UNAVAILABLE",
         promptVersion=prompt_version,
         deterministicRecommendation=deterministic_recommendation,
+        requestedAfterOutcomeKnown=requested_after_outcome_known,
         latencyMs=call_result.latency_ms,
         inputTokens=call_result.input_tokens,
         outputTokens=call_result.output_tokens,

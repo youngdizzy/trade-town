@@ -4383,6 +4383,16 @@ input. Returns the full `AIReasoningResult` (`domain: "memecoin_sniper"`,
 places an order, never alters `sniperEngineConfig`/risk state, never
 writes institutional memory directly.
 
+"Sniper AI Shadow Reasoning Burn-In 1.0" directive — the result's
+`requestedAfterOutcomeKnown` field is `true` only when this candidate's
+trade had already closed at the moment of this request (its real
+outcome already knowable); the evidence packet itself never includes
+that real outcome either way (a fresh audit found and fixed a real
+hindsight-leak here — see CHANGELOG.md), but this flag lets any later
+agreement/disagreement or outcome-alignment analysis filter out or
+label a candidate a human specifically asked about after already
+knowing how it turned out.
+
 ### `GET /api/sniper/ai-reasoning/results?mint=...`
 
 Read-only, computed fresh, filtered to `domain == "memecoin_sniper"`

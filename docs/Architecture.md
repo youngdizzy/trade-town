@@ -22972,3 +22972,235 @@ player can see, for the first time, exactly which real trade caused
 which real equity movement — the natural next step once both real
 equity history (this pass) and real trade timestamps (already existing)
 can finally be read side by side.
+
+## CEO directive "TradeTown — Memecoin Sniper AI Shadow Reasoning
+Burn-In 1.0"
+
+An evidence/validation milestone, not a feature-accumulation one: audit
+whether the existing Sniper AI reasoning layer (from the earlier
+"Memecoin Sniper AI 1.0" pass) can honestly reason about real
+candidates without lookahead, hindsight, or execution capability — and
+run a real burn-in if a provider is genuinely configured. The directive
+explicitly required a FRESH audit, not trust in the prior pass's own
+report.
+
+### Phase 0 forensic audit and the real bug it found
+
+Traced the full real architecture end to end: `SniperCandidate` →
+`build_sniper_evidence_packet()` (`app/sniper_ai_context.py`) →
+`get_ai_provider()` (`app/ai_provider.py`) →
+`run_sniper_analyst_reasoning()` (`app/sniper_ai_reasoning.py`, reusing
+`app/ai_reasoning.py`'s shared `build_reasoning_result()` validator) →
+`AIReasoningResult` → `GameState.refresh_sniper_ai_reasoning_outcomes()`
+→ `compare_sniper_ai_to_deterministic()`. Confirmed real, not
+fabricated: a genuine `AnthropicAIProvider` HTTP client exists
+(`app/ai_provider.py`), gated by `TRADETOWN_AI_PROVIDER_API_KEY` — NOT
+set in this environment (confirmed by direct environment inspection),
+so `get_ai_provider()` returns `UnavailableAIProvider` for every real
+call in this pass; no live burn-in was run, and none was faked.
+
+**The real, previously-undetected finding**: `SniperCandidate`/
+`Position`/`Trade` have no sim-minute clock of their own (real
+wall-clock ISO timestamps only — a fact the prior pass's own module
+docstring already disclosed, for an unrelated reason). Because of this,
+`build_sniper_evidence_packet()`'s `knowledge_cutoff_sim_minutes` was
+always effectively "now" — the moment a human clicks "Ask AI" — never
+the candidate's own discovery/decision time. The equities pipeline has
+no equivalent bug: `app/ai_context_builder.py` anchors its cutoff to a
+`TradeProposal`'s own real, historical `created_sim_minutes`, fixed at
+proposal-creation time regardless of when reasoning is later requested
+— confirmed by reading that module directly (no `outcome`/`resolved`/
+`closed` reference exists anywhere in its evidence-packet construction,
+only in its separate, later `resolve_deterministic_outcome()` grading
+function).
+
+The consequence: because `tick_sniper_engine()` evaluates entry exactly
+once, at discovery, and real observed Sniper trades hold for single-to-
+double-digit real SECONDS (the permanent trade journal shows 4s-70s
+holds), a human clicking "Ask AI" even slightly after discovery could
+see a candidate whose trade had ALREADY closed — and the evidence
+packet's `fact-trade-outcome` item (previously: `exit_reason`, `pnl_sol`,
+`r_multiple`, MFE, MAE, verbatim) fed that real, resolved outcome
+straight into the evidence the model uses to form its OWN
+recommendation. A model shown "this traded and made +0.05 SOL via
+take_profit" trivially "predicts" buy — not because it reasoned about
+the setup, but because it was handed the answer. Any later AGREE/
+DISAGREE or outcome-alignment statistic computed from such a result
+would be scientifically meaningless, and nothing previously disclosed
+this contamination to a reader of the stored result.
+
+### The fix
+
+- **`app/sniper_ai_context.py`** — `build_sniper_evidence_packet()`'s
+  `fact-trade-outcome` item no longer carries the real outcome. It still
+  honestly discloses that the position has closed (never silently
+  omitted) but the item's `kind` changed from `"fact"` to `"unknown"`
+  and its `detail` now reads "This candidate's position has already
+  closed. The real outcome is deliberately withheld from this evidence
+  packet to prevent hindsight bias in the recommendation below." The
+  existing deterministic-vs-AI comparison
+  (`compare_sniper_ai_to_deterministic()`,
+  `resolve_sniper_deterministic_outcome()`) never read this evidence
+  item at all — both already independently read `trade_history` — so
+  this closes the leak at zero cost to real functionality. Confirmed by
+  a new test sweeping several distinct real pnl/exit-reason
+  combinations and asserting none of their real values appear anywhere
+  in the trade-outcome item's own serialized content.
+- **`AIReasoningResult.requested_after_outcome_known`**
+  (`app/schemas.py`, new, default `false`) — a real, disclosed flag: was
+  the candidate's trade already closed at the moment THIS request was
+  made? Computed once in `GameState.submit_sniper_ai_reasoning_request()`
+  from the same real `trade` lookup already performed there (never
+  re-derived later from "whatever state looks like now," which could
+  disagree with what was true at request time — Part XII's TOCTOU
+  concern). Threaded through `build_reasoning_result()` (shared,
+  defaults `false` so equities is completely unaffected) and
+  `run_sniper_analyst_reasoning()`. This changes nothing about what the
+  model is shown — the evidence packet never leaks the outcome either
+  way — it exists purely so a human choosing WHICH already-resolved
+  candidate to ask about (a real form of selection bias distinct from
+  the evidence leak itself) can be filtered out of or clearly labeled in
+  any burn-in statistic later. Surfaced in `SniperApp.tsx`'s AI shadow
+  reasoning card as a visible "⚠ Asked after this candidate's real
+  outcome was already known" line whenever true.
+
+### Structural negative-space and adversarial coverage
+
+Part IV/XXIV of the directive explicitly asked for tests that would
+FAIL if the Sniper AI reasoning pathway ever accidentally gained
+execution capability, "more important than additional AI features."
+New `tests/test_sniper_ai_shadow_boundary.py` (13 tests) proves, against
+the REAL end-to-end entry point
+(`GameState.submit_sniper_ai_reasoning_request()`), not just the pure
+reasoning function in isolation:
+
+- `SniperRiskState`/`SniperEngineConfig`/wallets/positions/trade history
+  are byte-identical before and after a real reasoning call — including
+  one test that `model_dump()`-diffs the ENTIRE `GameSaveState` except
+  the one field (`ai_reasoning_results`) this call is documented to
+  append to, the strongest single structural guarantee available.
+- Even a maximum-confidence "buy" AI result cannot arm live trading —
+  `AIReasoningResult` carries no live-arming field and exposes no code
+  path into `evaluate_live_arming()`.
+- Two concurrent requests for the same candidate (Part XXVIII item 22)
+  both complete independently with distinct real ids and no state
+  corruption.
+- A result survives a simulated save/reload cycle (`model_dump()` →
+  `GameSaveState.model_validate()`) unchanged, and a save predating this
+  pass's new field loads cleanly, defaulting `requested_after_outcome_known`
+  to `false` — never crashing, never fabricating `true`.
+- The provider API key lives only in `AnthropicAIProvider`'s private
+  `_api_key` instance attribute — confirmed absent from
+  `ProviderCallResult`'s dataclass fields and `AIReasoningResult`'s
+  pydantic fields, so no response, log line, or serialized state built
+  from those objects could ever surface it (Part III).
+
+Existing adversarial coverage was confirmed, not duplicated: the shared
+`build_reasoning_result()` validator (invalid/non-JSON output, missing
+thesis, invalid recommendation, out-of-range confidence, fabricated
+evidence/knowledge citations, hostile/prompt-injection evidence text
+never reaching the system prompt, provider timeout/error/unavailable
+handling) already has dedicated tests in `tests/test_ai_reasoning.py`
+and `tests/test_ai_provider.py`. Since `run_sniper_analyst_reasoning()`
+reuses that exact function (never a second, parallel validator — proven
+directly by `tests/test_sniper_ai_reasoning.py::
+test_result_reuses_the_shared_citation_validation`), Sniper inherits all
+of it automatically. Domain isolation (a Sniper lesson never becoming
+equities knowledge and vice versa) was similarly already covered by the
+prior pass's own tests, re-confirmed by this pass's fresh reading of
+`tests/test_sniper_ai_context.py::test_equities_domain_memory_is_never_surfaced_to_sniper_ai`
+and `tests/test_state_sniper_ai_reasoning.py::
+test_refresh_outcomes_never_touches_an_equities_domain_result`.
+
+### Live verification
+
+Real running dev server, real save (day 219): `POST
+/api/sniper/ai-reasoning/run?candidateId=...` against a real,
+currently-listed (rejected, never-traded) candidate returned an honest
+`status: "provider_unavailable"`, `failureDetail` naming the exact
+missing environment variable, `requestedAfterOutcomeKnown: false`
+(correct for a never-entered candidate), and no fabricated thesis/
+recommendation/confidence — every reasoning field genuinely `null`.
+Playwright confirmed the frontend "Ask AI" flow on a real qualified
+candidate renders the same honest unavailable message with zero console
+errors. The `requestedAfterOutcomeKnown: true` branch specifically was
+NOT observed live — no already-closed trade's original candidate
+remained inside the live save's bounded recent-candidates window at
+verification time, and per the directive's own explicit instruction,
+none was fabricated to force the observation; that branch is proven at
+the unit level only
+(`tests/test_state_sniper_ai_reasoning.py::test_requested_after_outcome_known_true_when_trade_already_closed`).
+
+### Explicitly NOT built
+
+No autonomous AI trading of any kind — the AI remains structurally
+incapable of placing, modifying, or influencing any order, position,
+risk parameter, wallet, kill switch, or Copy Mode state, proven by the
+new negative-space tests above, not merely asserted. No real burn-in
+sample collection — `TRADETOWN_AI_PROVIDER_API_KEY` is genuinely unset
+in this environment; per the directive's own Part XXXVII/Stop
+Conditions, this is reported honestly rather than faked with synthetic
+"AI results." No AI performance dashboard — with zero genuine samples,
+any dashboard would have nothing honest to display; Part XVI's own
+evidence-tier framework (N<10 anecdotal, 10-24 early directional,
+25-49 preliminary, 50-99 meaningful exploratory, 100+ stronger) applies
+starting from N=0 here, squarely in "not enough data," which the
+directive itself calls a valid, successful outcome to report. No second
+P&L/portfolio/risk/memory engine — every real fact the evidence packet
+uses traces to an already-existing `SniperCandidate`/`Position`/`Trade`
+field or the shared institutional-memory store, nothing computed twice.
+
+### Classification
+
+- AI infrastructure (`AIProvider`/`AnthropicAIProvider`/
+  `UnavailableAIProvider`): **A** — real, tested, live-verified honest
+  unavailable path; no genuine model call has ever executed in this
+  environment (no key configured), so the REAL provider's own response
+  parsing is verified only against a mocked HTTP transport
+  (`tests/test_ai_provider.py`), not a live Anthropic call.
+- Sniper AI reasoning (evidence → model → structured result): **A** for
+  the shadow-only/validation/citation/lookahead architecture (real,
+  tested, live-verified); **E** for genuine model-generated reasoning
+  quality — zero real model calls have ever completed in this
+  environment.
+- Evidence integrity (fact/unknown separation, anti-hindsight,
+  anti-lookahead, citation validation): **A** — the one real bug found
+  this pass is now fixed and regression-tested; citation validation
+  reused from the already-proven shared validator.
+- Outcome evaluation: **B** — `resolve_sniper_deterministic_outcome()`/
+  `refresh_sniper_ai_reasoning_outcomes()` are real, tested, and
+  structurally sound, but have zero genuine AI recommendations to grade
+  against real outcomes yet (no completed model call has ever
+  occurred).
+- Knowledge sharing / domain isolation: **A** — re-confirmed by this
+  pass's fresh reading, not newly built.
+- Security (prompt injection, secrets, citation forgery): **A** — real,
+  tested, reused validator plus this pass's new secrets-never-leak
+  structural tests.
+- Paper-trading safety / execution boundary: **A** — proven this pass
+  by structural negative-space tests against the real end-to-end entry
+  point, not merely by code reading.
+- Real-market validity: **E** — Sniper market data is entirely
+  simulated (disclosed throughout as `dataProvenance: "simulated"`); no
+  claim of real-world trading validity is or could be made from this
+  architecture regardless of AI reasoning quality.
+
+**Is the AI actually useful yet?** Not yet demonstrated either way —
+genuinely NOT ENOUGH DATA, which per the directive's own explicit
+framing is a valid, successful answer: zero completed real model calls
+exist in this environment because no provider credential is configured.
+What IS proven is that the SYSTEM is now honestly capable of measuring
+usefulness once a provider is configured and real reasoning accumulates
+— including, as of this pass, without the hindsight contamination that
+would previously have made any such measurement meaningless for a
+candidate a human asked about after its outcome was already known.
+
+Recommended next milestone: **Sniper AI Burn-In — Provider Activation
+1.0** — once a real `TRADETOWN_AI_PROVIDER_API_KEY` is genuinely
+available in a deployment environment, run the actual burn-in this
+milestone built the safe infrastructure for: collect real Sniper
+Analyst reasoning over real organic candidates (never manufactured, per
+Part XXXVII), grade every completed result via the now-hindsight-safe
+evidence pipeline, and report real agreement/disagreement and outcome-
+alignment statistics — honestly bounded by Part XVI's own sample-size
+tiers, starting from true zero.

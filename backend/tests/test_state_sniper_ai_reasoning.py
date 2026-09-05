@@ -107,6 +107,36 @@ def test_deterministic_recommendation_reflects_real_trade_history(monkeypatch: p
     asyncio.run(_run())
 
 
+def test_requested_after_outcome_known_true_when_trade_already_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """"Sniper AI Shadow Reasoning Burn-In 1.0" directive, Part XI/XXVI —
+    the real, disclosed flag must reflect real request-time state: a
+    candidate whose trade already closed before the request was made."""
+    monkeypatch.setattr(state_module, "get_ai_provider", lambda: _FakeProvider())
+
+    async def _run() -> None:
+        state = GameState()
+        candidate = _candidate()
+        trade = _trade(mint=candidate.mint, pnl_sol=0.05)
+        state.data = state.data.model_copy(update={"sniper_candidates": [candidate], "sniper_trade_history": [trade]})
+        _updated, result = await state.submit_sniper_ai_reasoning_request(candidate.id)
+        assert result.requested_after_outcome_known is True
+
+    asyncio.run(_run())
+
+
+def test_requested_after_outcome_known_false_when_never_entered(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(state_module, "get_ai_provider", lambda: _FakeProvider())
+
+    async def _run() -> None:
+        state = GameState()
+        candidate = _candidate()
+        state.data = state.data.model_copy(update={"sniper_candidates": [candidate]})
+        _updated, result = await state.submit_sniper_ai_reasoning_request(candidate.id)
+        assert result.requested_after_outcome_known is False
+
+    asyncio.run(_run())
+
+
 def test_deterministic_recommendation_is_wait_when_never_entered(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(state_module, "get_ai_provider", lambda: _FakeProvider())
 

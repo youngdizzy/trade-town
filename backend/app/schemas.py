@@ -13726,6 +13726,22 @@ class AIReasoningResult(CamelModel):
     # overwritten by, never overwriting) the AI's own — None when no
     # deterministic counterpart exists for this task.
     deterministic_recommendation: AnalystChoice | None = Field(default=None, alias="deterministicRecommendation")
+    # "Memecoin Sniper AI Shadow Reasoning Burn-In 1.0" directive, Part
+    # XI/XXVI — a real, disclosed flag: was the underlying candidate's
+    # trade ALREADY CLOSED (its real outcome already knowable) at the
+    # moment this reasoning was requested? This never changes what the
+    # MODEL was shown (the evidence packet never includes a resolved
+    # trade's real outcome — see app/sniper_ai_context.py's own
+    # docstring for why that's a hard anti-hindsight rule, not merely a
+    # disclosure), but a human choosing WHICH already-resolved candidate
+    # to ask about is itself a form of selection bias any comparison/
+    # burn-in statistic must be able to filter or label honestly. False
+    # for every equities result (that pipeline anchors its evidence
+    # cutoff to the proposal's own real historical `created_sim_minutes`,
+    # never to reasoning-request time, so it is structurally immune to
+    # this — see app/ai_context_builder.py) and default-False for any
+    # pre-existing Sniper result predating this field.
+    requested_after_outcome_known: bool = Field(default=False, alias="requestedAfterOutcomeKnown")
 
     status: AIReasoningStatus
     failure_detail: str | None = Field(default=None, alias="failureDetail")

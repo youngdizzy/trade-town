@@ -11,6 +11,8 @@ retrieve_relevant_memory()'s new `domain` filter.
 """
 from __future__ import annotations
 
+import json
+
 from app.institutional_memory import promote_sniper_lesson, retrieve_relevant_memory
 from app.schemas import (
     AIReasoningResult,
@@ -106,12 +108,41 @@ def test_position_evidence_is_included_when_a_position_exists() -> None:
     assert not any(item.id == "fact-trade-outcome" for item in packet.items)
 
 
-def test_trade_evidence_is_included_when_a_trade_exists() -> None:
+def test_trade_evidence_discloses_closure_but_never_leaks_the_real_outcome() -> None:
+    """"Sniper AI Shadow Reasoning Burn-In 1.0" directive, Part XI/XXVI —
+    a real hindsight-leak this pass's own fresh audit found and fixed:
+    the evidence packet must disclose that the candidate already closed
+    (never silently omit that fact) but must NEVER include the real
+    pnl_sol/r_multiple/exit_reason/mfe/mae that would let the model's own
+    recommendation be trivially informed by the answer it's meant to be
+    predicting."""
     candidate = _candidate()
     trade = _trade(mint=candidate.mint, pnl_sol=0.05)
     packet = build_sniper_evidence_packet(candidate, packet_id="pkt-1", task="x", cutoff_sim_minutes=100, institutional_memory=[], current_sim_day=0, trade=trade)
     trade_item = next(item for item in packet.items if item.id == "fact-trade-outcome")
-    assert "take_profit" in trade_item.detail
+    assert trade_item.kind == "unknown"
+    serialized = " ".join(item.detail for item in packet.items) + " ".join(item.label for item in packet.items)
+    assert "take_profit" not in serialized
+    assert "0.05" not in serialized
+    assert str(trade.pnl_sol) not in serialized
+    assert str(trade.r_multiple) not in serialized
+
+
+def test_trade_evidence_never_leaks_outcome_across_a_range_of_real_trades() -> None:
+    """Same guarantee as above, swept across several distinct real
+    pnl/r-multiple/exit-reason combinations so the fix isn't accidentally
+    narrow to one specific fixture's numeric values."""
+    candidate = _candidate()
+    for pnl_sol, exit_reason in [(0.05, "take_profit"), (-0.03, "stop_loss"), (0.0, "manual_exit")]:
+        trade = _trade(mint=candidate.mint, pnl_sol=pnl_sol)
+        trade = trade.model_copy(update={"exit_reason": exit_reason})  # type: ignore[arg-type]
+        packet = build_sniper_evidence_packet(candidate, packet_id="pkt-1", task="x", cutoff_sim_minutes=100, institutional_memory=[], current_sim_day=0, trade=trade)
+        trade_item = next(item for item in packet.items if item.id == "fact-trade-outcome")
+        outcome_text = json.dumps(trade_item.model_dump())
+        assert exit_reason not in outcome_text
+        assert f"{pnl_sol:+.4f}" not in outcome_text
+        assert f"{trade.r_multiple:+.2f}" not in outcome_text
+        assert f"{trade.max_favorable_excursion_pct:+.1f}" not in outcome_text
 
 
 def test_no_position_or_trade_means_no_entry_evidence_items() -> None:

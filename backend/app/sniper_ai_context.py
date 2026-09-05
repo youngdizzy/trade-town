@@ -192,10 +192,33 @@ def build_sniper_evidence_packet(
             )
         )
     if trade is not None:
+        # "Sniper AI Shadow Reasoning Burn-In 1.0" directive, Part XI/
+        # XXVI — a real, previously-undetected hindsight-leak this pass's
+        # own fresh audit caught: this domain has no sim-minute clock of
+        # its own (see this module's own docstring), so `cutoff_sim_minutes`
+        # is always effectively "now" (reasoning-REQUEST time), not the
+        # candidate's own discovery/decision time. Because
+        # `tick_sniper_engine()` can open AND close a trade within
+        # seconds of discovery, a human clicking "Ask AI" even slightly
+        # later could previously see this candidate's REAL, already-
+        # resolved outcome (pnl_sol/r_multiple/exit_reason) fed straight
+        # into the evidence the model uses to form its OWN recommendation
+        # — trivially "predicting" an outcome it was just shown. The
+        # deterministic-vs-AI comparison (compare_sniper_ai_to_deterministic,
+        # resolve_sniper_deterministic_outcome) never needed this item at
+        # all — both read real trade_history directly and independently
+        # — so removing it costs zero real functionality while closing
+        # the leak. The fact of closure is still disclosed (never hidden
+        # that a resolution exists) but the actual outcome never is;
+        # `AIReasoningResult.requested_after_outcome_known` (set by the
+        # caller in app/state.py) is the honest, disclosed flag for
+        # "this request happened after the real outcome already existed,"
+        # for downstream evaluation to filter or label — never silently
+        # baked into the reasoning itself.
         items.append(
             AIEvidenceItem(
-                id="fact-trade-outcome", kind="fact", label="Real, already-closed trade outcome",
-                detail=f"exit_reason={trade.exit_reason}, pnl_sol={trade.pnl_sol:+.4f}, r_multiple={trade.r_multiple:+.2f}, mfe={trade.max_favorable_excursion_pct:+.1f}%, mae={trade.max_adverse_excursion_pct:+.1f}%",
+                id="fact-trade-outcome", kind="unknown", label="Real trade outcome (closed)",
+                detail="This candidate's position has already closed. The real outcome is deliberately withheld from this evidence packet to prevent hindsight bias in the recommendation below.",
                 asOfSimMinutes=cutoff_sim_minutes,
             )
         )

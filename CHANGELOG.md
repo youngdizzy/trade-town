@@ -7,6 +7,93 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Memecoin Sniper AI Shadow Reasoning
+  Burn-In 1.0."** A fresh, from-scratch forensic audit of the existing
+  Sniper AI reasoning architecture (not relying on the prior "Sniper AI
+  1.0" pass's own report) found and fixed one real, previously-
+  undetected hindsight-leak, added a disclosure field for honest burn-in
+  evaluation, and added dedicated structural negative-space tests
+  proving the AI's shadow-only boundary. No live burn-in was run: this
+  environment has no `TRADETOWN_AI_PROVIDER_API_KEY` configured, and per
+  the directive's own explicit instruction, an unavailable provider is
+  reported honestly rather than faked.
+  - **Real bug found: hindsight leak into the Sniper evidence packet.**
+    This domain has no sim-minute clock of its own (`SniperCandidate`/
+    `Position`/`Trade` timestamp with real wall-clock ISO strings), so
+    `build_sniper_evidence_packet()`'s `knowledge_cutoff_sim_minutes` was
+    always effectively "now" (reasoning-REQUEST time), never the
+    candidate's own discovery/decision time — unlike the equities
+    pipeline, which correctly anchors to a `TradeProposal`'s own
+    historical `created_sim_minutes` and was already structurally immune
+    to this. Because `tick_sniper_engine()` can open AND close a trade
+    within single-digit real seconds of discovery, a human clicking
+    "Ask AI" even slightly later could see this candidate's REAL,
+    already-resolved outcome (`pnl_sol`/`r_multiple`/`exit_reason`) fed
+    straight into the evidence used to form the model's OWN
+    recommendation — trivially "predicting" an answer it was just shown.
+  - **Fix** (`app/sniper_ai_context.py`): the `fact-trade-outcome`
+    evidence item no longer includes any real pnl/R-multiple/exit-reason/
+    MFE/MAE value — it now discloses only that the position has closed,
+    with the outcome explicitly and honestly withheld. The existing
+    deterministic-vs-AI comparison (`compare_sniper_ai_to_deterministic()`,
+    `resolve_sniper_deterministic_outcome()`) never needed this item at
+    all — both already read `trade_history` directly and independently
+    — so this closes the leak at zero cost to any real functionality.
+  - **New disclosure field**: `AIReasoningResult.requestedAfterOutcomeKnown`
+    (`app/schemas.py`) — true only when the candidate's trade had already
+    closed at the moment of the request (computed once, in
+    `GameState.submit_sniper_ai_reasoning_request()`, from the same real
+    `trade` lookup already made there). Always `false` for equities
+    results (structurally immune, as above). Never changes what the
+    model sees — purely an honest downstream-evaluation disclosure, so
+    any future agreement/disagreement or outcome-alignment statistic can
+    filter out or clearly label a candidate a human specifically chose
+    to ask about after already knowing how it turned out. Surfaced in
+    `SniperApp.tsx`'s AI shadow reasoning card as a visible "⚠ Asked
+    after this candidate's real outcome was already known" disclosure.
+  - **New structural negative-space tests**
+    (`tests/test_sniper_ai_shadow_boundary.py`, 13 tests) — the
+    directive's own explicit request for tests that would FAIL if the
+    Sniper AI reasoning pathway ever accidentally gained execution
+    capability: a real reasoning request leaves `SniperRiskState`,
+    `SniperEngineConfig`, wallets, positions, and trade history
+    byte-identical (including one test that diffs the ENTIRE
+    `GameSaveState` except the one field the call is documented to
+    append to); cannot arm live trading; two concurrent requests for the
+    same candidate both complete independently without corruption; a
+    result survives a simulated save/reload cycle unchanged; an old save
+    predating the new field loads cleanly, defaulting to `false`; the
+    provider API key lives only in a private, non-serializable instance
+    attribute, never a schema field any response/log could surface.
+  - **Existing coverage confirmed, not duplicated**: the shared
+    `build_reasoning_result()` validator (invalid JSON, missing thesis,
+    invalid recommendation, out-of-range confidence, fabricated
+    citations, hostile/prompt-injection evidence text, provider timeout/
+    error/unavailable) already has comprehensive adversarial tests in
+    `tests/test_ai_reasoning.py` and `tests/test_ai_provider.py`; Sniper
+    reuses that exact function and inherits all of it, confirmed by
+    `tests/test_sniper_ai_reasoning.py`'s own
+    `test_result_reuses_the_shared_citation_validation`.
+  - **Live-verified** against the real running dev server: `POST
+    /api/sniper/ai-reasoning/run` against a real, currently-listed
+    candidate returns an honest `status: "provider_unavailable"` with
+    `requestedAfterOutcomeKnown: false` (correct — this candidate was
+    never entered) and no fabricated thesis/recommendation; the frontend
+    "Ask AI" flow renders the same honest unavailable message with zero
+    console errors. The `requestedAfterOutcomeKnown: true` branch was
+    verified at the unit level only (`tests/test_state_sniper_ai_reasoning.py`)
+    — no already-closed trade's original candidate remained in the
+    live save's recent-candidates window at verification time, and per
+    this directive's own instruction, none was fabricated to force the
+    observation.
+  - **Explicitly NOT built:** no autonomous AI trading of any kind; no
+    change to `tick_sniper_engine()`, risk state, wallet, kill switch, or
+    Copy Mode; no second AI provider/evidence/validation pipeline; no
+    real burn-in sample collection (provider unavailable in this
+    environment — reported honestly, not faked); no giant AI performance
+    dashboard (sample size is 0, so no dashboard would have anything
+    honest to show yet).
+
 - **CEO directive "TradeTown — Memecoin Sniper Equity Snapshot Telemetry
   1.0."** Real, persistent historical account-equity for the Memecoin
   Sniper — the missing piece Terminal 2.2's own report explicitly

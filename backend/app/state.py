@@ -3622,7 +3622,18 @@ class GameState:
             trade=trade,
         )
         provider = get_ai_provider()
-        result = await run_sniper_analyst_reasoning(packet, provider=provider, deterministic_recommendation=deterministic_recommendation)
+        # "Sniper AI Shadow Reasoning Burn-In 1.0" directive, Part XI/
+        # XXVI — a real, disclosed fact about THIS request: was the
+        # candidate's trade already closed (its outcome already knowable)
+        # at this exact moment? Computed here, from the same real `trade`
+        # lookup above, never re-derived later from "whatever state looks
+        # like now" (which could disagree with what was true at request
+        # time). See AIReasoningResult.requested_after_outcome_known's
+        # own docstring for why this matters even though the evidence
+        # packet itself never leaks the actual outcome to the model.
+        result = await run_sniper_analyst_reasoning(
+            packet, provider=provider, deterministic_recommendation=deterministic_recommendation, requested_after_outcome_known=trade is not None
+        )
 
         async with self.lock:
             updated_results = [*self.data.ai_reasoning_results, result][-MAX_AI_REASONING_RESULTS:]
