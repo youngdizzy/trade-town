@@ -7,6 +7,105 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Memecoin Sniper Equity Snapshot Telemetry
+  1.0."** Real, persistent historical account-equity for the Memecoin
+  Sniper — the missing piece Terminal 2.2's own report explicitly
+  deferred. Not a second P&L/portfolio/risk engine: both real inputs
+  already existed and were already authoritative.
+  - **Phase 0 forensic finding:** `SniperRiskState.equity_sol` ("PAPER
+    BALANCE" in the terminal) is REALIZED-ONLY — it changes exactly once
+    per closed trade, by exactly `+= trade.pnl_sol`
+    (`update_risk_state_after_trade()`), and is otherwise a flat
+    constant while positions are open. It does NOT mark open positions
+    to market at all. A genuine mark-to-market figure is real and
+    computable today (`equity_sol` + the live sum of every open
+    position's own real `pnl_sol` — the exact same figure
+    `SniperTerminal.tsx`'s own `totalUnrealizedSol` already computes for
+    display) but had never been combined into one number nor sampled
+    over time before this pass.
+  - **`build_sniper_equity_snapshot()`** (`app/memecoin_sniper.py`, new)
+    — the one real combination: `realizedEquitySol` (`risk_state
+    .equity_sol`) + `unrealizedPnlSol` (sum of open positions' real
+    `pnl_sol`, `status == "open"` only — a closed position's own final
+    P&L is already inside `equity_sol` by the same tick it closes, so it
+    can never double-count) = `totalEquitySol`. `sniper_equity_snapshot_id()`
+    gives each snapshot a deterministic identity from the game's own
+    simulated clock (`day-hour-minute`, zero-padded) — never a random
+    UUID — so `append_sniper_equity_snapshot()` can detect "this exact
+    simulated tick was already recorded" from just the last list entry.
+  - **Wired into `app/nexus.py`'s real tick** — one snapshot every real
+    Sniper engine tick (`settings.tick_interval_seconds`, default 2.0s)
+    whenever the engine isn't fully `"stopped"` (mirrors
+    `tick_sniper_engine()`'s own real running/paused/stopped gate). This
+    cadence was chosen, not assumed: real Sniper trades hold for single-
+    to-double-digit real SECONDS, so a coarser cadence (e.g. once per
+    simulated day, ~9.6 real minutes at this game's default rate) would
+    miss entire trades between samples. `MAX_SNIPER_EQUITY_SNAPSHOTS =
+    7,200` bounds the persisted list to the most recent ~4 real hours of
+    continuous activity — a disclosed ROLLING window, not permanent
+    lifetime history, same honest tradeoff `MAX_SNIPER_EVENTS` already
+    makes; older snapshots are FIFO-trimmed, never silently
+    reinterpreted.
+  - **No fake backfill:** telemetry starts recording from the moment
+    this pass first runs — no fabricated historical points, no
+    interpolated old equity, no "Day 1" baseline pretending to have
+    existed earlier. The frontend discloses exactly when its own visible
+    history begins.
+  - **Schema/persistence** (`app/schemas.py`, `app/save_modules.py`) —
+    new `SniperEquitySnapshot` (realized/unrealized/total equity, sim
+    clock fields, real wall-clock timestamp, `mode` mirroring the
+    engine's own real `SniperEngineConfig.mode`, `dataProvenance:
+    "simulated"`) and `GameSaveState.sniper_equity_history`, registered
+    in the same `"company"` save module as `sniper_events` (bounded,
+    tick-mutated — not the permanent `sniper_trade_history` archive).
+    An old save missing the field loads cleanly, defaulting to `[]`
+    (verified directly, plus by this codebase's own generic
+    `test_every_gamesavestate_field_is_assigned_to_exactly_one_module`/
+    `test_split_then_assemble_round_trips_real_state` tests).
+  - **API** (`app/routers/sniper.py`, new, read-only): `GET
+    /api/sniper/equity-history?limit=500` — the real, chronological,
+    already-persisted history, server-bounded so the frontend never
+    requests the full 7,200-snapshot cap in one response.
+  - **Frontend** (`SniperApp.tsx`, `net/api.ts`, `types.ts`,
+    `EquityCurveChart.tsx`) — reuses the exact existing
+    `EquityCurveChart` component a second time (already generalized in
+    the Terminal 2.2 pass), fed the real snapshot-to-snapshot equity
+    deltas so walking forward from the first real snapshot reproduces
+    every later real value exactly (no interpolation). Rendered as a
+    SEPARATE "Account equity — mark-to-market" card next to (never
+    merged with) the existing "Realized P&L" card, each independently
+    labeled per the directive's own Part XIX, with an honest "history
+    begins at [time] — a rolling recent window" disclosure and its own
+    honest empty state.
+  - **Explicitly NOT built:** no second P&L/portfolio/risk engine; no
+    fabricated historical backfill; no live trading; no change to any
+    trading/risk/kill-switch/AI-reasoning behavior (equity snapshotting
+    is pure read-side telemetry — it cannot place, modify, or block a
+    trade, and nothing in the trading path reads it back).
+  - **Testing:** 24 new tests in `tests/test_sniper_equity_snapshot.py`
+    covering deterministic snapshot identity, the differential equity
+    checks (Part XVIII A-J: no positions, profitable/losing open
+    positions, a position closing profitably/at a loss with no double-
+    count, multiple open positions, zero/negative total equity never
+    clamped or hidden, NaN/Infinity safety, mode/provenance fidelity,
+    exact field-set guard), idempotent/duplicate-safe append (repeated
+    tick, FIFO cap trim), and real end-to-end `app/nexus.py` tick wiring
+    (running/paused produces a snapshot, stopped does not, a repeated
+    identical tick never duplicates, and a simulated save/restart cycle
+    appends rather than re-creating). Full backend suite, mypy, ruff all
+    clean. Frontend: `tsc --noEmit`, `eslint`, `vite build` all clean.
+    Live-verified against the real running dev server: `GET
+    /api/sniper/equity-history` returned real, chronologically-ordered,
+    exactly-2-second-spaced snapshots matching `/api/sniper/status`'s
+    own live `equitySol` bit-for-bit; the new "Account equity" card
+    rendered a real (flat, since no trade closed or position opened
+    during the observation window) line with its own real "history
+    begins" timestamp, zero console errors. Open-position mark-to-market
+    behavior (unrealized P&L moving equity while a position is open) was
+    proven at the unit level (no open position existed on the live save
+    during verification, and per this directive's own instruction,
+    none was force-created on the shared primary save to observe it).
+
 - **CEO directive "TradeTown — Memecoin Sniper Terminal 2.2 — Real Market
   Chart + P&L Equity Curve."** Root-caused and fixed the reported
   "candlesticks aren't visibly appearing" symptom on the Sniper

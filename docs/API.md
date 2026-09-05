@@ -4227,11 +4227,32 @@ first: one real point per closed trade (`closedAt`, `tradeId`, `symbol`,
 `trade_history` `GET /api/sniper/status`'s Performance card reads for
 Session P&L/win-rate/expectancy — the two can never silently disagree.
 Realized-only, never a mark-to-market equity curve (no unrealized P&L
-from open positions, no interpolation): `SniperRiskState.equitySol` is
-only ever a live snapshot, never sampled over time, so a true equity
-history does not exist and this endpoint does not fabricate one. Empty
-list when no trades have closed — the frontend renders an honest "no P&L
-history yet" state, never a zero-filled fake history.
+from open positions, no interpolation) — see `GET
+/api/sniper/equity-history` below for that. Empty list when no trades
+have closed — the frontend renders an honest "no P&L history yet"
+state, never a zero-filled fake history.
+
+### `GET /api/sniper/equity-history?limit=500`
+
+"Equity Snapshot Telemetry 1.0" directive — returns
+`SniperEquitySnapshot[]`, oldest first: the real, periodic, already-
+persisted mark-to-market equity history. Each point has `realizedEquitySol`
+(`SniperRiskState.equity_sol` at that instant — the account's own real,
+realized-only balance), `unrealizedPnlSol` (the real-time sum of every
+then-open position's own real `pnlSol`), `totalEquitySol` (their sum),
+plus `simDay`/`simHour`/`simMinute`/`timestamp`/`openPositionCount`/
+`mode`/`dataProvenance`. Distinct from `GET /api/sniper/pnl-history`
+above — that one is realized-only; this one is real mark-to-market
+equity. A snapshot is taken every real Sniper engine tick (~2s by
+default) whenever the engine isn't fully `"stopped"`; the persisted list
+is capped at `MAX_SNIPER_EQUITY_SNAPSHOTS` (7,200 — roughly the most
+recent 4 real hours of continuous activity, app/nexus.py), FIFO-trimmed
+— a disclosed ROLLING window, never claimed as permanent lifetime
+history. `limit` (default 500, max 7,200) bounds the response size;
+the most recent `limit` snapshots are returned, still oldest-first.
+Empty list before telemetry has ever run (a fresh save, or an engine
+that has always been `"stopped"`) — the frontend renders an honest "no
+equity history yet" state, never a fabricated backfill.
 
 ### `GET /api/sniper/leads`
 

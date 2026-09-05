@@ -196,7 +196,7 @@ from app.travel_mode import (
     should_auto_activate,
     travel_mode_confidence_bonus,
 )
-from app.memecoin_sniper import tick_sniper_engine
+from app.memecoin_sniper import append_sniper_equity_snapshot, build_sniper_equity_snapshot, tick_sniper_engine
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
 from app.treasury import apply_monthly_savings_rules, record_monthly_report
@@ -361,6 +361,21 @@ MAX_DRIFT_EVENTS = 200
 # tick_sniper_engine() itself, just applied here since events/new_trades
 # are per-tick output, not accumulated state passed into that function.
 MAX_SNIPER_EVENTS = 300
+# "Equity Snapshot Telemetry 1.0" directive, Part VI/XXV — one snapshot
+# is taken every real Sniper engine tick (settings.tick_interval_seconds,
+# default 2.0s) whenever the engine isn't fully "stopped", the only
+# cadence fine enough to have any chance of capturing intra-trade
+# mark-to-market movement (real observed Sniper trades hold for single-
+# to-double-digit real SECONDS — a coarser, sim-day-boundary cadence
+# would span ~9.6 real minutes per snapshot at this game's default 5-
+# sim-minutes-per-tick rate, missing entire trades between samples).
+# At the default cadence this cap (7,200) retains the most recent ~4
+# real hours of continuous engine activity (7,200 * 2.0s = 14,400s) —
+# a bounded, disclosed ROLLING window, not permanent lifetime history,
+# same honest tradeoff MAX_SNIPER_EVENTS above already makes. Storage:
+# each snapshot is ~9 small scalar fields — trivially bounded regardless
+# of how long the process stays up, unlike an ever-growing list would be.
+MAX_SNIPER_EQUITY_SNAPSHOTS = 7_200
 # v0.7 Feature 17 — one Debate generated per new TradeProposal (see
 # generate_debate below); capped the same way every other per-proposal
 # record here is.
@@ -1417,6 +1432,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     sniper_risk_state = state.sniper_risk_state
     sniper_engine_config = state.sniper_engine_config
     sniper_events = list(state.sniper_events)
+    # "Equity Snapshot Telemetry 1.0" directive — real, capped rolling
+    # account-equity history (see MAX_SNIPER_EQUITY_SNAPSHOTS above).
+    sniper_equity_history = list(state.sniper_equity_history)
     decisions = list(state.decisions)
     trade_proposals = list(state.trade_proposals)
     ceo_decisions = list(state.ceo_decisions)
@@ -1832,6 +1850,21 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         institutional_memory, knowledge_events = _promote_and_share_lesson(
             institutional_memory, knowledge_events, promote_sniper_lesson(new_lesson, sim_day=new_time.day), sim_day=new_time.day
         )
+
+    # "Equity Snapshot Telemetry 1.0" directive — a real, periodic
+    # mark-to-market equity reading, taken every tick the engine isn't
+    # fully "stopped" (mirroring tick_sniper_engine()'s own real gate —
+    # a "paused" engine can still close positions via the exit engine,
+    # which changes equity; a "stopped" one changes nothing at all, so
+    # snapshotting it would only pad the history with identical values).
+    # Idempotent by construction (see append_sniper_equity_snapshot's own
+    # docstring) — safe even if this were ever reached twice for the
+    # same simulated instant.
+    if sniper_engine_config.status != "stopped":
+        equity_snapshot = build_sniper_equity_snapshot(
+            sniper_engine_config, sniper_risk_state, sniper_positions, sim_day=new_time.day, sim_hour=new_time.hour, sim_minute=new_time.minute
+        )
+        sniper_equity_history = append_sniper_equity_snapshot(sniper_equity_history, equity_snapshot, max_snapshots=MAX_SNIPER_EQUITY_SNAPSHOTS)
 
     # Memecoin Sniper Professional Trading Terminal directive — the
     # Sniper's own price walk (memecoin_sniper.py's _simulate_price_step)
@@ -3769,6 +3802,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "sniper_lessons": sniper_lessons,
             "sniper_risk_state": sniper_risk_state,
             "sniper_events": sniper_events,
+            "sniper_equity_history": sniper_equity_history,
             "decisions": decisions,
             "trade_proposals": trade_proposals,
             "ceo_decisions": ceo_decisions,

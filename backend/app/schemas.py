@@ -13375,6 +13375,47 @@ class SniperPnlHistoryPoint(CamelModel):
     cumulative_realized_pnl_sol: float = Field(alias="cumulativeRealizedPnlSol")
 
 
+class SniperEquitySnapshot(CamelModel):
+    """"Equity Snapshot Telemetry 1.0" directive — one real, periodic
+    point-in-time reading of the Sniper account's true mark-to-market
+    value: `realizedEquitySol` (== `SniperRiskState.equity_sol` at this
+    instant — the account's own real, deterministic, realized-only
+    balance, updated exactly once per closed trade by
+    `update_risk_state_after_trade()`) plus `unrealizedPnlSol` (== the
+    real-time sum of every currently-OPEN `SniperPosition.pnl_sol` — the
+    exact same live figure the Terminal's own "Unrealized P&L" strip
+    already displays, see `SniperTerminal.tsx`'s `totalUnrealizedSol`).
+    `totalEquitySol` is their sum — never a third, independently
+    invented number. See `build_sniper_equity_snapshot()`
+    (app/memecoin_sniper.py) for the full derivation and for why this is
+    NOT a second P&L engine: both inputs already existed and were
+    already authoritative; this only combines and timestamps them.
+
+    `id` is a deterministic identity derived from the simulated clock
+    (`simDay`/`simHour`/`simMinute`) — never a random UUID — so the same
+    simulated tick can never produce two snapshots (see
+    `append_sniper_equity_snapshot()`'s own idempotency check).
+    `timestamp` is the real wall-clock instant this snapshot was taken
+    (same convention as `Candle`/`SniperTrade` — real time, not sim
+    time, since a snapshot is a real observation of real (paper) account
+    state). `mode` mirrors the engine's own real `SniperEngineConfig.mode`
+    at the moment of capture (never fabricated as a third "SIMULATION"
+    enum value); `dataProvenance` is always `"simulated"`, matching every
+    other Sniper record — this account has never executed a real trade."""
+
+    id: str
+    sim_day: int = Field(alias="simDay")
+    sim_hour: int = Field(alias="simHour")
+    sim_minute: int = Field(alias="simMinute")
+    timestamp: str
+    realized_equity_sol: float = Field(alias="realizedEquitySol")
+    unrealized_pnl_sol: float = Field(alias="unrealizedPnlSol")
+    total_equity_sol: float = Field(alias="totalEquitySol")
+    open_position_count: int = Field(alias="openPositionCount")
+    mode: SniperEngineMode
+    data_provenance: Literal["simulated"] = Field(default="simulated", alias="dataProvenance")
+
+
 class SniperEvent(CamelModel):
     """Professional Trading Terminal directive, Part VII (Trade Event
     Timeline) — a real, structured, persisted event. `app/
@@ -13897,6 +13938,11 @@ class GameSaveState(CamelModel):
     # sniper_candidates/sniper_positions (tick-mutated, pruned, not
     # recomputed from scratch).
     sniper_events: list[SniperEvent] = Field(default_factory=list, alias="sniperEvents")
+    # "Equity Snapshot Telemetry 1.0" directive — real, capped, rolling
+    # account-equity history, same category as sniper_events above (not
+    # the permanent trade journal). See MAX_SNIPER_EQUITY_SNAPSHOTS
+    # (app/nexus.py) for the cap and its own justification.
+    sniper_equity_history: list[SniperEquitySnapshot] = Field(default_factory=list, alias="sniperEquityHistory")
     # "Terminal 2.1" directive, Phase 5 — CEO-managed wallet METADATA
     # (never a secret). Small, user-curated list — no cap needed, unlike
     # the tick-mutated sniper_* lists above.

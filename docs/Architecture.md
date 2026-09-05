@@ -22738,3 +22738,237 @@ open/close event) to `GameSaveState`, then extend this same P&L curve
 (or add a second, clearly-labeled series to it) with a genuine
 mark-to-market equity line — never fabricated, built only once the real
 snapshot history exists to build it from.
+
+## CEO directive "TradeTown — Memecoin Sniper Equity Snapshot Telemetry
+1.0"
+
+Delivers exactly the recommended next milestone from the Terminal 2.2
+report above: a real, persisted historical equity series for the
+Memecoin Sniper. Not a second P&L/portfolio/risk engine — every input
+already existed and was already authoritative; this pass only combines
+two real numbers and samples the result over real time.
+
+### Phase 0 forensic audit
+
+Traced `SniperRiskState.equity_sol` end to end before writing any code.
+Found exactly one write site: `update_risk_state_after_trade()`
+(`app/memecoin_sniper.py`), called only when a trade closes, computing
+`new_equity = risk_state.equity_sol + trade.pnl_sol`. This means
+`equity_sol` (labeled "PAPER BALANCE" in `SniperApp.tsx`, and the same
+figure every risk gate — `evaluate_entry_firewall()`'s daily-loss/open-
+risk checks, `size_paper_position()`'s risk-per-trade sizing — reads) is
+REALIZED-ONLY: a discrete jump exactly once per closed trade, otherwise
+a flat constant for the entire time a position stays open. It does not
+mark open positions to market at all — confirmed by grep (no other
+write site exists anywhere in `app/*.py`) and by reading every call
+site of `update_risk_state_after_trade()` (`app/memecoin_sniper.py`'s
+own tick loop and `app/state.py`'s manual-close path — no third).
+
+A genuine mark-to-market figure was nonetheless already fully
+computable, just never assembled or persisted: `SniperTerminal.tsx`'s
+own `totalUnrealizedSol = openPositions.reduce((s, p) => s + p.pnlSol,
+0)` is the exact real-time unrealized-P&L figure the terminal already
+displays for the "Unrealized P&L" summary strip. `equity_sol +
+totalUnrealizedSol` is therefore a real, deterministic, already-
+authoritative mark-to-market equity value at any instant — this pass's
+entire job was to compute that combination server-side and sample it
+over time, not invent a new accounting model.
+
+Also audited for a periodic-snapshot-history precedent elsewhere in the
+codebase (`PerformanceSnapshot`, `PortfolioRiskSnapshot`, the main
+portfolio's own `EquityCurveChart`) — none exist; every one of them is
+either a single fresh computed-on-request reading or a curve rebuilt
+fresh from trade history, never a persisted time series sampled on a
+cadence. This is a genuinely new (if small and additive) persistence
+pattern, modeled directly on the existing `sniper_events` bounded-
+rolling-list convention rather than inventing a new one.
+
+### Cadence decision
+
+`tick_sniper_engine()` runs on every real `nexus.tick()` — every
+`settings.tick_interval_seconds` (default 2.0s) — advancing the
+simulated clock by `settings.game_minutes_per_tick` (default 5) each
+time. Real observed Sniper trades in this environment hold for single-
+to-double-digit real SECONDS (the permanent trade journal shows holds
+of 4s-70s). A coarser cadence tied to the simulated calendar (e.g. once
+per simulated day, which at the default rate is ~9.6 REAL minutes per
+sample) would miss entire trades between samples — failing the
+directive's own "sufficient to reconstruct equity behavior" bar before
+it could ever be used. The real-tick cadence (~2s) was chosen as the
+finest granularity this architecture already offers for free — no new
+scheduler, no new timer, just hooking the existing tick.
+
+Snapshotting is skipped when `SniperEngineConfig.status == "stopped"`
+(mirrors `tick_sniper_engine()`'s own real no-op gate for that status —
+nothing changes while stopped, so nothing would be captured that isn't
+already an exact duplicate of the last real snapshot). `"paused"` still
+snapshots: the exit engine can still close positions while paused
+(Section 21/28's "pause new entries, not everything"), which is a real
+equity-affecting event.
+
+### Architecture
+
+- **`sniper_equity_snapshot_id(sim_day, sim_hour, sim_minute)`**
+  (`app/memecoin_sniper.py`, new) — a deterministic identity string
+  (`"00216-01-05"`, zero-padded for stable lexical ordering), never a
+  random UUID. The game clock only ever advances forward by a fixed
+  amount per real tick (`app/state.py`'s `_advance_once()`), so under
+  normal operation this triple is unique per real tick by construction.
+- **`build_sniper_equity_snapshot()`** (new) — the one real combination:
+  `realizedEquitySol` (`risk_state.equity_sol`, untouched) +
+  `unrealizedPnlSol` (sum of `p.pnl_sol` for `p in positions if p.status
+  == "open"`) = `totalEquitySol`. A position that closes this same tick
+  already has its final P&L folded into `risk_state.equity_sol` by
+  `update_risk_state_after_trade()` (which runs earlier in the same
+  tick, inside `tick_sniper_engine()`) and simultaneously drops out of
+  the "open" filter here — no double-count window exists between the
+  two, proven by `TestBuildSniperEquitySnapshot::test_d_position
+  _closes_profitably_realized_absorbs_it_no_double_count`.
+- **`append_sniper_equity_snapshot()`** (new) — idempotent append:
+  compares only the LAST list entry's `id` against the new snapshot's
+  (the list is always chronologically built, so this is sufficient),
+  skipping a would-be duplicate rather than appending it. FIFO-trims to
+  `MAX_SNIPER_EQUITY_SNAPSHOTS = 7,200` (app/nexus.py) — roughly the
+  most recent 4 real hours of continuous activity at the default 2s
+  cadence (`7,200 * 2.0s = 14,400s`), a disclosed rolling window, the
+  same honest bounded-history tradeoff `MAX_SNIPER_EVENTS` already
+  makes elsewhere in this file.
+- **Wired into `app/nexus.py`'s real tick**, right after
+  `sniper_risk_state = sniper_tick_result.risk_state` and the lesson-
+  promotion loop, using the tick's own already-computed `new_time`
+  (`sim_day`/`sim_hour`/`sim_minute`) and the tick's own already-updated
+  `sniper_positions`. Appended to the final state's
+  `"sniper_equity_history"` key alongside every other Sniper field.
+- **`SniperEquitySnapshot`** (`app/schemas.py`, new) — `id`, `simDay`/
+  `simHour`/`simMinute`, real wall-clock `timestamp`, `realizedEquitySol`/
+  `unrealizedPnlSol`/`totalEquitySol`, `openPositionCount`, `mode`
+  (mirrors the engine's own real `SniperEngineConfig.mode` — never a
+  fabricated third "SIMULATION" enum value), `dataProvenance:
+  "simulated"` (matching every other Sniper record). `GameSaveState
+  .sniper_equity_history` registered in `app/save_modules.py`'s
+  `"company"` module — the exact same bounded/tick-mutated category as
+  `sniper_events`, not the permanent `"trade_history"` archive module
+  `sniper_trade_history` itself lives in (this list is capped and
+  rolls off; that one never does). An old save missing the field loads
+  cleanly to `[]` (pydantic `default_factory`, verified directly and by
+  this codebase's own generic module/round-trip tests).
+- **`GET /api/sniper/equity-history?limit=500`** (`app/routers/sniper.py`,
+  new, read-only) — returns the real, persisted, chronological history,
+  server-bounded (default 500, max 7,200 — the full cap) so the
+  frontend is never forced to request or render the entire retained
+  window in one response.
+- **Frontend** (`SniperApp.tsx`, `net/api.ts`, `types.ts`) — a new
+  `SniperEquitySnapshot` type/`getSniperEquityHistory()` call, polled in
+  the SniperApp's existing 5s `refresh()` loop (no second polling
+  mechanism). Reuses `EquityCurveChart` (already generalized for the
+  Terminal 2.2 P&L card) a second time: fed the real snapshot-to-
+  snapshot deltas (`s[i].totalEquitySol - s[i-1].totalEquitySol`) with
+  `startingBalance` set to the first real snapshot's own
+  `totalEquitySol` — walking the chart's own internal cumulative-sum
+  logic forward from there reproduces every later real value exactly,
+  a lossless round-trip through delta-then-cumsum, never an
+  approximation. Rendered as a SEPARATE card ("Account equity — mark-
+  to-market...") beside (never merged into) the existing "Realized P&L"
+  card, each independently labeled — directive Part XIX's explicit
+  requirement that a viewer always knows which one they're looking at.
+  An honest "History begins {time} — a rolling recent window, not
+  permanent lifetime history" disclosure renders whenever any history
+  exists; `EquityCurveChart`'s own existing empty-state renders "No
+  equity history yet..." when it doesn't (points.length < 2 — zero or
+  one snapshot).
+
+### Explicitly NOT built
+
+No second P&L/portfolio/risk engine — confirmed no new pnl/equity
+FORMULA exists anywhere in this pass, only a combination of two
+pre-existing real values. No fabricated historical backfill — telemetry
+begins recording from the moment this pass first runs; no "Day 1"
+baseline, no interpolated missing history. No live trading, no new
+Solana RPC/wallet/exchange integration. No change to trading/risk/kill-
+switch/Gatekeeper/AI-reasoning behavior of any kind — equity
+snapshotting is pure read-side telemetry with no write path back into
+any decision system; nothing in `tick_sniper_engine()`,
+`evaluate_entry_firewall()`, `evaluate_live_arming()`, or the Sniper AI
+reasoning modules reads `sniper_equity_history` at all. No knowledge-
+sharing event generated per snapshot (Part XXVIII) — raw telemetry,
+not a lesson.
+
+### Testing and verification
+
+24 new tests in `tests/test_sniper_equity_snapshot.py`: deterministic-
+not-random identity; the Part XVIII differential matrix (A: no
+positions: equity == realized only; B/C: one profitable/losing open
+position moves total equity by exactly its own real pnlSol; D: a
+position closing profitably transitions unrealized→realized with no
+double-count, checked both before and after the close; E: closing at a
+loss; F: multiple open positions sum correctly; G: zero P&L; H: a
+genuinely negative total equity is reported honestly, never clamped to
+zero; closed positions never contribute to unrealized; mode mirrors the
+real engine config; provenance always `"simulated"`; equity is never
+NaN/Infinite; the schema's field set is pinned so a field can't be
+silently added or removed later); idempotent-append (repeated identical
+tick doesn't duplicate; distinct ticks append in chronological order;
+FIFO trim at the cap); and real `app/nexus.py` tick-wiring tests
+(a running/paused engine produces exactly one snapshot per tick; a
+stopped engine produces none; feeding the same `(state, new_time)` into
+`nexus.tick()` twice never duplicates; a simulated save/restart cycle —
+rebuild state from the persisted history, advance one more tick —
+appends exactly one new snapshot rather than re-creating the first).
+Full backend suite (4,271+ tests), mypy, ruff: clean. Frontend: `tsc
+--noEmit`, `eslint`, `vite build`: clean.
+
+Live-verified against the real running dev server (day 216 save, engine
+`"running"`): `GET /api/sniper/equity-history?limit=10` returned 10
+real snapshots, timestamps exactly 2.0s apart, `simMinute` advancing by
+5 each entry, `totalEquitySol` matching `GET /api/sniper/status`'s own
+live `risk.equitySol` bit-for-bit (10.07278 SOL, no open positions at
+verification time so unrealized was 0). Playwright screenshot of the
+live Sniper Terminal shows both the "Realized P&L" and new "Account
+equity" cards rendering side by side, the equity card's real flat line
+at `+10.073 SOL` (accurately reflecting that no trade closed or
+position opened during the observation window — not a rendering bug),
+its own real "History begins 9:03:13 AM" disclosure, and zero console
+errors. Old-save compatibility verified directly (a save dict with the
+`sniperEquityHistory` key deleted loads cleanly, defaulting to `[]`)
+and via this codebase's own generic `test_every_gamesavestate_field
+_is_assigned_to_exactly_one_module`/`test_split_then_assemble_round
+_trips_real_state` tests. Open-position mark-to-market behavior
+(unrealized P&L genuinely moving total equity while a position stays
+open) was proven at the unit level only — no open position existed on
+the shared live save during verification, and per this directive's own
+explicit instruction, none was force-created there to observe it live.
+
+### Classification
+
+- Equity calculation (realized + unrealized combination): **A — real,
+  proven correct** by the differential test matrix against the same
+  authoritative sources the rest of the terminal already trusts.
+- Equity snapshot persistence: **A** — live-verified surviving real
+  ticks with correct chronological ordering and idempotent dedup;
+  save/restart continuity proven at the unit level (a real backend
+  process restart mid-session was not separately re-verified beyond
+  what the generic save/load test suite already covers).
+- Historical equity API: **A** — live-verified against the real running
+  server.
+- Equity chart (frontend): **A** — live-verified rendering real data,
+  zero console errors, correct empty/history-begins disclosure.
+- Data provenance / SIMULATED-never-LIVE: **A**.
+- Restart/duplicate safety: **A** (test-proven; see above).
+- Open-position mark-to-market movement specifically: **B** —
+  implemented and unit-tested exhaustively, but not observed against a
+  real live open position during this pass's own live verification
+  window (none existed, and none was fabricated to force the
+  observation, per the directive's own explicit prohibition).
+- Sniper AI / deterministic trading safety: **A**, unmodified — zero
+  new read or write path between this telemetry and any decision
+  system.
+
+Recommended next milestone: **Sniper Equity Chart — Trade-Overlay
+Correlation 1.0** — now that real equity history exists, overlay each
+real closed trade's own `openedAt`/`closedAt` markers onto the equity
+curve (reusing `CandlestickChart.tsx`'s existing `ChartOverlayMarker`
+primitive's conventions, not inventing a new marker system) so a
+player can see, for the first time, exactly which real trade caused
+which real equity movement — the natural next step once both real
+equity history (this pass) and real trade timestamps (already existing)
+can finally be read side by side.

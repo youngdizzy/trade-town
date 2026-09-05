@@ -43,6 +43,7 @@ from app.schemas import (
     SniperCreatorRisk,
     SniperEngineConfig,
     SniperEngineStatusRead,
+    SniperEquitySnapshot,
     SniperEvent,
     SniperEventType,
     SniperExitReason,
@@ -858,3 +859,78 @@ def build_sniper_pnl_history(trade_history: list[SniperTrade]) -> list[SniperPnl
             )
         )
     return points
+
+
+def sniper_equity_snapshot_id(sim_day: int, sim_hour: int, sim_minute: int) -> str:
+    """Deterministic identity for one simulated-clock instant — never a
+    random UUID (per the "Equity Snapshot Telemetry 1.0" directive's own
+    Part V). The game clock (`TimeState`) only ever advances forward by
+    a fixed `GAME_MINUTES_PER_TICK` each real tick (see app/nexus.py's
+    `_advance_once()`), so under normal operation this triple is unique
+    per real tick — the same identity recurring is exactly the "was this
+    tick already processed" signal `append_sniper_equity_snapshot()`
+    below uses for idempotency, never a hash/coincidence-prone key."""
+    return f"{sim_day:05d}-{sim_hour:02d}-{sim_minute:02d}"
+
+
+def build_sniper_equity_snapshot(
+    config: SniperEngineConfig,
+    risk_state: SniperRiskState,
+    positions: list[SniperPosition],
+    *,
+    sim_day: int,
+    sim_hour: int,
+    sim_minute: int,
+) -> SniperEquitySnapshot:
+    """"Equity Snapshot Telemetry 1.0" directive — the real, combined
+    mark-to-market equity reading. Not a second P&L/portfolio engine:
+    both inputs already exist and are already authoritative —
+    `risk_state.equity_sol` (the account's own real realized-only
+    balance, updated exactly once per closed trade by
+    `update_risk_state_after_trade()`) and the real-time sum of every
+    currently-open position's own real `pnl_sol` (the exact figure
+    `SniperTerminal.tsx`'s own `totalUnrealizedSol` already computes for
+    display — this function is the backend, persisted equivalent, never
+    a competing formula). A closed position never contributes here
+    (`status == "open"` filter) — no double-counting: the instant a
+    position closes, its final P&L is already inside `risk_state
+    .equity_sol` via `update_risk_state_after_trade()`, and it drops out
+    of this sum in the very same tick."""
+    unrealized_pnl_sol = round(sum(p.pnl_sol for p in positions if p.status == "open"), 6)
+    open_position_count = sum(1 for p in positions if p.status == "open")
+    realized_equity_sol = risk_state.equity_sol
+    total_equity_sol = round(realized_equity_sol + unrealized_pnl_sol, 6)
+    return SniperEquitySnapshot(
+        id=sniper_equity_snapshot_id(sim_day, sim_hour, sim_minute),
+        simDay=sim_day,
+        simHour=sim_hour,
+        simMinute=sim_minute,
+        timestamp=_now_iso(),
+        realizedEquitySol=realized_equity_sol,
+        unrealizedPnlSol=unrealized_pnl_sol,
+        totalEquitySol=total_equity_sol,
+        openPositionCount=open_position_count,
+        mode=config.mode,
+    )
+
+
+def append_sniper_equity_snapshot(
+    history: list[SniperEquitySnapshot],
+    snapshot: SniperEquitySnapshot,
+    *,
+    max_snapshots: int,
+) -> list[SniperEquitySnapshot]:
+    """"Equity Snapshot Telemetry 1.0" directive, Part V/XV — idempotent,
+    duplicate-safe append. The history list is always chronologically
+    ordered (each real tick's snapshot has a real, monotonically
+    increasing sim-clock identity — see `sniper_equity_snapshot_id()`),
+    so checking only the LAST entry's id is sufficient to detect "this
+    exact simulated tick was already snapshotted" — no set/index needed.
+    Bounded to `max_snapshots`, oldest-first-trimmed, same FIFO
+    convention as `MAX_SNIPER_EVENTS` (app/nexus.py)."""
+    if history and history[-1].id == snapshot.id:
+        return history
+    updated = [*history, snapshot]
+    if len(updated) > max_snapshots:
+        updated = updated[-max_snapshots:]
+    return updated

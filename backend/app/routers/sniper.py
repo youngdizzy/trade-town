@@ -13,6 +13,7 @@ from app.persistence import persist_modules
 from app.schemas import (
     SniperCandidate,
     SniperEngineStatusRead,
+    SniperEquitySnapshot,
     SniperEvent,
     SniperLead,
     SniperLesson,
@@ -79,6 +80,19 @@ async def sniper_pnl_history() -> list[SniperPnlHistoryPoint]:
     realized-only, not a mark-to-market equity curve)."""
     state = await game_state.snapshot()
     return build_sniper_pnl_history(state.sniper_trade_history)
+
+
+@router.get("/equity-history", response_model=list[SniperEquitySnapshot])
+async def sniper_equity_history(limit: int = Query(default=500, ge=1, le=7_200)) -> list[SniperEquitySnapshot]:
+    """"Equity Snapshot Telemetry 1.0" directive — the real, chronological
+    (oldest first), already-persisted account-equity history (see
+    `SniperEquitySnapshot`'s own docstring). Bounded server-side
+    (`limit`, default 500 — a few minutes to over an hour of real time
+    depending on how much history exists) so the frontend never has to
+    request or render the full 7,200-snapshot cap in one response; the
+    most RECENT `limit` snapshots are returned, still oldest-first."""
+    state = await game_state.snapshot()
+    return state.sniper_equity_history[-limit:]
 
 
 @router.get("/events", response_model=list[SniperEvent])

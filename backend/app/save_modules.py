@@ -181,6 +181,12 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # event log, same tick-mutated category as the sniper_* fields
         # above (not the permanent sniper_trade_history archive below).
         "sniper_events",
+        # "Equity Snapshot Telemetry 1.0" directive — real, capped rolling
+        # account-equity history (bounded, FIFO-trimmed, see
+        # MAX_SNIPER_EQUITY_SNAPSHOTS's own comment), same category as
+        # sniper_events above — not the permanent, never-pruned
+        # sniper_trade_history archive below.
+        "sniper_equity_history",
         # "Terminal 2.1" directive, Phase 5 — CEO-managed wallet
         # metadata, real mutated state (not recomputed), same category
         # as sniper_engine_config above.
