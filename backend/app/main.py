@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import init_db
 from app.persistence import DEFAULT_SLOT, ensure_default_run_registered, get_active_run_id, load_state, persist_modules, register_run, set_active_slot
-from app.routers import accounts, agent_trading_status, audit, black_box, black_swan, board, calendar, calibration, collaboration_intelligence, constitution, decision_vault, education, emergency, energy, executive, failure_review, foundational_mentors, goals, health, institutional_memory, knowledge_graph, market, mentor, performance_review, player_vs_ai, prediction_tracking, quant_developer, risk, runs, sandbox, save, self_improvement, situation_room, skill_progression, sniper, talent, time, trades, trading_modes, trading_restrictions, travel_mode, treasury, vision_board, ws
+from app.routers import accounts, agent_trading_status, ai_reasoning, audit, black_box, black_swan, board, calendar, calibration, collaboration_intelligence, constitution, decision_vault, education, emergency, energy, executive, failure_review, foundational_mentors, goals, health, institutional_memory, knowledge_graph, market, mentor, performance_review, player_vs_ai, prediction_tracking, quant_developer, risk, runs, sandbox, save, self_improvement, situation_room, skill_progression, sniper, talent, time, trades, trading_modes, trading_restrictions, travel_mode, treasury, vision_board, ws
 from app.sim import run_sim_loop
 from app.state import game_state
 
@@ -93,6 +93,7 @@ app.include_router(sniper.router)
 app.include_router(foundational_mentors.router)
 app.include_router(decision_vault.router)
 app.include_router(institutional_memory.router)
+app.include_router(ai_reasoning.router)
 app.include_router(collaboration_intelligence.router)
 app.include_router(performance_review.router)
 app.include_router(skill_progression.router)

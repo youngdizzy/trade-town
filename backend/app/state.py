@@ -124,6 +124,8 @@ from app.vision_board import (
 from app.schemas import (
     AccountType,
     AgentId,
+    AIReasoningResult,
+    AIReasoningRole,
     RuleType,
     Weekday,
     BlackBoxPriority,
@@ -272,8 +274,18 @@ from app.knowledge_sharing import (
 from app.model_validation import cap_strategy_model_validations, generate_model_validation_report
 from app.talent import mark_talent_report_viewed
 from app.watchlist import default_watchlist
+from app.ai_provider import get_ai_provider
+from app.ai_context_builder import build_evidence_packet_for_proposal, resolve_deterministic_outcome
+from app.ai_reasoning import run_devils_advocate_reasoning, run_researcher_reasoning
+from app.devils_advocate import ELIGIBLE_DEVILS_ADVOCATES
 
 MAX_DIALOGUE_HISTORY = 200
+# CEO directive "TradeTown — True AI Agent Reasoning Foundation 1.0", Part
+# XXIV — a hard cap on `ai_reasoning_results`, the exact same bounded-list
+# convention every other unbounded-growth save list in this module already
+# follows (MAX_CHALLENGE_REPORTS, MAX_CEO_DECISIONS, ...): oldest results
+# are dropped once the cap is hit, never silently unbounded growth.
+MAX_AI_REASONING_RESULTS = 500
 MAX_BLACK_BOX_FUNDING_PER_CALL = 5000.0
 MAX_BLACK_BOX_NOTES = 20
 # v0.7 Feature 34 — CEO time controls. MAX_FAST_FORWARD_HOURS bounds the
@@ -3438,6 +3450,117 @@ class GameState:
                 }
             )
             return self.data, run_record
+
+    async def submit_ai_reasoning_request(self, proposal_id: str, *, role: AIReasoningRole) -> tuple[GameSaveState, AIReasoningResult]:
+        """CEO directive "TradeTown — True AI Agent Reasoning Foundation
+        1.0" — the one real entry point that runs a Researcher or Devil's
+        Advocate reasoning call against a real, live `TradeProposal`. Never
+        called from `nexus.py::tick()` (fully synchronous, holds the game
+        lock end-to-end) — this follows the exact same real
+        snapshot-under-lock / slow-work-outside-lock / merge-under-lock
+        convention `submit_research_factory_run()` above already
+        established, since the actual provider network call
+        (app/ai_provider.py) can be slow and must never block the tick
+        loop or hold `self.lock` for its duration.
+
+        This method NEVER places an order, NEVER resolves a proposal,
+        NEVER writes institutional memory, and NEVER alters
+        `deterministic_recommendation`/Gatekeeper/Risk Contract state —
+        its only effect is appending one new, structured, fully-provenanced
+        `AIReasoningResult` (Part XVIII) to `self.data.ai_reasoning_results`.
+        A `role="devils_advocate"` request independently reuses the exact
+        real evidence packet plus, when one already exists for this same
+        proposal, the most recent completed `role="researcher"` result as
+        an explicitly-labeled claim to verify (Part XXXI/XXXII) — never
+        forcing agreement or disagreement.
+        """
+        async with self.lock:
+            proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
+            if proposal is None:
+                raise KeyError(f"No trade proposal with id {proposal_id!r}")
+            market_intelligence = self.data.market_intelligence
+            institutional_memory = self.data.institutional_memory
+            knowledge_events = self.data.knowledge_events
+            existing_results = self.data.ai_reasoning_results
+
+        packet_id = f"aipacket-{uuid.uuid4().hex[:16]}"
+        task = f"Evaluate trade proposal {proposal.symbol} ({proposal.id})"
+        packet = build_evidence_packet_for_proposal(
+            proposal,
+            packet_id=packet_id,
+            task=task,
+            agent_role=role,
+            market_intelligence=market_intelligence,
+            institutional_memory=institutional_memory,
+            knowledge_events=knowledge_events,
+        )
+        provider = get_ai_provider()
+        if role == "researcher":
+            result = await run_researcher_reasoning(
+                packet, provider=provider, deterministic_recommendation=proposal.overall_recommendation
+            )
+        else:
+            existing_devils_advocate_count = sum(1 for r in existing_results if r.role == "devils_advocate")
+            agent_id = ELIGIBLE_DEVILS_ADVOCATES[existing_devils_advocate_count % len(ELIGIBLE_DEVILS_ADVOCATES)]
+            prior_researcher_result = next(
+                (r for r in reversed(existing_results) if r.proposal_id == proposal_id and r.role == "researcher" and r.status == "completed"),
+                None,
+            )
+            result = await run_devils_advocate_reasoning(
+                packet,
+                provider=provider,
+                agent_id=agent_id,
+                researcher_result=prior_researcher_result,
+                deterministic_recommendation=proposal.overall_recommendation,
+            )
+
+        async with self.lock:
+            updated_results = [*self.data.ai_reasoning_results, result][-MAX_AI_REASONING_RESULTS:]
+            self.data = self.data.model_copy(update={"ai_reasoning_results": updated_results})
+            return self.data, result
+
+    async def refresh_ai_reasoning_outcomes(self) -> GameSaveState:
+        """CEO directive Part XXXVIII/XXXIX — the one real, additive
+        shadow-outcome grading pass: for every real `AIReasoningResult`
+        still `outcome_status == "pending"`, resolves it against the SAME
+        real decision/journal-entry lookup `resolve_deterministic_outcome()`
+        already established (mirroring, never duplicating, the Knowledge
+        Application Loop's own grading convention) — never touches a
+        result that is not pending, never invents an outcome for a
+        proposal that has no real decision/journal entry yet."""
+        async with self.lock:
+            decisions = self.data.decisions
+            paper_trade_journal = self.data.paper_trade_journal
+            results = self.data.ai_reasoning_results
+            updated: list[AIReasoningResult] = []
+            changed = False
+            for r in results:
+                if r.status != "completed" or r.proposal_id is None:
+                    updated.append(r)
+                    continue
+                if r.outcome_status == "evaluated":
+                    updated.append(r)
+                    continue
+                outcome, outcome_ref = resolve_deterministic_outcome(r.proposal_id, decisions=decisions, paper_trade_journal=paper_trade_journal)
+                if outcome == "pending":
+                    updated.append(r if r.outcome_status == "pending" else r.model_copy(update={"outcome_status": "pending"}))
+                    if r.outcome_status != "pending":
+                        changed = True
+                    continue
+                changed = True
+                updated.append(
+                    r.model_copy(
+                        update={
+                            "outcome_status": "evaluated",
+                            "outcome": outcome,
+                            "outcome_ref": outcome_ref,
+                            "evaluated_at": _now_iso(),
+                        }
+                    )
+                )
+            if changed:
+                self.data = self.data.model_copy(update={"ai_reasoning_results": updated})
+            return self.data
 
     async def submit_research_discovery_cycle(
         self,

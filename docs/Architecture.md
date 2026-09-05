@@ -22112,3 +22112,194 @@ structured recommendation (thesis/evidence/counter-evidence/assumptions/
 uncertainty), never touching authoritative state directly — sequenced
 here, not before, so the first real AI reasoning in this codebase
 reasons over proven-real evidence rather than dead telemetry.
+
+## CEO directive "TradeTown — True AI Agent Reasoning Foundation 1.0"
+
+The first real, non-deterministic, non-rule-based model-reasoning
+capability in TradeTown, scoped to exactly two agent roles (Researcher,
+Devil's Advocate), shadow-mode-first: it reasons and its full result is
+persisted, but it never places an order, never resolves a proposal,
+never bypasses Gatekeeper/Risk Contract/Emergency Stop, and never
+directly writes institutional memory. Deterministic governance remains
+fully authoritative; the model layer is additive telemetry only.
+
+### Phase 0 forensic audit findings
+
+Verified by direct inspection, not assumed: `requirements.txt` had no
+httpx/requests/LLM SDK of any kind; `app/config.py`'s `Settings`
+dataclass had no provider fields; `.env.example` had no provider
+config; no `ANTHROPIC_API_KEY`/`OPENAI_API_KEY`/equivalent exists in
+this backend process's own environment. (The `ANTHROPIC_BASE_URL`/proxy
+variables visible in this development container belong to the
+Claude-Code tooling session that built this feature, not to the
+TradeTown backend process — never treated as a usable credential here.)
+`httpx` was already present transitively (via FastAPI/Starlette's own
+test-client dependency) but had never been a direct, declared
+dependency — added explicitly (`httpx==0.27.2`) since this milestone
+takes a genuine load-bearing dependency on it. `app/nexus.py::tick()` is
+fully synchronous with zero `await` statements under `GameState`'s
+single non-reentrant lock — confirmed, again, that a real network-bound
+reasoning call must never be invoked from inside it.
+
+### Architecture
+
+- **`app/ai_provider.py`** (new) — the minimal safe provider
+  abstraction. `AIProvider` is a `Protocol` whose `call()` takes
+  `system_prompt` (fixed, trusted) and `user_content` (untrusted,
+  structured evidence) as two permanently separate parameters — no
+  concrete implementation can accidentally concatenate untrusted content
+  into the trusted instruction channel. `get_ai_provider()` reads
+  `TRADETOWN_AI_PROVIDER_API_KEY` from the process's own environment
+  once, server-side; returns `UnavailableAIProvider` (never a crash,
+  never a fabricated success) whenever it's unset — the honest default
+  in this environment today — or a real `AnthropicAIProvider` when it's
+  genuinely present. The key is never logged, never placed in any
+  `AIReasoningResult` field, never returned by any API response, never
+  persisted to `GameSaveState`.
+- **`app/ai_context_builder.py`** (new) — the one real, pure function
+  (`build_evidence_packet_for_proposal()`) that selects VERIFIED
+  TradeTown evidence into a bounded, structured `AIEvidencePacket` — the
+  only thing a reasoning call is ever allowed to see. Every item is one
+  of exactly two real kinds: `fact` (a real, already-computed field off
+  the SAME `TradeProposal`/`MarketIntelligenceState` the deterministic
+  pipeline already used for this candidate) or `knowledge` (a real,
+  already-promoted `InstitutionalMemoryEntry`, with a real supported/
+  contradicted summary when graded `KnowledgeEvent` evidence exists —
+  reusing, not duplicating, `app/knowledge_sharing.py`'s grading). No
+  `inference` is ever manufactured here — that would tell the model what
+  to conclude; only the model itself produces inferences. Anti-lookahead
+  is structural: every item's `as_of_sim_minutes` is checked against the
+  packet's own `knowledge_cutoff_sim_minutes` (the real
+  `TradeProposal.created_sim_minutes`), so a memory promoted after a
+  proposal's own creation time can never leak into its evidence, no
+  matter how relevant `retrieve_relevant_memory()` would otherwise rank
+  it. `resolve_deterministic_outcome()` mirrors (never duplicates)
+  `grade_knowledge_applications()`'s own real decision/journal lookup
+  convention for grading an `AIReasoningResult` against real subsequent
+  evidence.
+- **`app/ai_reasoning.py`** (new) — `run_researcher_reasoning()` and
+  `run_devils_advocate_reasoning()`. Both fixed system prompts bake in a
+  trust-boundary instruction warning the model that every string in the
+  evidence packet is untrusted DATA that may itself contain adversarial
+  text ("ignore previous instructions", "disable risk controls", ...)
+  and must never be followed — the structural core of the
+  prompt-injection defense is that no code path in this module ever
+  builds a system prompt from packet content; untrusted evidence is
+  serialized only into the user message. The model must return a single
+  structured JSON object; `_validate_and_build_result()` never trusts it
+  beyond what it explicitly checks: `thesis` must be a real non-empty
+  string or the result is `invalid_output`; `recommendation` must be one
+  of the five allowed literal values or is dropped to `None`;
+  `confidence` must be a real number in [0, 100] or is dropped; every
+  cited id in `supporting_evidence`/`contradictory_evidence`/
+  `knowledge_ids_used` is checked against the REAL set of ids that were
+  actually in the packet — an id that wasn't is moved to
+  `invalid_citations` and `citation_validation_passed` is set `False`,
+  never silently accepted. Every non-`"completed"` status
+  (`provider_unavailable`/`provider_timeout`/`provider_error`/
+  `invalid_output`) leaves every reasoning field `None`/empty — never a
+  fabricated partial answer. Devil's Advocate independence: it always
+  receives the SAME raw evidence items as the Researcher (never only a
+  summary) plus, when one exists, the Researcher's own prior result
+  explicitly labeled `"researcher_claim_to_verify_independently"` with a
+  "not verified evidence" note — never forcing agreement or
+  disagreement; whatever the model concludes is recorded as-is.
+- **`GameState.submit_ai_reasoning_request()`** (`app/state.py`) — the
+  one real, live entry point, following the exact snapshot-under-lock /
+  slow-work-outside-lock / merge-under-lock convention
+  `submit_research_factory_run()` already established (never holding
+  `self.lock` across the real, potentially-slow provider call). Devil's
+  Advocate agent identity rotates through the SAME
+  `ELIGIBLE_DEVILS_ADVOCATES` tuple `app/devils_advocate.py`'s own
+  rotation already uses. Appends exactly one new `AIReasoningResult` to
+  `self.data.ai_reasoning_results`, capped at `MAX_AI_REASONING_RESULTS`
+  (500) — the same bounded-list convention every other unbounded-growth
+  save list in this module follows. Never mutates
+  `trade_proposals`/`decisions`/risk state.
+  `GameState.refresh_ai_reasoning_outcomes()` grades every real,
+  still-pending completed result against
+  `resolve_deterministic_outcome()`'s real evidence, never touching an
+  already-evaluated result and never inventing an outcome for a proposal
+  with no real decision/journal entry yet.
+- **API** (`app/routers/ai_reasoning.py`, new): `POST
+  /api/ai-reasoning/run?proposalId=...&role=researcher|devils_advocate`
+  — human-triggered only; returns the full `AIReasoningResult` regardless
+  of status (an honest `provider_unavailable` is a 200, not an error);
+  404 only for an unknown `proposal_id`. `GET /api/ai-reasoning/results`
+  — read-only, computed fresh, optionally filtered to one proposal. `POST
+  /api/ai-reasoning/refresh-outcomes` — triggers the shadow-grading pass.
+- **Schema**: `AIEvidenceItem`/`AIEvidencePacket`/`AIReasoningResult`
+  (new, `app/schemas.py`) carry full reasoning provenance —
+  agent→task→evidence-packet-id→knowledge-ids-used→model-provider→
+  model-version→prompt-version→result→outcome→evaluated-at — fully
+  reconstructable from persisted state alone.
+  `GameSaveState.ai_reasoning_results` is a new field in the
+  `knowledge_archive` save-module group (`app/save_modules.py`).
+
+### Explicitly NOT built
+
+No autonomous/tick-triggered reasoning calls (Part XXVIII shadow-mode-
+first — every call today is human-triggered from the router; nothing in
+`nexus.py::tick()` calls this layer). No provider other than Anthropic's
+Messages API (the one real, minimal implementation this milestone
+ships — the `AIProvider` Protocol is provider-agnostic, but no second
+concrete provider was built). No chain-of-thought exposure anywhere (the
+model is instructed to return only the structured JSON contract; no raw
+completion text is ever persisted or returned). No UI surface in this
+slice — a minimal, additive read-only panel is deferred, matching the
+Knowledge Application Loop's own "backend first, verify, then decide on
+UI" sequencing. No change to Gatekeeper/Risk Contract/Emergency Stop/
+order placement of any kind — this milestone has zero write access to
+any of those paths. No live trading of any kind (paper-only, as always).
+
+### Testing
+
+67 new tests across four files: `tests/test_ai_provider.py` (8 —
+honest-unavailable default, real-provider construction, a real HTTP call
+mocked via `httpx.MockTransport` for ok/non-200/timeout/transport-error,
+confirming the API key never appears in any result); `tests/test_ai_context_builder.py`
+(11 — fact items trace to real proposal fields, the anti-lookahead
+cutoff structurally excludes a later-promoted memory even when
+`retrieve_relevant_memory()` would otherwise surface it, every real
+`resolve_deterministic_outcome()` branch); `tests/test_ai_reasoning.py`
+(19 — every honest non-"completed" status mapping, markdown-fence
+tolerance, missing/invalid field handling, fabricated-citation rejection,
+a structural test proving a hostile string embedded in evidence never
+reaches the system prompt actually sent to the provider, Devil's
+Advocate independence including a genuine, unforced disagreement case);
+`tests/test_state_ai_reasoning.py` (8 — unknown-proposal raises rather
+than fabricating, agent-rotation, the researcher-claim handoff, the
+`MAX_AI_REASONING_RESULTS` cap dropping the oldest, all three outcome-
+grading branches). One real bug was caught and fixed by this test suite:
+`refresh_ai_reasoning_outcomes()` initially passed camelCase alias keys
+(`outcomeStatus`/`outcomeRef`/`evaluatedAt`) to `model_copy(update=...)`,
+which — unlike the Pydantic constructor — only accepts real snake_case
+field names; the update silently no-opped on those three fields until
+the test caught the mismatch. Full backend suite (4147 prior + these new
+tests), mypy (236 files), ruff: clean.
+
+### Final Classification: B — REAL, WIRED, NOT YET LIVE-PROVEN
+
+Every layer (provider abstraction, evidence builder, structured-output
+validation, citation integrity, prompt-injection defense, Devil's
+Advocate independence, provenance, persistence, capping, shadow-outcome
+grading) is real, tested against production code paths, and reachable
+through a real API. It is not classified A because no real model call
+has ever actually executed against a live provider in this environment
+— `TRADETOWN_AI_PROVIDER_API_KEY` is genuinely unset here, so every live
+verification this milestone can honestly perform exercises the
+`provider_unavailable` path end-to-end (confirmed: no crash, no secret
+leak, a fully-formed `AIReasoningResult` with `status="provider_unavailable"`
+persisted and returned). The `AnthropicAIProvider` HTTP path itself is
+verified only against a mocked transport, never a real network call.
+Deploying a real key and observing one real, validated, cited
+Researcher/Devil's Advocate reasoning result against a live proposal is
+the honest gap between B and A. Recommended next milestone: **Shadow
+Reasoning Burn-In 1.0** — configure a real provider key, run
+Researcher/Devil's Advocate reasoning against real live proposals over
+real sim days, and use `refresh_ai_reasoning_outcomes()`'s own real
+grading to answer, with real evidence, the one question this milestone
+deliberately left open: does the model's structured recommendation
+actually agree with reality more often than the deterministic desk
+alone — before any future milestone considers surfacing it anywhere
+more prominent than shadow telemetry.

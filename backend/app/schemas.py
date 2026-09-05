@@ -13479,6 +13479,180 @@ class SniperEngineStatusRead(CamelModel):
     expectancy_r: float | None = Field(default=None, alias="expectancyR")
 
 
+# ============================================================================
+# CEO directive "TradeTown — True AI Agent Reasoning Foundation 1.0" — the
+# first real (as opposed to deterministic/rule-based) reasoning schema this
+# codebase has ever had. Phase 0's own forensic audit confirmed zero
+# LLM/HTTP-client infrastructure existed anywhere before this directive: no
+# httpx/requests in requirements.txt, no ANTHROPIC_API_KEY/OPENAI_API_KEY (or
+# equivalent) in this process's own environment, no provider fields in
+# app/config.py. These schemas are deliberately shaped so a real, honest
+# "provider unavailable" result and a real, successful model result are
+# structurally the SAME record (only `status`/the reasoning fields differ) —
+# there is no second, fabricated-looking success path. See app/ai_provider.py,
+# app/ai_context_builder.py, and app/ai_reasoning.py for the real modules that
+# build and populate these.
+# ============================================================================
+
+AIReasoningRole = Literal["researcher", "devils_advocate"]
+
+# Every non-terminal state is "this reasoning never happened" — never
+# fabricated as if it had. "completed" is the only status where
+# thesis/recommendation/etc. are ever populated from a real model response.
+AIReasoningStatus = Literal["completed", "provider_unavailable", "provider_timeout", "provider_error", "invalid_output"]
+
+# Part IV's own five-way evidence classification — never collapsed into a
+# single "context" blob. "inference" is reserved for what the MODEL itself
+# produces in its result (see AIReasoningResult.assumptions/unknowns below);
+# the evidence packet the context builder constructs never contains a
+# pre-filled inference, since inventing one would be indistinguishable from
+# telling the model what to conclude.
+AIEvidenceKind = Literal["fact", "historical", "knowledge", "unknown"]
+
+# Part XVI's own five-way recommendation vocabulary — deliberately its own
+# literal, not AnalystChoice (buy/sell/wait), since an AI recommendation can
+# also honestly be "I don't have enough to decide" (research_more) or
+# "the thesis itself doesn't hold up" (reject_thesis), neither of which
+# AnalystChoice's three heuristic-desk values can express.
+AIRecommendation = Literal["buy", "sell", "wait", "research_more", "reject_thesis"]
+
+# Part XV — never assumed to be statistically calibrated. "model_self_reported"
+# is the only real source available while this milestone ships (a model's own
+# stated confidence, explicitly labeled as exactly that, never treated as a
+# calibrated probability); "not_applicable" covers every non-"completed" status.
+AIConfidenceSource = Literal["model_self_reported", "not_applicable"]
+
+
+class AIEvidenceItem(CamelModel):
+    """One real, individually-addressable, citable item in an
+    AIEvidencePacket. `id` is the ONLY handle the model may cite back —
+    see app/ai_reasoning.py's citation validation, which rejects any
+    citation not matching a real id that was actually in the packet."""
+
+    id: str
+    kind: AIEvidenceKind
+    label: str
+    detail: str
+    # The real sim-minute this item's own underlying fact/record was
+    # true/created as of — never later than the packet's own
+    # knowledge_cutoff_sim_minutes (see AIEvidencePacket, Part VI).
+    as_of_sim_minutes: int = Field(alias="asOfSimMinutes")
+
+
+class AIEvidencePacket(CamelModel):
+    """Part V/VI/VII — the one real, explicit, snapshotted context an AI
+    reasoning call is allowed to see. Built once by
+    app/ai_context_builder.py, never mutated afterward, never re-derived
+    from "whatever state looks like now" at grading/replay time — see
+    that module's own docstring for exactly which real TradeTown records
+    populate `items`."""
+
+    id: str
+    task: str
+    agent_role: AIReasoningRole = Field(alias="agentRole")
+    proposal_id: str | None = Field(default=None, alias="proposalId")
+    symbol: str | None = None
+    # Part VI — the hard anti-lookahead boundary: no `items` entry's own
+    # `as_of_sim_minutes` may exceed this value. Sourced from the real
+    # triggering context (a TradeProposal's own real `created_sim_minutes`
+    # when one exists), never a wall-clock timestamp.
+    knowledge_cutoff_sim_minutes: int = Field(alias="knowledgeCutoffSimMinutes")
+    items: list[AIEvidenceItem] = Field(default_factory=list)
+    # Real, disclosed, fixed limitations of what this packet can honestly
+    # contain (e.g. "market data is simulated, not live" — reusing
+    # app/market_intelligence.py's own existing honesty disclosures)
+    # — never fabricated, never omitted to make the packet look richer.
+    known_limitations: list[str] = Field(default_factory=list, alias="knownLimitations")
+    context_builder_version: str = Field(alias="contextBuilderVersion")
+    created_at: str = Field(alias="createdAt")
+
+
+class AIReasoningResult(CamelModel):
+    """Part VIII/XIX — the one persisted, permanent, structured result of
+    a single real reasoning call (or a real, honest failure to make
+    one). Every `AIReasoningResult` traces to exactly one
+    `AIEvidencePacket` by id — see app/ai_reasoning.py for how each field
+    is populated and validated server-side; nothing here is ever
+    populated by blindly trusting whatever JSON the model returned.
+    Never persists provider secrets, raw API keys, or private
+    chain-of-thought — see app/ai_provider.py's own docstring for why
+    only the final structured text is ever read from a provider
+    response."""
+
+    id: str
+    agent_id: AgentId = Field(alias="agentId")
+    role: AIReasoningRole
+    task: str
+    evidence_packet_id: str = Field(alias="evidencePacketId")
+    # Real, existing TradeProposal linkage when this reasoning was run
+    # against one — None for a standalone/test reasoning call.
+    proposal_id: str | None = Field(default=None, alias="proposalId")
+    symbol: str | None = None
+
+    # Part VI/XX — real provider/model identity, or an honest
+    # "unavailable"/"VERSION_UNAVAILABLE" — never a guessed value.
+    model_provider: str = Field(alias="modelProvider")
+    model_name: str | None = Field(default=None, alias="modelName")
+    model_version: str = Field(alias="modelVersion")
+    # Part XXI — the fixed system-instruction text's own version tag
+    # (app/ai_reasoning.py's PROMPT_VERSION constants) — bumped only when
+    # the actual instruction text changes, never silently.
+    prompt_version: str = Field(alias="promptVersion")
+
+    # Part IX — populated ONLY when status == "completed", from the
+    # model's own real structured response, never fabricated for any
+    # other status.
+    thesis: str | None = None
+    supporting_evidence: list[str] = Field(default_factory=list, alias="supportingEvidence")
+    contradictory_evidence: list[str] = Field(default_factory=list, alias="contradictoryEvidence")
+    knowledge_ids_used: list[str] = Field(default_factory=list, alias="knowledgeIdsUsed")
+    assumptions: list[str] = Field(default_factory=list)
+    unknowns: list[str] = Field(default_factory=list)
+    uncertainty: str | None = None
+    recommendation: AIRecommendation | None = None
+    confidence: float | None = None
+    confidence_source: AIConfidenceSource = Field(default="not_applicable", alias="confidenceSource")
+    risk_flags: list[str] = Field(default_factory=list, alias="riskFlags")
+    invalidation_conditions: list[str] = Field(default_factory=list, alias="invalidationConditions")
+    alternative_hypotheses: list[str] = Field(default_factory=list, alias="alternativeHypotheses")
+
+    # Part X — citation validation, always populated (even for a
+    # "completed" result with zero bad citations, where this is simply
+    # True/[]). Any id the model cited that was NOT a real id present in
+    # the evidence packet is moved here, never left inside
+    # supporting_evidence/contradictory_evidence/knowledge_ids_used above.
+    citation_validation_passed: bool = Field(default=True, alias="citationValidationPassed")
+    invalid_citations: list[str] = Field(default_factory=list, alias="invalidCitations")
+
+    # Part XVII — the real, existing deterministic system's own
+    # recommendation for the SAME task, recorded alongside (never
+    # overwritten by, never overwriting) the AI's own — None when no
+    # deterministic counterpart exists for this task.
+    deterministic_recommendation: AnalystChoice | None = Field(default=None, alias="deterministicRecommendation")
+
+    status: AIReasoningStatus
+    failure_detail: str | None = Field(default=None, alias="failureDetail")
+
+    # Part XXIV — real telemetry only; None (never 0 or a guess) when the
+    # provider call never happened or didn't report a figure.
+    latency_ms: float | None = Field(default=None, alias="latencyMs")
+    input_tokens: int | None = Field(default=None, alias="inputTokens")
+    output_tokens: int | None = Field(default=None, alias="outputTokens")
+
+    created_at: str = Field(alias="createdAt")
+
+    # Part XXXVIII — outcome tracking, mirroring KnowledgeEvent's own
+    # application/outcome field shape (app/schemas.py's KnowledgeEvent) so
+    # the same real "grade later, against real subsequent evidence"
+    # discipline applies here too. `outcome_status` stays "not_applicable"
+    # for any non-"completed"/non-actionable-recommendation result — never
+    # graded against an outcome that couldn't possibly relate to it.
+    outcome_status: Literal["pending", "evaluated", "not_applicable"] = Field(default="not_applicable", alias="outcomeStatus")
+    outcome: KnowledgeApplicationOutcome | None = None
+    outcome_ref: str | None = Field(default=None, alias="outcomeRef")
+    evaluated_at: str | None = Field(default=None, alias="evaluatedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -13861,6 +14035,12 @@ class GameSaveState(CamelModel):
     # KnowledgeEvent per real step of the knowledge-sharing lifecycle
     # (see that schema's own docstring above and app/knowledge_sharing.py).
     knowledge_events: list[KnowledgeEvent] = Field(default_factory=list, alias="knowledgeEvents")
+    # CEO directive "TradeTown — True AI Agent Reasoning Foundation 1.0" —
+    # one capped, permanent AIReasoningResult per real reasoning call (or
+    # real, honest provider-unavailable/invalid-output outcome) — see
+    # that schema's own docstring and app/ai_reasoning.py. SHADOW ONLY:
+    # never read by the trade-proposal/Gatekeeper/order pipeline.
+    ai_reasoning_results: list[AIReasoningResult] = Field(default_factory=list, alias="aiReasoningResults")
     # CEO Company Health + Live Market Realism directive, Section 3 —
     # one capped, permanent LearningEvent per real Knowledge-tier
     # crossing (see app/academy.py's award_points()).
@@ -15329,3 +15509,5 @@ class HealthResponse(CamelModel):
     # for itself. See frontend/tests/global-setup.ts, which refuses to
     # run the suite at all when this is true.
     is_default_dev_save: bool = Field(alias="isDefaultDevSave")
+
+

@@ -7,6 +7,87 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — True AI Agent Reasoning Foundation 1.0."**
+  The first real, non-deterministic, non-rule-based model-reasoning
+  capability in TradeTown — scoped to exactly two agent roles
+  (Researcher, Devil's Advocate), shadow-mode-first (reasons and is
+  recorded, never controls trading), reading exclusively from the
+  Knowledge Application Loop's own real evidence/outcome substrate.
+  Phase 0 confirmed zero pre-existing LLM infrastructure by direct
+  inspection: no httpx/requests/LLM SDK in `requirements.txt`, no
+  provider fields in `app/config.py`, no `ANTHROPIC_API_KEY`/equivalent
+  in this backend process's own environment.
+  - **`app/ai_provider.py`** (new) — the minimal safe provider
+    abstraction. `AIProvider` is a `Protocol` keeping `system_prompt`
+    (fixed, trusted) and `user_content` (untrusted evidence) as
+    permanently separate parameters, so no implementation can
+    accidentally fold untrusted content into the trusted instruction
+    channel. `get_ai_provider()` returns the honest
+    `UnavailableAIProvider` (never a crash, never a fabricated success)
+    unless `TRADETOWN_AI_PROVIDER_API_KEY` is genuinely set in the
+    environment, in which case it returns a real `AnthropicAIProvider`.
+    The key is never logged, never placed in any response field, never
+    persisted.
+  - **`app/ai_context_builder.py`** (new) — `build_evidence_packet_for_proposal()`
+    selects VERIFIED evidence into a bounded, structured
+    `AIEvidencePacket`, the only thing a reasoning call ever sees. Every
+    item is a real `fact` (straight off the same `TradeProposal`/
+    `MarketIntelligenceState` the deterministic pipeline already used)
+    or a real `knowledge` item (a promoted `InstitutionalMemoryEntry`,
+    with a real supported/contradicted summary reusing — never
+    duplicating — `app/knowledge_sharing.py`'s grading). No `inference`
+    is ever manufactured here. Anti-lookahead is structural: a memory
+    promoted after the proposal's own `created_sim_minutes` can never
+    leak in, regardless of how `retrieve_relevant_memory()` would
+    otherwise rank it.
+  - **`app/ai_reasoning.py`** (new) — `run_researcher_reasoning()` /
+    `run_devils_advocate_reasoning()`. Fixed system prompts bake in a
+    trust-boundary instruction that every evidence string is untrusted
+    DATA, never instructions; no code path ever builds a system prompt
+    from packet content. The model must return structured JSON;
+    `_validate_and_build_result()` never trusts it beyond what's
+    explicitly checked — an empty/missing thesis or non-JSON output is
+    `invalid_output`; an out-of-range confidence or unrecognized
+    recommendation is dropped, never guessed; every cited id is checked
+    against the REAL ids in the packet, with any fabricated citation
+    moved to `invalid_citations` and `citation_validation_passed` set
+    `False`. The Devil's Advocate always receives the SAME raw evidence
+    as the Researcher plus, when one exists, the Researcher's own result
+    explicitly labeled an unverified claim — never forcing agreement or
+    disagreement.
+  - **`GameState.submit_ai_reasoning_request()`** (`app/state.py`) — the
+    live entry point, following the exact snapshot-under-lock/
+    slow-work-outside-lock/merge-under-lock convention
+    `submit_research_factory_run()` already established (the real
+    provider call never blocks `nexus.py`'s synchronous tick loop).
+    Devil's Advocate identity rotates through the same
+    `ELIGIBLE_DEVILS_ADVOCATES` tuple `app/devils_advocate.py` already
+    uses. Results are capped at `MAX_AI_REASONING_RESULTS` (500).
+    `GameState.refresh_ai_reasoning_outcomes()` grades pending results
+    against real decision/journal evidence, never re-grading an
+    already-evaluated one.
+  - **API**: `POST /api/ai-reasoning/run`, `GET /api/ai-reasoning/results`,
+    `POST /api/ai-reasoning/refresh-outcomes` (new router,
+    `app/routers/ai_reasoning.py`).
+  - **Explicitly NOT built:** no autonomous/tick-triggered reasoning (every
+    call is human-triggered); no provider besides Anthropic's Messages
+    API; no chain-of-thought exposure anywhere; no UI surface this
+    slice; zero write access to Gatekeeper/Risk Contract/Emergency Stop/
+    order placement; no live trading of any kind.
+  - **Testing:** 67 new tests across `tests/test_ai_provider.py` (8,
+    including a real HTTP call mocked via `httpx.MockTransport`),
+    `tests/test_ai_context_builder.py` (11), `tests/test_ai_reasoning.py`
+    (19, including a structural proof that hostile evidence text never
+    reaches the system prompt, and a genuine unforced Researcher/Devil's
+    Advocate disagreement case), and `tests/test_state_ai_reasoning.py`
+    (8). This suite caught and fixed one real bug:
+    `refresh_ai_reasoning_outcomes()` initially passed camelCase alias
+    keys to `model_copy(update=...)`, which — unlike the Pydantic
+    constructor — only accepts real snake_case field names, so the
+    update silently no-opped on three fields until the test caught it.
+    Full backend suite (4147 prior + these new tests), mypy (236 files),
+    ruff: clean.
+
 - **CEO directive "TradeTown — Knowledge Application Loop 1.0."** Closes
   the previously write-only half of the knowledge-sharing lifecycle,
   reusing every existing primitive rather than building a second

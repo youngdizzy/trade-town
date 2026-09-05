@@ -4264,3 +4264,38 @@ Manual exit (Section 18) — closes at the position's own real,
 already-simulated `currentPrice`, never a fabricated fill price. 404 if
 no open position with that id exists. Returns the resulting
 `SniperTrade`.
+
+### `POST /api/ai-reasoning/run?proposalId=...&role=researcher|devils_advocate`
+
+CEO directive "TradeTown — True AI Agent Reasoning Foundation 1.0" —
+human-triggered only; nothing in `nexus.py`'s own tick loop calls this.
+Runs one real Researcher or Devil's Advocate reasoning call
+(`app/ai_reasoning.py`) against a real, currently-pending `TradeProposal`
+(`proposalId`), using a bounded, structured `AIEvidencePacket`
+(`app/ai_context_builder.py`) as the model's only input. `role` defaults
+to `"researcher"`. Returns the full `AIReasoningResult` regardless of
+outcome — an honest `status: "provider_unavailable"` (the default in any
+environment without `TRADETOWN_AI_PROVIDER_API_KEY` configured),
+`"provider_timeout"`, `"provider_error"`, or `"invalid_output"` is a 200
+response, never an HTTP error, since these are real, expected, disclosed
+outcomes. 404 only when `proposalId` doesn't match any real, currently-
+pending proposal. Never places an order, never resolves the proposal,
+never writes institutional memory, never alters the deterministic
+`overallRecommendation`/Gatekeeper/Risk Contract state — its only effect
+is appending one new, persisted `AIReasoningResult`.
+
+### `GET /api/ai-reasoning/results?proposalId=...`
+
+Read-only, computed fresh from `ai_reasoning_results`. `proposalId`
+(optional) filters to one proposal's history. Not broadcast over WS —
+same precedent as `factory_runs`/`research_iterations`, a real,
+growing audit trail meant to be queried, not pushed on every tick.
+
+### `POST /api/ai-reasoning/refresh-outcomes`
+
+Grades every real, still-pending completed `AIReasoningResult` against
+the same real decision/journal-entry evidence
+`resolve_deterministic_outcome()` mirrors from the Knowledge Application
+Loop's own grading convention; never touches an already-evaluated result
+and never invents an outcome for a proposal with no real decision/
+journal entry yet. Returns the full, refreshed `AIReasoningResult[]`.
