@@ -24742,3 +24742,83 @@ as real evidence, and compare it side by side against the same
 definition's existing mock-data baseline — never claiming the real-data
 result is "better" or "validated," only that it is a second, honestly
 distinct body of evidence. Not implemented in this turn.
+
+## CEO directive "TradeTown — Real-Data Research Validation 1.0"
+
+Executes the milestone declared above. **Zero production code changes**
+— confirmed by `git diff --stat` showing only one new test file — since
+the injection architecture already supported everything this required.
+
+### Strategy selection rule (declared before any result was examined)
+
+The FIRST strategy returned by `app/strategy_registry.py::default_researchable_strategies()`,
+in that function's own fixed, pre-existing tuple order (Long registered
+before Short) — `"50 EMA Breakout Pullback (Long)"`,
+id=`50-ema-breakout-pullback-long`, version 1. This is a real,
+already-existing, on-by-default strategy (wired into every fresh save
+via `app/state.py::default_state()`), never authored, tuned, or
+modified for this milestone.
+
+### Window selection rule (declared before any result was examined)
+
+During this milestone's own Phase 0, a real, bounded
+`KrakenMarketDataProvider().get_candles("BTC-USD", "1h", 100_000)` call
+— made before any strategy was run — returned exactly 720 real closed
+candles: Kraken's own real per-request cap for the 1h interval (this
+codebase's adapter implements no pagination, a pre-existing, disclosed
+limitation). `candles_per_symbol=720` was then used identically for
+BOTH the mock and real runs — the only intended difference between the
+two `run_research_experiment()` calls is `market_data_provider`.
+
+### Result summary (see `tests/test_real_data_research_validation.py` for the reproducible configuration)
+
+The mock run produced 0 trades over 720 synthetic candles — this
+definition's setup never triggered in that window. The real Kraken run
+(2026-08-10T19:00 through 2026-09-09T18:00 UTC, 720 real hourly BTC-USD
+candles) produced 2 trades (1 win, 1 loss); `model_validation.verdict
+== "rejected"` (its own `sample_size` check failed — 2 trades is
+genuinely too few by that check's own pre-existing threshold, not a
+new bar invented for this milestone); `look_ahead_audit.verdict ==
+"clean"`. `dataset_metadata.source == "external_real_provider"` /
+`data_category == "real"` for the real run, `"mock_provider"`/
+`"simulated"` for the mock run — both correct.
+
+**This does not establish strategy validity, profitability, or
+superiority of either data source** — both samples are too small for
+any such claim, exactly as both runs' own conclusion field says
+("INSUFFICIENT EVIDENCE" for mock, "REJECTED" for real, each for its
+own real reason).
+
+### Disclosed discrepancy, not fixed
+
+`record.backtest.data_honesty_note` — a narrower, per-axis field
+inside `CompiledStrategyBacktestResult`, distinct from the
+authoritative top-level `ResearchExperimentRecord.data_honesty_note`
+the injection milestone already fixed — still said "(mock)" during the
+real run. This is the same disclosed, deliberately-out-of-scope gap
+named in that milestone's own final report, now empirically confirmed
+in real output. Left unfixed again here to keep this milestone's scope
+to research execution, not a provenance-text sweep across every field.
+
+### Explicitly not built this pass
+
+No new strategy, no strategy tuning, no threshold changes, no
+walk-forward/holdout configuration changes, no capital allocation, no
+Champion/Challenger change, no Gatekeeper/Risk Contract change, no
+Sniper change, no trading connection of any kind, no new persistence
+schema (the committed test file itself is the milestone's reproducible
+research artifact, per this directive's own Phase 12 preference for a
+deterministic test/script over new architecture).
+
+### ONE Next Milestone (not implemented this pass)
+
+**REAL-DATA RESEARCH EXPANSION 1.0** — this milestone's own tiny real
+sample (2 trades) revealed no infrastructure or data-quality blocker;
+the honest limiting factor is sample size, not architecture. The
+smallest next step is widening the real evidence base along an axis
+already supported without new infrastructure — e.g., running the same
+frozen strategy against consecutive/overlapping real Kraken windows
+over time (still request-scoped, still no pagination, still one symbol)
+to accumulate more real trade evidence before any validation claim
+becomes meaningful — never tuning the strategy or thresholds to reach
+a target sample size faster. Not implemented in this turn.

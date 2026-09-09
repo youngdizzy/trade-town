@@ -7,6 +7,43 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Real-Data Research Validation 1.0."**
+  Zero production code changes — the prior "Research Provider
+  Injection 1.0" milestone's architecture already supported everything
+  this required. Ran the real, pre-existing, on-by-default "50 EMA
+  Breakout Pullback (Long)" strategy (`50-ema-breakout-pullback-long`
+  v1, from `app/strategy_registry.py::default_researchable_strategies()`
+  — selected by a pre-declared, outcome-independent rule: the first
+  entry in that function's own fixed registration order) through the
+  identical `run_research_experiment()` call twice — once against the
+  existing mock provider, once against `KrakenMarketDataProvider()`
+  over a real, bounded, empirically-determined 720-candle BTC-USD 1h
+  window (Kraken's own real per-request cap for that interval,
+  determined before either experiment ran).
+  - **Mock baseline**: 0 trades over 720 mock candles — the strategy's
+    setup never triggered against that synthetic series in this window.
+  - **Real evidence**: 2 trades (1 win, 1 loss) over the real Kraken
+    window; Model Validation's own independent, pre-existing framework
+    returned `rejected` (its `sample_size` check failed — 2 trades is
+    genuinely too few for that check's own threshold), and the
+    look-ahead audit read `clean`.
+  - **This does NOT establish strategy validity or profitability** —
+    both bodies of evidence are too small to support any such claim,
+    and this milestone never claimed otherwise. See
+    `tests/test_real_data_research_validation.py` for the full frozen
+    configuration and the final forensic report for the complete
+    side-by-side comparison.
+  - **Disclosed, not fixed**: `record.backtest.data_honesty_note` (a
+    narrower, per-axis field) still said "(mock)" even during the real
+    run — the authoritative top-level `record.data_honesty_note` (fixed
+    by the injection milestone) was correct throughout. Flagged again
+    here rather than silently patched, per this milestone's own
+    explicit "keep scope controlled" instruction.
+  - **Not connected to trading**: neither result touched Gatekeeper,
+    Risk Contract, Champion/Challenger, portfolio, or any order/fill/
+    position path — `run_research_experiment()`'s own signature has no
+    such parameter to connect through.
+
 - **CEO directive "TradeTown — Research Provider Injection 1.0."**
   Removes the architectural blocker the prior Real OHLCV milestone's own
   audit identified: `app/research_experiment.py` and the six research
