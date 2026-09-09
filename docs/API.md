@@ -4334,6 +4334,37 @@ This is not a performance or validation signal — `enabled` means
 "eligible to originate new discovery/entries," nothing more; neither
 strategy is claimed to be profitable or validated.
 
+### `GET /api/sniper/strategy-performance`
+
+CEO directive "TradeTown — Sniper Per-Strategy Performance
+Observability 1.0" — read-only. Returns `SniperStrategyPerformanceSummary`:
+`reads` (one `SniperStrategyPerformanceRead` per strategy currently
+registered and/or observed in the historical trade journal),
+`tradesExcludedMalformed` (a trade whose persisted `pnlSol` was not a
+finite number — excluded, never coerced to `0.0`), `closedTradesConsidered`
+(how many closed trades this specific report was built from —
+`sniper_trade_history` is itself capped at 500 closed trades, oldest
+evicted first, so this can be less than a strategy's true lifetime
+total), `generatedAt`. Each read: `strategyId` (canonical grouping
+key), `name`/`family`/`provenance`/`status` (read from the current
+registry when `isRegistered` is `true`; `family`/`provenance`/`status`
+are `null` and `name` comes from the trades' own historical record
+when a strategy id is observed but no longer registered),
+`distinctStrategyVersionsObserved` (every historical `strategyVersionId`
+actually seen for this id — never collapsed into the current registry
+version), `closedTradeCount`, `winCount`, `lossCount`, `winRatePct`,
+`totalRealizedPnlSol`, `averageRealizedPnlSol`,
+`averageWinningTradeSol`, `averageLosingTradeSol`,
+`observedExpectancyPerClosedTradeSol`. WIN = `pnlSol > 0`; LOSS =
+`pnlSol <= 0` (break-even counts as a loss — the same convention used
+codebase-wide). Every rate/average field is `null` (never a fabricated
+`0%`/`$0`) when its own denominator is zero — `totalRealizedPnlSol`
+alone is a real `0.0` at zero trades. Pure, deterministic aggregation:
+no mutation, no persistence beyond the existing trade journal, cannot
+influence strategy dispatch, the firewall, risk, or Emergency Stop.
+This is observability only — no ranking, no promotion, no
+recommendation.
+
 ### `POST /api/sniper/strategies/{strategy_id}/status`
 
 Body: `{ "status": "enabled" | "disabled" }`. 400 if `strategy_id` is

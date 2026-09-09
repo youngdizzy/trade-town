@@ -7,6 +7,79 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Sniper Per-Strategy Performance
+  Observability 1.0."** A new, read-only `GET /api/sniper/strategy-
+  performance` endpoint answers "what actually happened under each
+  Sniper strategy?" — pure aggregation over the already-persisted
+  `sniper_trade_history` journal, grouped by each closed trade's own
+  historical `strategy_id`. **Observability only**: no Champion/
+  Challenger, no ranking, no promotion, no strategy selection/enable-
+  disable automation, no change to any existing trading path — the
+  report cannot influence dispatch, the firewall, risk, Emergency
+  Stop, or execution, and nothing in `app/memecoin_sniper.py`,
+  `app/nexus.py`, or `app/sniper_ai_reasoning.py` references it
+  (confirmed via grep).
+  - **New pure module** `app/sniper_strategy_performance.py::
+    compute_sniper_strategy_performance()` — deterministic, no
+    persistence, no mutation, no randomness, no network/LLM calls.
+    Duplication-audited against the equities side's own
+    `app/performance_attribution.py::compute_strategy_performance()`:
+    reuses its exact WIN (`pnl > 0`)/LOSS (`pnl <= 0`, break-even
+    counts as a loss) convention for consistency, but is a genuinely
+    separate module because `SniperTrade` shares no type or join
+    requirement with `PaperTrade`/`DecisionVaultEntry` — Sniper's
+    strategy identity is already directly on the trade record at
+    close time, so there is no attribution join to perform at all.
+  - **Honest zero-trade semantics** (this directive's own explicit,
+    stricter rule than the equities precedent): `win_rate_pct`,
+    `average_realized_pnl_sol`, `average_winning_trade_sol`,
+    `average_losing_trade_sol`, and `observed_expectancy_per_closed_
+    trade_sol` are all `null` — never a fabricated `0%`/`$0` — whenever
+    their own denominator is zero (no closed trades, or no
+    winners/losers respectively). `total_realized_pnl_sol` alone is a
+    real, valid `0.0` at zero trades (a true sum over an empty set).
+    **Live-verified**, not just unit-tested: this session's own real
+    dev save shows `memecoin-sniper` with 6 real closed trades (2
+    wins/4 losses, 33.3% win rate) while the newer, not-yet-triggered
+    `memecoin-sniper-whale-confirmation` correctly reports
+    `closedTradeCount: 0` with every rate/average field `null`.
+  - **Historical identity, never rewritten**: grouped strictly by
+    `strategy_id` (never display name, never the CURRENT registry
+    `family`/`version`). Each row separately lists every DISTINCT
+    `strategy_version_id` actually observed among that id's own
+    trades (`distinct_strategy_versions_observed`) — a strategy that
+    ran under two historical versions shows both, never silently
+    implying every trade ran under whichever version happens to be
+    registered today. A strategy no longer present in the current
+    registry (no delete mechanism exists yet, but the report does not
+    assume one never will) still appears, `is_registered: false`,
+    using its own trades' real historical name. A disabled strategy's
+    history remains fully visible and identical after re-enabling —
+    enable/disable state is proven independent of historical
+    existence.
+  - **Data integrity**: a trade with a non-finite (`NaN`/`inf`)
+    `pnl_sol` is excluded and counted separately
+    (`trades_excluded_malformed`), never silently coerced to `0.0`;
+    duplicate trade ids are de-duplicated by id. `closed_trades_
+    considered` discloses exactly how many trades the report was
+    built from — and its own docstring discloses the real, pre-
+    existing limitation this inherits: `sniper_trade_history` is
+    itself capped at `MAX_TRADE_HISTORY` (500) closed trades, oldest
+    evicted first, so a strategy's true lifetime total can exceed what
+    this report can see.
+  - **New tests**: `tests/test_sniper_strategy_performance.py` (19
+    tests covering core aggregation, attribution, registry-vs-
+    historical-data, data integrity, and determinism) plus a new
+    persistence round-trip test proving the report is byte-identical
+    before and after a real save/restart.
+  - **Explicitly NOT built this pass**: Champion/Challenger, strategy
+    ranking/promotion/demotion, automatic strategy selection or
+    enable/disable, optimization, backtesting, statistical
+    significance testing, AI strategy evaluation, and any UI/API
+    language implying validation, superiority, or a recommendation —
+    this milestone answers only "what happened," never "what should
+    TradeTown do about it."
+
 - **CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof
   1.0."** Proves the Sniper Strategy Registry (previous milestone) is a
   REAL dispatch architecture, not a single-entry formality, by

@@ -24404,3 +24404,144 @@ there is something real to compare. Not Champion/Challenger itself:
 this would be read-only observability, no promotion/demotion
 mechanism, no automatic strategy switching, and no claim of
 statistical significance until a real sample size exists.
+
+## CEO directive "TradeTown — Sniper Per-Strategy Performance Observability 1.0"
+
+Implements exactly the milestone the previous section recommended:
+`GET /api/sniper/strategy-performance`, a read-only aggregation of the
+already-persisted `sniper_trade_history` journal grouped by each
+closed trade's own historical `strategy_id`. **Observability only** —
+answers "what happened," never "what TradeTown should do about it."
+
+### Authoritative data source
+
+`SniperTrade` (Section 20's permanent, append-only trade-journal
+record) is the sole source: every entry is created exclusively by
+`app/memecoin_sniper.py::close_position()` and already carries its own
+real, immutable `strategy_id`/`strategy_name`/`strategy_version_id`/
+`strategy_version_status`, copied forward from the `SniperPosition`
+being closed at creation time. `pnl_sol` is the authoritative realized
+P&L field — there is no `pnl_pct` on `SniperTrade` (confirmed via
+direct schema inspection), so every metric this report computes is
+denominated in SOL. A trade's `strategy_id` is never empty or missing
+— the field's own schema default (`SNIPER_STRATEGY_ID`) is real and
+accurate for a trade closed before the registry existed, since at that
+time this really was the engine's only implementation. There is
+therefore no "missing legacy identity" gap requiring a fabricated
+`"unknown-legacy"` policy — proven directly against the schema, not
+assumed.
+
+### Duplication audit
+
+`app/performance_attribution.py::compute_strategy_performance()` is
+the equities side's own real per-strategy aggregation, and was read in
+full before writing anything new. It is built entirely around
+equities-only types (`PaperTrade`, `DecisionVaultEntry`, `Strategy`,
+`TradingSession`) and exists specifically to join a trade against a
+Decision Vault entry, because equities strategy attribution can be
+genuinely missing. Neither condition applies to Sniper: `SniperTrade`
+shares no field or type with those equities objects, and its strategy
+identity is already directly on the record — no join exists to
+duplicate. New module `app/sniper_strategy_performance.py` reuses only
+that equities module's WIN/LOSS boundary convention (`pnl > 0` win,
+`pnl <= 0` loss, break-even counts as a loss — the same rule
+`app/portfolio.py::close_position()` already uses codebase-wide), for
+cross-domain consistency, not the code itself.
+
+### Metric definitions
+
+For each strategy: `closed_trade_count`, `win_count`, `loss_count`,
+`win_rate_pct`, `total_realized_pnl_sol`, `average_realized_pnl_sol`,
+`average_winning_trade_sol`, `average_losing_trade_sol`,
+`observed_expectancy_per_closed_trade_sol` (= `win_share × avg_winner
++ loss_share × avg_loser`, algebraically identical to `average_
+realized_pnl_sol` under this simple partition — exposed as its own
+named field anyway, mirroring the equities module's own `avg_pnl_pct`/
+`expectancy_pct` pair). Unlike that equities module, metrics here are
+never withheld behind a minimum-sample-size gate — this directive's
+own explicit rule is to expose `closed_trade_count` prominently so a
+reader can judge reliability themselves, not to invent an evidence
+threshold. Zero closed trades (or zero winners/losers for the
+winner/loser averages specifically) produces `None` for every
+rate/average field — never a fabricated `0%`/`$0`; `total_realized_
+pnl_sol` alone is a real, valid `0.0` at zero trades.
+
+### Strategy attribution and version handling
+
+Grouped strictly by `strategy_id` — never display name (two ids can
+share a name; the same id can be renamed over time) and never the
+CURRENT registry's `family`/`version` (which would misattribute
+history). Each row separately lists every distinct `strategy_version_
+id` actually observed among that id's own trades
+(`distinct_strategy_versions_observed`), so a strategy that ran under
+two historical versions shows both rather than silently implying every
+trade ran under today's registered version. A strategy id observed in
+`sniper_trade_history` but no longer present in the registry (no
+delete mechanism exists today, but the report does not assume one
+never will) still gets a row, `is_registered: false`, with its `name`
+read directly from its own most recent historical trade rather than a
+fabricated placeholder. A disabled strategy's historical row is
+identical to its enabled one except for `status` itself — proven with
+a dedicated test.
+
+### Data integrity and determinism
+
+A trade whose persisted `pnl_sol` is not finite (`NaN`/`inf`) is
+excluded and counted in `trades_excluded_malformed`, never coerced to
+`0.0`; trades are de-duplicated by `id`. `closed_trades_considered`
+reports exactly how many trades the aggregation actually used, and its
+own schema docstring discloses a real, pre-existing limitation it
+inherits rather than hides: `sniper_trade_history` is itself capped at
+`MAX_TRADE_HISTORY` (500) closed trades, oldest evicted first (see
+`tick_sniper_engine()`), so a strategy's true lifetime trade count can
+exceed what this report can see. The aggregation is pure and
+deterministic — no persistence beyond the existing trade journal, no
+mutation, no randomness — proven by a dedicated save/restart round-
+trip test showing byte-identical reads before and after.
+
+### API
+
+`GET /api/sniper/strategy-performance` — read-only, added to the
+existing Sniper router (no new top-level API subsystem). No UI was
+added this pass; the existing Sniper Terminal already displays
+per-position/per-trade strategy identity, and adding a dedicated
+aggregate view is left as a disclosed future step rather than expanded
+here to keep this pass strictly to the backend aggregation.
+
+### Safety boundary — re-verified, not re-argued
+
+`app/sniper_strategy_performance.py` is referenced from exactly two
+other files: `app/schemas.py` (type definitions) and
+`app/routers/sniper.py` (the one read-only endpoint) — confirmed via
+recursive grep. Nothing in `app/memecoin_sniper.py`,
+`app/nexus.py`, `app/sniper_strategy_registry.py`, or
+`app/sniper_ai_reasoning.py` references it. The module never calls
+`evaluate_entry_firewall()`, never touches `SniperRiskState`, never
+mutates a `SniperStrategyDefinition`'s status, and never opens or
+closes a position — it cannot become an alternate control path because
+no code path leads back from it into the trading pipeline.
+
+### Explicitly not built this pass
+
+Champion/Challenger, strategy ranking/promotion/demotion, automatic
+strategy selection or enable/disable based on performance,
+optimization, parameter sweeping, backtesting, walk-forward testing,
+statistical significance testing, AI strategy evaluation, and any
+label implying validation or superiority (`BEST STRATEGY`,
+`RECOMMENDED`, etc.) — none exist anywhere in this milestone's schema,
+code, or API response.
+
+### ONE Next Milestone (not implemented this pass)
+
+**Surface this report in the existing Sniper Terminal UI**
+(`SniperTerminal.tsx`), read-only, showing each strategy's `closed_
+trade_count`/`win_rate_pct`/`total_realized_pnl_sol`/`observed_
+expectancy_per_closed_trade_sol` side by side with sample size made
+visually obvious (e.g. graying out or annotating a rate/average field
+computed from a very small `closed_trade_count`) — the direct,
+smallest next step now that the backend observability this pass built
+has no consumer yet. Not a ranking or recommendation surface: purely
+rendering the same honest, nullable metrics this API already returns,
+with explicit UI copy distinguishing "observed historical performance"
+from "validation" or "recommendation," per this directive's own
+explicit rule.

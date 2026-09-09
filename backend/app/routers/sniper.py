@@ -22,9 +22,11 @@ from app.schemas import (
     SniperPosition,
     SniperRiskState,
     SniperStrategyDefinition,
+    SniperStrategyPerformanceSummary,
     SniperTrade,
     SniperWallet,
 )
+from app.sniper_strategy_performance import compute_sniper_strategy_performance
 from app.sniper_strategy_registry import ensure_default_sniper_strategies
 from app.state import game_state
 
@@ -195,6 +197,21 @@ async def sniper_strategies() -> list[SniperStrategyDefinition]:
     under-reports what's really registered here either."""
     state = await game_state.snapshot()
     return ensure_default_sniper_strategies(state.sniper_strategies)
+
+
+@router.get("/strategy-performance", response_model=SniperStrategyPerformanceSummary)
+async def sniper_strategy_performance() -> SniperStrategyPerformanceSummary:
+    """CEO directive "TradeTown — Sniper Per-Strategy Performance
+    Observability 1.0" — read-only. Pure aggregation
+    (`app/sniper_strategy_performance.py::compute_sniper_strategy_
+    performance()`) over the existing, already-persisted `sniper_
+    trade_history` journal, grouped by each trade's own historical
+    `strategy_id` — never a second trade ledger, never a validation or
+    ranking verdict. GET only; this endpoint cannot change strategy
+    selection, enable/disable state, risk, firewall behavior, or
+    Emergency Stop."""
+    state = await game_state.snapshot()
+    return compute_sniper_strategy_performance(state.sniper_trade_history, ensure_default_sniper_strategies(state.sniper_strategies))
 
 
 class SetSniperStrategyStatusRequest(BaseModel):

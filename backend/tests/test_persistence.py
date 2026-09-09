@@ -121,6 +121,43 @@ def test_sniper_strategy_registry_survives_a_real_restart_round_trip(temp_db):
     assert loaded.sniper_strategies[0].status == "disabled"
 
 
+def test_sniper_strategy_performance_report_is_identical_before_and_after_a_real_restart(temp_db):
+    """CEO directive "TradeTown — Sniper Per-Strategy Performance
+    Observability 1.0," Section 23 — because the report is a pure
+    derivation over the existing persisted `sniper_trade_history`, the
+    real requirement is simply: save, restart, load, aggregate, same
+    result. No redundant aggregate counters are persisted."""
+    from app.schemas import SniperTrade
+    from app.sniper_strategy_performance import compute_sniper_strategy_performance
+
+    trades = [
+        SniperTrade(
+            id="t1", mint="m", symbol="X", openedAt="2026-01-01T00:00:00+00:00", closedAt="2026-01-01T00:00:00+00:00",
+            entryPrice=1.0, exitPrice=1.5, sizeSol=1.0, riskSol=0.1, rMultiple=5.0, pnlSol=0.5,
+            maxFavorableExcursionPct=50.0, maxAdverseExcursionPct=0.0, holdTimeSeconds=10.0,
+            exitReason="take_profit", failureCodes=[], thesis="x", thesisValidated=True,
+            strategyId="memecoin-sniper", strategyName="A", strategyVersionId="1", strategyVersionStatus="versioned",
+        ),
+        SniperTrade(
+            id="t2", mint="m", symbol="X", openedAt="2026-01-01T00:00:00+00:00", closedAt="2026-01-01T00:00:00+00:00",
+            entryPrice=1.0, exitPrice=0.8, sizeSol=1.0, riskSol=0.1, rMultiple=-2.0, pnlSol=-0.2,
+            maxFavorableExcursionPct=0.0, maxAdverseExcursionPct=-20.0, holdTimeSeconds=10.0,
+            exitReason="stop_loss", failureCodes=["momentum_exhaustion"], thesis="x", thesisValidated=False,
+            strategyId="memecoin-sniper-whale-confirmation", strategyName="B", strategyVersionId="1", strategyVersionStatus="versioned",
+        ),
+    ]  # type: ignore[call-arg]
+    state = default_state().model_copy(update={"sniper_trade_history": trades})
+    report_before_restart = compute_sniper_strategy_performance(state.sniper_trade_history, state.sniper_strategies)
+
+    persistence.persist_modules(state)
+    loaded = persistence.load_modules()
+    assert loaded is not None
+    report_after_restart = compute_sniper_strategy_performance(loaded.sniper_trade_history, loaded.sniper_strategies)
+
+    assert report_after_restart.reads == report_before_restart.reads
+    assert report_after_restart.closed_trades_considered == report_before_restart.closed_trades_considered == 2
+
+
 def test_a_save_predating_the_registry_loads_cleanly_with_an_empty_list(temp_db):
     """CEO directive "TradeTown — Sniper Strategy Engine + Registry
     1.0" — a genuinely old save (the `sniperStrategies` key never

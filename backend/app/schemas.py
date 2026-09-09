@@ -13283,6 +13283,94 @@ class SniperStrategyDefinition(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+class SniperStrategyPerformanceRead(CamelModel):
+    """CEO directive "TradeTown — Sniper Per-Strategy Performance
+    Observability 1.0" — one strategy's row in the read-only
+    performance report. Pure observation over already-persisted
+    `SniperTrade` records grouped by their own historical `strategy_id`
+    — never a promotion/ranking/validation verdict (see this schema's
+    own field docstrings for why several fields are nullable rather
+    than a fabricated number).
+
+    `strategy_id` is the canonical grouping key (never `name`, which
+    can theoretically collide or change, and never the CURRENT registry
+    `family`/`version`, which would misrepresent history — see
+    `distinct_strategy_versions_observed` below). `is_registered`
+    distinguishes a strategy the CURRENT registry still knows about
+    from one only OBSERVED in historical trades (e.g. a since-removed
+    or foreign id) — `name`/`family`/`provenance`/`status` are `None`
+    when `is_registered` is `False`, since no current registry entry
+    exists to read them from; `name` in that case is instead read
+    directly off the historical trades themselves (see
+    `app/sniper_strategy_performance.py::compute_sniper_strategy_
+    performance()`'s own docstring)."""
+
+    strategy_id: str = Field(alias="strategyId")
+    name: str
+    family: str | None = None
+    provenance: SniperStrategyProvenance | None = None
+    is_registered: bool = Field(alias="isRegistered")
+    status: SniperStrategyStatus | None = None
+    # Distinct `strategy_version_id` values actually observed among this
+    # id's own historical trades, sorted — NEVER collapsed into "the
+    # current registry version." A strategy that has run under two
+    # different versions historically shows both here rather than
+    # silently attributing every trade to whichever version happens to
+    # be registered today.
+    distinct_strategy_versions_observed: list[str] = Field(default_factory=list, alias="distinctStrategyVersionsObserved")
+    closed_trade_count: int = Field(alias="closedTradeCount")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    # `None` (never a fabricated 0%) when `closed_trade_count == 0` —
+    # win rate is genuinely undefined with no closed trades, not zero.
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    # A real, valid `0.0` at zero trades (the sum of an empty set is
+    # honestly zero) — unlike the rate/average fields below, this one
+    # is never undefined.
+    total_realized_pnl_sol: float = Field(alias="totalRealizedPnlSol")
+    average_realized_pnl_sol: float | None = Field(default=None, alias="averageRealizedPnlSol")
+    # `None` when there are zero winning (respectively losing) trades —
+    # not `0.0` — an average over an empty set is undefined, not zero.
+    average_winning_trade_sol: float | None = Field(default=None, alias="averageWinningTradeSol")
+    average_losing_trade_sol: float | None = Field(default=None, alias="averageLosingTradeSol")
+    # Named "observed" deliberately (per this directive's own explicit
+    # rule): a historical realized average, never a claim about future
+    # expected return. Algebraically identical to
+    # `average_realized_pnl_sol` under this simple win/loss partition
+    # (see this module's own docstring) — exposed as its own named
+    # field anyway because the win/loss decomposition it is built from
+    # is itself informative, mirroring `app/performance_attribution.py`
+    # 's own established `avg_pnl_pct`/`expectancy_pct` pair.
+    observed_expectancy_per_closed_trade_sol: float | None = Field(default=None, alias="observedExpectancyPerClosedTradeSol")
+
+
+class SniperStrategyPerformanceSummary(CamelModel):
+    """The full report — one `SniperStrategyPerformanceRead` per
+    strategy the system currently knows about, whether from the live
+    registry, historical trades, or both. Sorted by `strategy_id` for a
+    stable, deterministic ordering (never by any performance metric —
+    this report does not rank strategies)."""
+
+    reads: list[SniperStrategyPerformanceRead]
+    # A trade excluded from every row because its own persisted
+    # `pnl_sol` was not a finite number (NaN/inf — a real, if
+    # theoretical, data-integrity guard; never silently coerced to
+    # 0.0 and never silently included as if it were a real outcome).
+    trades_excluded_malformed: int = Field(alias="tradesExcludedMalformed")
+    # How many closed trades this report was actually built from
+    # (after de-duplicating by trade id and excluding malformed
+    # entries) — NOT necessarily this strategy's true lifetime trade
+    # count: `GameSaveState.sniper_trade_history` is itself capped at
+    # `MAX_TRADE_HISTORY` (500) closed trades, oldest evicted first
+    # (see `app/memecoin_sniper.py::tick_sniper_engine()`), so a
+    # strategy with a longer real history than this number has already
+    # had its oldest closed trades silently age out of the persisted
+    # journal this report reads from — a real, disclosed limitation of
+    # the underlying journal, not of this report's own arithmetic.
+    closed_trades_considered: int = Field(alias="closedTradesConsidered")
+    generated_at: str = Field(alias="generatedAt")
+
+
 class SniperSafetyCheck(CamelModel):
     """One real, disclosed safety-firewall check over a simulated
     candidate's own simulated attributes. Section 5's own words: "If
