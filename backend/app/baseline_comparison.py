@@ -41,18 +41,25 @@ never a different or resampled one.
 """
 from __future__ import annotations
 
-from app.market_data import market_data_provider
+from app.market_data import MarketDataProvider, market_data_provider as _default_market_data_provider
 from app.schemas import BuyAndHoldBaseline
 
 
-def compute_buy_and_hold_baseline(*, symbols: list[str], timeframe: str, candles_per_symbol: int) -> list[BuyAndHoldBaseline]:
+def compute_buy_and_hold_baseline(
+    *, symbols: list[str], timeframe: str, candles_per_symbol: int, market_data_provider: MarketDataProvider | None = None
+) -> list[BuyAndHoldBaseline]:
     """One real entry per symbol that has at least 2 real candles in this
     exact window, in the same order as `symbols`. A symbol with fewer
     than 2 candles is skipped — a return over a single bar or no bars is
-    not a real measurement, never fabricated as 0%."""
+    not a real measurement, never fabricated as 0%.
+
+    CEO directive "Research Provider Injection 1.0" — `market_data_provider`
+    is an optional, explicit override; `None` (every existing caller)
+    keeps using this module's own default mock singleton unchanged."""
+    provider = market_data_provider if market_data_provider is not None else _default_market_data_provider
     baselines: list[BuyAndHoldBaseline] = []
     for symbol in symbols:
-        candles = market_data_provider.get_candles(symbol, timeframe, candles_per_symbol)
+        candles = provider.get_candles(symbol, timeframe, candles_per_symbol)
         if len(candles) < 2:
             continue
         start_price = candles[0].close

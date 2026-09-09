@@ -53,7 +53,7 @@ from datetime import datetime, timezone
 
 from app.backtest_primitives import aggregate_bucket
 from app.execution_quality import BASE_SLIPPAGE_BPS, MAX_SLIPPAGE_BPS
-from app.market_data import market_data_provider
+from app.market_data import MarketDataProvider, market_data_provider as _default_market_data_provider
 from app.portfolio import TRANSACTION_COST_BPS
 from app.schemas import CompiledStrategyDefinition, CostSensitivityResult, CostSensitivityScenario, EmaPullbackTradeRecord
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, _unsupported_indicators, backtest_symbol_over_candles
@@ -97,9 +97,15 @@ def run_cost_sensitivity(
     symbols: list[str] | None = None,
     timeframe: str = DEFAULT_TIMEFRAME,
     candles_per_symbol: int = DEFAULT_CANDLES_PER_SYMBOL,
+    market_data_provider: MarketDataProvider | None = None,
 ) -> CostSensitivityResult:
     """The one real entry point. Refuses exactly when
-    `run_compiled_strategy_backtest()` would."""
+    `run_compiled_strategy_backtest()` would.
+
+    CEO directive "Research Provider Injection 1.0" — `market_data_provider`
+    is an optional, explicit override; `None` (every existing caller)
+    keeps using this module's own default mock singleton unchanged."""
+    provider = market_data_provider if market_data_provider is not None else _default_market_data_provider
     now_iso = datetime.now(timezone.utc).isoformat()
     result_id = f"cost-sensitivity-{definition.id}"
 
@@ -115,7 +121,7 @@ def run_cost_sensitivity(
     resolved_symbols = symbols if symbols is not None else [s for s, _name, _cat in SEED_SYMBOLS]
     raw_trades: list[EmaPullbackTradeRecord] = []
     for symbol in resolved_symbols:
-        candles = market_data_provider.get_candles(symbol, timeframe, candles_per_symbol)
+        candles = provider.get_candles(symbol, timeframe, candles_per_symbol)
         raw_trades += backtest_symbol_over_candles(definition, symbol, candles)
 
     if not raw_trades:

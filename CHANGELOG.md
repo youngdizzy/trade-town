@@ -106,6 +106,44 @@ development milestones, not semver releases.
     endpoint, no web access, no second agent, no OpenClaw configuration,
     no host port for the MCP service, no live trading.
 
+- **CEO directive "TradeTown — Research Provider Injection 1.0."**
+  Removes the architectural blocker the prior Real OHLCV milestone's own
+  audit identified: `app/research_experiment.py` and the six research
+  modules it calls (`strategy_engine.py`, `walk_forward.py`,
+  `parameter_sensitivity.py`, `cost_sensitivity.py`, `leakage_audit.py`,
+  `baseline_comparison.py`) each hardcoded the global mock
+  `market_data_provider` singleton at import scope, so no real external
+  provider could ever reach a backtest. Every one of those functions now
+  takes an optional, keyword-only `market_data_provider: MarketDataProvider
+  | None = None` parameter; `None` (every existing caller — every
+  router, `state.py`, `research_loop.py`, `strategy_tournament.py`,
+  `champion_challenger.py`, all left untouched) keeps using the exact
+  same default mock singleton, byte-identical to before. An explicitly
+  supplied provider is threaded verbatim — the same instance, never
+  reconstructed — through every downstream call, including
+  `run_research_experiment()`'s own dataset-metadata candle fetch.
+  - **Real, working end-to-end proof**: a bounded real research
+    experiment run against `KrakenMarketDataProvider()` genuinely
+    succeeded during this milestone — `dataset_metadata.source ==
+    "external_real_provider"` and `data_category == "real"`, with the
+    global mock singleton spied on and confirmed never touched.
+  - **No silent fallback**: an explicitly injected provider that raises
+    `ExternalMarketDataProviderUnavailable` fails the whole research
+    call with that same exception — proven by a dedicated test that
+    also confirms the mock singleton was never substituted in.
+  - **Fixed a second provenance defect this injection surfaced**:
+    `ResearchExperimentRecord.dataHonestyNote` used to unconditionally
+    claim "mock OHLCV series — never real historical market data" even
+    when the record's own `datasetMetadata.source` said otherwise. Now
+    derived from that same, already-correct field.
+  - **Not built this pass**: no default behavior changed anywhere, no
+    provider factory/registry, no new API endpoint exposing provider
+    choice, no frontend change, no Champion/Challenger/holdout/risk/
+    execution/Sniper behavior change, and real-data research validation
+    itself (running an actual strategy study against Kraken data as a
+    deliberate research act) was not performed — this milestone only
+    proves the wire is connected.
+
 - **CEO directive "TradeTown — Real OHLCV Market Data Provider
   Activation & Provenance 1.0."** Activates ONE real, verified external
   OHLCV provider (`KrakenMarketDataProvider`, `backend/app/market_data.py`)

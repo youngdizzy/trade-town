@@ -46,6 +46,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.market_data import MarketDataProvider
 from app.schemas import CompiledStrategyDefinition, ParameterSensitivityAxisResult, ParameterSensitivityPoint, ParameterSensitivityResult
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, _unsupported_indicators, run_compiled_strategy_backtest
 
@@ -59,7 +60,9 @@ DATA_HONESTY_NOTE = (
 )
 
 
-def _stop_points(definition: CompiledStrategyDefinition, *, timeframe: str, candles_per_symbol: int, symbols: list[str] | None) -> ParameterSensitivityAxisResult:
+def _stop_points(
+    definition: CompiledStrategyDefinition, *, timeframe: str, candles_per_symbol: int, symbols: list[str] | None, market_data_provider: MarketDataProvider | None
+) -> ParameterSensitivityAxisResult:
     stop = definition.stop
     if stop is None or stop.method == "swing_level" or (stop.method == "chandelier" and stop.atr_multiplier is None) or (stop.method == "fixed_percent" and stop.percent is None):
         return ParameterSensitivityAxisResult(parameter="stop", sweepable=False, points=[], detail="This definition's stop has no free numeric parameter to sweep (swing_level is pinned to the real pullback swing price, not a chosen constant).")
@@ -78,13 +81,15 @@ def _stop_points(definition: CompiledStrategyDefinition, *, timeframe: str, cand
             swept_stop = stop.model_copy(update={"percent": value})
             label = f"{value:g}%"
         swept_definition = definition.model_copy(update={"stop": swept_stop})
-        result = run_compiled_strategy_backtest(swept_definition, symbols=symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
+        result = run_compiled_strategy_backtest(swept_definition, symbols=symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol, market_data_provider=market_data_provider)
         points.append(ParameterSensitivityPoint(label=label, value=value, bucket=result.overall))
     detail = f"{len(points)} real point(s) swept around the definition's own stated stop value ({base:g})."
     return ParameterSensitivityAxisResult(parameter="stop", sweepable=True, baseValue=base, points=points, detail=detail)
 
 
-def _target_points(definition: CompiledStrategyDefinition, *, timeframe: str, candles_per_symbol: int, symbols: list[str] | None) -> ParameterSensitivityAxisResult:
+def _target_points(
+    definition: CompiledStrategyDefinition, *, timeframe: str, candles_per_symbol: int, symbols: list[str] | None, market_data_provider: MarketDataProvider | None
+) -> ParameterSensitivityAxisResult:
     target = definition.target
     if target is None:
         return ParameterSensitivityAxisResult(parameter="target", sweepable=False, points=[], detail="This definition has no target to sweep.")
@@ -97,7 +102,7 @@ def _target_points(definition: CompiledStrategyDefinition, *, timeframe: str, ca
             continue
         swept_target = target.model_copy(update={"value": value})
         swept_definition = definition.model_copy(update={"target": swept_target})
-        result = run_compiled_strategy_backtest(swept_definition, symbols=symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
+        result = run_compiled_strategy_backtest(swept_definition, symbols=symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol, market_data_provider=market_data_provider)
         label = f"{value:g}R" if target.method == "r_multiple" else f"{value:g}%"
         points.append(ParameterSensitivityPoint(label=label, value=value, bucket=result.overall))
     detail = f"{len(points)} real point(s) swept around the definition's own stated target value ({base:g})."
@@ -127,10 +132,18 @@ def run_parameter_sensitivity(
     symbols: list[str] | None = None,
     timeframe: str = DEFAULT_TIMEFRAME,
     candles_per_symbol: int = DEFAULT_CANDLES_PER_SYMBOL,
+    market_data_provider: MarketDataProvider | None = None,
 ) -> ParameterSensitivityResult:
     """The one real entry point. Refuses exactly when
     `run_compiled_strategy_backtest()` would — an unresolved definition
-    or an unsupported indicator — never a silently-guessed sweep."""
+    or an unsupported indicator — never a silently-guessed sweep.
+
+    CEO directive "Research Provider Injection 1.0" — `market_data_provider`
+    is an optional, explicit override, threaded verbatim into every
+    `run_compiled_strategy_backtest()` call this sweep makes; `None`
+    (every existing caller) keeps that engine's own default mock
+    singleton unchanged. This module never touches a provider directly
+    itself — it has no `get_candles()` call of its own."""
     now_iso = datetime.now(timezone.utc).isoformat()
     result_id = f"param-sensitivity-{definition.id}"
 
@@ -154,8 +167,8 @@ def run_parameter_sensitivity(
     if unsupported:
         return _refusal(f"This engine's current v1 scope cannot resolve indicator(s) {sorted(unsupported)} — a real, disclosed coverage gap, not a fabricated result.")
 
-    stop_axis = _stop_points(definition, timeframe=timeframe, candles_per_symbol=candles_per_symbol, symbols=symbols)
-    target_axis = _target_points(definition, timeframe=timeframe, candles_per_symbol=candles_per_symbol, symbols=symbols)
+    stop_axis = _stop_points(definition, timeframe=timeframe, candles_per_symbol=candles_per_symbol, symbols=symbols, market_data_provider=market_data_provider)
+    target_axis = _target_points(definition, timeframe=timeframe, candles_per_symbol=candles_per_symbol, symbols=symbols, market_data_provider=market_data_provider)
     total_trials = len(stop_axis.points) + len(target_axis.points)
 
     stop_agreement = _axis_sign_agreement(stop_axis)

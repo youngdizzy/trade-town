@@ -64,7 +64,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.backtest_primitives import aggregate_bucket
-from app.market_data import market_data_provider
+from app.market_data import MarketDataProvider, market_data_provider as _default_market_data_provider
 from app.schemas import CompiledStrategyDefinition, WalkForwardSymbolResult, WalkForwardValidationResult, WalkForwardWindowResult
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, MAX_HOLD_BARS, MIN_BARS_ON_SIDE_BEFORE_CROSS, _unsupported_indicators, backtest_symbol_over_candles
 from app.watchlist import SEED_SYMBOLS
@@ -88,12 +88,18 @@ def run_walk_forward_validation(
     timeframe: str = DEFAULT_TIMEFRAME,
     candles_per_symbol: int = DEFAULT_CANDLES_PER_SYMBOL,
     window_bars: int = DEFAULT_WINDOW_BARS,
+    market_data_provider: MarketDataProvider | None = None,
 ) -> WalkForwardValidationResult:
     """The one real entry point. Refuses (clear, honest reason in
     `detail`, an empty `symbols` list) exactly when
     `run_compiled_strategy_backtest()` would — an unresolved definition
     or an indicator this engine's v1 scope cannot resolve — never a
-    silently-guessed partial result."""
+    silently-guessed partial result.
+
+    CEO directive "Research Provider Injection 1.0" — `market_data_provider`
+    is an optional, explicit override; `None` (every existing caller)
+    keeps using this module's own default mock singleton unchanged."""
+    provider = market_data_provider if market_data_provider is not None else _default_market_data_provider
     now_iso = datetime.now(timezone.utc).isoformat()
     test_symbols = symbols if symbols is not None else [s for s, _name, _cat in SEED_SYMBOLS]
     result_id = f"walk-forward-{definition.id}-{window_bars}"
@@ -121,7 +127,7 @@ def run_walk_forward_validation(
 
     symbol_results: list[WalkForwardSymbolResult] = []
     for symbol in test_symbols:
-        candles = market_data_provider.get_candles(symbol, timeframe, candles_per_symbol)
+        candles = provider.get_candles(symbol, timeframe, candles_per_symbol)
         windows: list[WalkForwardWindowResult] = []
         window_index = 0
         for start in range(0, len(candles), window_bars):

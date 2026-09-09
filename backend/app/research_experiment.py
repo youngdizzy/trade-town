@@ -81,7 +81,7 @@ from app.cost_sensitivity import run_cost_sensitivity
 from app.dataset_registry import build_dataset_metadata
 from app.feature_registry import feature_versions_for_definition
 from app.leakage_audit import audit_definition_for_look_ahead
-from app.market_data import market_data_provider
+from app.market_data import MarketDataProvider, market_data_provider as _default_market_data_provider
 from app.overfitting_diagnostics import classify_overfitting_risk
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.schemas import CompiledStrategyDefinition, ResearchExperimentRecord
@@ -138,29 +138,45 @@ def run_research_experiment(
     symbols: list[str] | None = None,
     timeframe: str = DEFAULT_TIMEFRAME,
     candles_per_symbol: int = DEFAULT_CANDLES_PER_SYMBOL,
+    market_data_provider: MarketDataProvider | None = None,
 ) -> ResearchExperimentRecord:
     """The one real entry point. Runs the definition through every real
     validation axis this codebase currently has and packages the results
     into one reproducible record. Each underlying module refuses on its
     own (an unresolved definition, an unsupported indicator) exactly as
     it would standalone — this function does not add a second refusal
-    check, it just surfaces whatever each real module already decided."""
+    check, it just surfaces whatever each real module already decided.
+
+    CEO directive "Research Provider Injection 1.0" — `market_data_provider`
+    is an optional, explicit override. `None` (every existing caller —
+    every router, `state.py`, `research_loop.py`, `strategy_tournament.py`,
+    `champion_challenger.py` — all unchanged) keeps this whole experiment
+    on this module's own default mock singleton exactly as before,
+    byte-identical to pre-injection behavior. An explicit provider (e.g.
+    a real external adapter) is threaded VERBATIM — the same instance,
+    never reconstructed — into every one of the six downstream research
+    modules AND into this function's own dataset-metadata candle fetch
+    below, so `datasetMetadata.source`/`dataCategory` (app/dataset_registry.py)
+    honestly reflects whichever provider actually produced the data. If
+    that provider fails, its exception propagates unchanged — this
+    function never catches a provider failure and substitutes mock data."""
+    provider = market_data_provider if market_data_provider is not None else _default_market_data_provider
     now_iso = datetime.now(timezone.utc).isoformat()
     resolved_symbols = symbols if symbols is not None else [s for s, _name, _cat in SEED_SYMBOLS]
 
-    backtest = run_compiled_strategy_backtest(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
-    walk_forward = run_walk_forward_validation(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
-    parameter_sensitivity = run_parameter_sensitivity(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
-    cost_sensitivity = run_cost_sensitivity(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
-    look_ahead_audit = audit_definition_for_look_ahead(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
-    buy_and_hold_baseline = compute_buy_and_hold_baseline(symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
+    backtest = run_compiled_strategy_backtest(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol, market_data_provider=provider)
+    walk_forward = run_walk_forward_validation(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol, market_data_provider=provider)
+    parameter_sensitivity = run_parameter_sensitivity(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol, market_data_provider=provider)
+    cost_sensitivity = run_cost_sensitivity(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol, market_data_provider=provider)
+    look_ahead_audit = audit_definition_for_look_ahead(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol, market_data_provider=provider)
+    buy_and_hold_baseline = compute_buy_and_hold_baseline(symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol, market_data_provider=provider)
     complexity = compute_strategy_complexity(definition)
 
     model_validation_verdict = backtest.model_validation.verdict if backtest.model_validation is not None else None
     conclusion = _synthesize_conclusion((model_validation_verdict, walk_forward.verdict, parameter_sensitivity.verdict, cost_sensitivity.verdict, look_ahead_audit.verdict))
     overfitting_diagnosis = classify_overfitting_risk(walk_forward, parameter_sensitivity, cost_sensitivity)
 
-    candles_by_symbol = {symbol: market_data_provider.get_candles(symbol, timeframe, candles_per_symbol) for symbol in resolved_symbols}
+    candles_by_symbol = {symbol: provider.get_candles(symbol, timeframe, candles_per_symbol) for symbol in resolved_symbols}
     dataset_metadata = build_dataset_metadata(
         candles_by_symbol,
         symbols=resolved_symbols,
@@ -169,6 +185,25 @@ def run_research_experiment(
     )
     point_in_time_verified = look_ahead_audit.verdict == "clean"
     feature_versions = feature_versions_for_definition(definition)
+
+    # CEO directive "Research Provider Injection 1.0" — this note used to
+    # hardcode "mock OHLCV... never real historical market data"
+    # unconditionally, which becomes false the moment a real provider is
+    # injected. Reuses `dataset_metadata.source` — already correctly
+    # derived from the real candles' own `data_status` (see
+    # app/dataset_registry.py) — rather than a second, parallel check.
+    data_honesty_note = (
+        "Every real number in this record comes from an explicitly injected real external market-data provider "
+        f"({dataset_metadata.source!r}) — see `datasetMetadata` for the exact retrieved range/coverage. This is real "
+        "historical market data, but real data is not a live-trading signal: this record remains research/paper "
+        "evidence only, never a trading recommendation or an automatic promotion."
+        if dataset_metadata.source == "external_real_provider"
+        else (
+            "Every real number in this record comes from app/market_data.py's own real, procedurally-generated (seeded, reproducible) "
+            "mock OHLCV series — never real historical market data, and 'candlesPerSymbol' above is this record's own honest substitute "
+            "for a real dataset version/date range, which this codebase has no source for."
+        )
+    )
 
     return ResearchExperimentRecord(
         id=f"experiment-{definition.id}-{definition.version}",
@@ -191,10 +226,6 @@ def run_research_experiment(
         datasetMetadata=dataset_metadata,
         pointInTimeVerified=point_in_time_verified,
         featureVersions=feature_versions,
-        dataHonestyNote=(
-            "Every real number in this record comes from app/market_data.py's own real, procedurally-generated (seeded, reproducible) "
-            "mock OHLCV series — never real historical market data, and 'candlesPerSymbol' above is this record's own honest substitute "
-            "for a real dataset version/date range, which this codebase has no source for."
-        ),
+        dataHonestyNote=data_honesty_note,
         generatedAt=now_iso,
     )
