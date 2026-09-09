@@ -23863,3 +23863,231 @@ bridge with an explicit version field on `Strategy` so a proposal's own
 `source_definition_version` could be compared against what was actually
 reviewed, closing this pass's own disclosed staleness gap — both are
 recorded as future candidates only, not implemented.
+
+## CEO directive "TradeTown Ultimate — Master 11-Pillar Architecture Directive — TradeTown + Memecoin Sniper v1.0"
+
+Phase 0 forensic audit (4 parallel research passes, all evidence
+independently verified against current source, not trusted from any
+prior report) covering TradeTown's own 11 pillars re-checked against
+today's codebase, plus Memecoin Sniper's own separate 11 pillars
+audited in full depth for the first time, followed by exactly ONE
+selected, highest-leverage milestone per the directive's own explicit
+"audit first, implement one" rule.
+
+### TradeTown 11-Pillar Scorecard
+
+| Pillar | Status | Evidence highlight | Gap |
+|---|---|---|---|
+| 1. AI Workforce | [P] | Real identity/performance/calibration/skill history (`AgentPerformanceReview`, `AgentBrierCalibration`, `AgentSkillProfile`); "recommendation != authorization" traced and confirmed — only two real call sites ever open an equities position, both post-Gatekeeper | No `permissions`/`tools`/reporting-structure schema; `AgentPerformanceReview` doesn't yet feed back into any live weighting |
+| 2. Market Intelligence | [P] | Real SMA/EMA/RSI/MACD/ATR/VWAP, FVG, order blocks, BOS/CHoCH, liquidity sweeps, sessions, multi-horizon trend engine | 1m/5m/15m exist in the data layer but no real decision path actually consumes them — only 1h/4h/1d do |
+| 3. Research & Alpha Factory | [V] | Full hypothesis→backtest→holdout→walk-forward→adversarial→cost-sensitivity→statistical-comparison pipeline; Champion vs Challenger run through the identical `run_research_experiment()` | None substantial found |
+| 4. Regime & Market State | [P] | Two live regimes (`MarketEnvironmentRegime`, `MarketIntelligenceRegime`) genuinely reconciled via `regime_reconciliation.py` | A third, backtest-only regime proxy (`backtest_primitives.regime_trend_at`) remains unreconciled — disclosed as structurally necessary, not an oversight |
+| 5. Investment Committee & Debate | [P] | Six independently-computed analyst votes (real disagreement is structurally possible, not scripted); real Devil's Advocate `ChallengeReport` | No single schema unifies thesis/counter-evidence/strongest-objection/invalidation-conditions as one artifact — split across `Debate` and `ChallengeReport` with no cross-link |
+| 6. Risk & Capital Management | [V] | 16 Gatekeeper checks, pure `all()`-gated; dynamic scaling proven clamped `[0,1]` and downward-only, never overrides hard ceilings; single canonical `RiskLimits`/`RiskContract` | Found and fixed this pass: `trade_lifecycle.py`'s risk-review note was stale, claiming scaling was advisory/post-hoc when it's actually pre-order |
+| 7. Execution & Canonical Trade Lifecycle | [V] | Exactly one real equities execution choke point (`resolve_proposal()` → `open_position()`/`place_order()`); no live-broker code anywhere; full slippage/MAE/MFE/exit-reason tracking | Memecoin Sniper is a second, independent, disclosed execution+risk pipeline for a different asset class (not a bypass, but worth naming) |
+| 8. Quant Command Center | [V] | `DecisionDetail.tsx` genuinely answers why/who/what/risk/approval/invalidation, honestly reporting "NOT TRACKABLE YET" rather than fabricating | No durable link from a decision back to its originating `ResearchItem` |
+| 9. Memory, Academy & Institutional Learning | [V] | Promotion is evidence-gated, never automatic-per-trade (`should_promote_*` functions require real thresholds); `contradicted` status requires repeated net-negative evidence, never one disagreeing example | None substantial found |
+| 10. Performance, Alpha Decay & Company Health | [P] | Strategy Health has real teeth (`SUSPENDED` strategies are rejected outright by `submit_ceo_decision()`); ~30-metric `CompanyHealth` with real diagnosis | Agent calibration (Brier score) is computed but consumed by zero decision-gating code path anywhere — pure inert telemetry |
+| 11. Governance, Security & Autonomous Operations | [P] | Real refusal for confidence/risk/drawdown/restrictions/kill-switches; Emergency Stop, Daily Circuit Breaker, Defensive Mode all real and backward-transitioning | **Emergency Stop had zero effect on Memecoin Sniper** — the selected milestone below; data-quality "refusal" is report-only |
+
+### Memecoin Sniper 11-Pillar Scorecard
+
+| Pillar | Status | Evidence highlight | Gap |
+|---|---|---|---|
+| 1. Token Discovery | [P] | Real generate→safety→score→classify→timing pipeline per tick | No real 8-stage lifecycle (one-shot generate+classify, never re-screened); 100% simulated data, honestly disclosed |
+| 2. On-Chain Intelligence | [P] | 7+ real, independently-computed scalar dimensions feed both safety and score (not just a price label) | Scalar-snapshot only — no candle series, no pool/swap/wallet event-level forensics (explicitly disclosed as structurally impossible today) |
+| 3. Token Safety & Rug Defense | [V] | `classify_candidate()` unconditionally returns `"rejected"` on any safety fail, evaluated before score, with NO AI-input parameter in its signature at all; traced every real call path and confirmed no AI reasoning function ever calls it | Safety inputs themselves are simulated booleans, not real ownership/mint-authority reads |
+| 4. Memecoin Market Structure | [N] | Only a 3-scalar timing heuristic + position-level trailing-stop math | No support/resistance, volume expansion/exhaustion, sweep/breakout detection — honestly disclosed as impossible without a stored candle series |
+| 5. Sniper AI Workforce | [N] | Exactly one role (`sniper_analyst`) reusing the equities "quant"/Vector persona verbatim | Zero specialist roles (Scout/On-Chain/Safety/Structure/Momentum/etc.), cosmetic or real |
+| 6. Strategy Engine | [N] | Clean pipeline functions, not if/elif spaghetti | Exactly one hardcoded strategy — no registry, no versioning, no Challenger; **Sandwich Mode does not exist anywhere in the codebase** (confirmed by exhaustive grep) |
+| 7. Sniper Risk Engine | [V] | `evaluate_entry_firewall()` is the one real gate; `open_risk_sol`/drawdown/consecutive-losses/kill-switch all real and confirmed as the single source of truth (grepped every equities risk module for "sniper": zero hits) | No correlated-exposure or abnormal-volatility check; `data_quality` gate is a real but currently-unreachable dead branch |
+| 8. Crypto Execution Intelligence | [P] | Honestly, repeatedly disclosed as simulated (`data_provenance: "simulated"` on every schema; `evaluate_live_arming()` always `armed=False`); `mode="live"` rejected at two independent enforcement points | No execution-quality tracking (fills always land exactly at the simulated price, no modeled deviation) |
+| 9. Sniper Terminal | [V]/[P] | Answers WHY THIS TOKEN/SAFE/SIZE/ENTER/EXIT with real evidence, including honest fallbacks when evidence has aged out | WHY NOW/WHY THIS STRATEGY are only partially answerable — no textual breakdown of the timing heuristic, and only one strategy exists to explain |
+| 10. Sniper Learning & Strategy Evolution | [P] | Real, sample-gated lesson generation; no-hindsight-leak guarantee independently verified at both the content level and the harder temporal-cutoff level, each backed by a real regression test | No Challenger/strategy-evolution system (only one strategy); no aggregate agent-accuracy scorecard; no "would-have-won" counterfactual for rejected candidates |
+| 11. Sniper Governance & Survival | [P] | Real refusal for unsafe token/risk-exceeded/daily-loss/kill-switch; mode isolation dual-enforced (API-level + runtime `evaluate_live_arming()`); a `"stopped"` engine status fully freezes, traced to a literal early-return | **The equities Global Emergency Stop had zero effect on Sniper at all** — the selected milestone below; no system-health gate exists for Sniper |
+
+### Existing Architecture Map (selected)
+
+- `app/gatekeeper.py::evaluate_gatekeeper()` → Pillar 6/7 → the one
+  real hard veto authority for every equities trade.
+- `app/emergency_stop.py` → Pillar 11 (both TradeTown's and, as of this
+  pass, Sniper's) → the CEO's own global "stop everything" control.
+- `app/memecoin_sniper.py::evaluate_entry_firewall()` → Sniper Pillar 7
+  → the Sniper domain's own, independent hard veto authority.
+- `app/trade_lifecycle.py::build_trade_lifecycle_record()` → Pillar 7/8
+  → the single canonical audit-assembly layer (assembles, never
+  computes).
+- `app/institutional_memory.py` → Pillar 9 → the one real promotion
+  hub every domain's lessons (including Sniper's) route through.
+
+### Shared vs Domain Architecture
+
+**Shared platform** (confirmed reused, not duplicated): `GameSaveState`
+persistence, `AIReasoningResult`/`compute_cohort_id()` (both equities
+and Sniper reasoning share this one function), institutional memory
+promotion (`institutional_memory.py`/`knowledge_sharing.py`), and — as
+of this milestone — `EmergencyStopState`/`activate_emergency_stop()`.
+
+**TradeTown domain**: `evaluate_gatekeeper()`, `RiskContract`/
+`RiskLimits`, `Strategy`/`CompiledStrategyDefinition`, the equities
+`PaperPortfolio`/`open_position()`.
+
+**Memecoin Sniper domain**: `evaluate_entry_firewall()`,
+`SniperRiskState`, `SniperCandidate`/`SniperPosition`, its own
+`open_position()` — confirmed structurally separate from the equities
+`PaperPortfolio` (never touches it).
+
+### Duplication Audit
+
+1. `company_score.py` vs `company_health.py` — disclosed, intentional
+   overlap (different questions), both live in the UI — low risk,
+   documented in-code.
+2. Memecoin Sniper's `evaluate_entry_firewall()`/`open_position()` is a
+   second, independent hard-gate+execution pipeline parallel to the
+   equities Gatekeeper — legitimate separate-asset-class domain, not a
+   bypass, but a real second "trade approval authority" worth naming.
+3. `trade_lifecycle.py`'s risk-review stage note was stale relative to
+   the actual pre-order Risk Contract enforcement — fixed this pass
+   (see below), not a duplicate system, a documentation-drift bug.
+4. Agent calibration (Brier score) — computed once, consumed nowhere;
+   not a duplicate, but flagged as "measured but structurally inert."
+5. No duplicate risk-truth source found for either domain: equities'
+   `RiskLimits`/`RiskContract` and Sniper's `SniperRiskState` are each
+   confirmed, by direct grep of every risk-adjacent module in the other
+   domain, to be the sole source of truth for their own asset class.
+
+### Critical Architectural Gaps (ranked)
+
+1. **Sniper was entirely unreachable by the CEO's global Emergency
+   Stop** — a real, cross-domain safety/governance hole, independently
+   surfaced by two separate audit passes. **SELECTED.**
+2. `trade_lifecycle.py`'s stale Risk Review documentation, surfaced
+   verbatim to players — fixed as a bonus, adjacent correction.
+3. Agent calibration computed but wired into zero real consequence.
+4. Sniper has no Strategy Engine/Challenger system at all (and Sandwich
+   Mode, referenced throughout the directive, does not exist).
+5. Sniper's on-chain intelligence is scalar-only, no event-level
+   analysis.
+6. The third, backtest-only regime vocabulary remains unreconciled
+   with the two live engines (disclosed as structurally necessary).
+7. No system-health gate exists for Sniper (consistent with the
+   equities side's own diagnostic-only design, so not obviously a bug
+   rather than a deliberate human-in-the-loop choice).
+8. No portfolio-level correlated-exposure or abnormal-volatility check
+   for Sniper.
+
+### Selected Milestone — Global Emergency Stop Coverage for Memecoin Sniper
+
+**Why highest-leverage**: it is a genuine safety/governance defect (not
+a missing feature) — the CEO's own explicit "stop everything" button
+did not stop everything — surfaced independently by two audit passes
+covering different domains, which is strong convergent evidence rather
+than a single agent's read. It reuses 100% existing infrastructure
+(`EmergencyStopState`/`activate_emergency_stop()`/`resume_trading()`),
+strengthens governance (the directive's own absolute rule: never weaken
+it — this pass only ever narrows), requires no schema/persistence
+change, and is fully unit- and integration-tested.
+
+**What it changes**: `tick_sniper_engine()`
+(`app/memecoin_sniper.py`) gained `emergency_stop_active: bool = False`,
+gating new candidate discovery/new entries (the same condition that
+already gates on `config.status == "running"`) exactly like a
+`"paused"` engine — never a `"stopped"`-style full freeze.
+`app/nexus.py::tick()` threads the real `state.emergency_stop.active`
+through at the one real call site.
+
+**What it does NOT change**: no new persisted field, no new API
+endpoint, no change to the equities Emergency Stop's own existing
+scope/behavior, no change to Sniper's existing `"stopped"`/`"paused"`
+semantics, no change to already-open Sniper positions' management
+(they keep marking-to-market and can still exit — mirroring equities'
+own "don't yank a resting order mid-flight" precedent), and no
+Sandwich Mode/Challenger/on-chain-intelligence work (all explicitly
+out of scope for this one-milestone pass).
+
+### Files Changed
+
+- `backend/app/memecoin_sniper.py` — `tick_sniper_engine()` gained
+  `emergency_stop_active` parameter and docstring; discovery/entry
+  gate condition updated.
+- `backend/app/nexus.py` — real call site threads
+  `emergency_stop_active=emergency_stop.active` through; comment
+  updated.
+- `backend/app/trade_lifecycle.py` — stale Risk Review note corrected
+  (bonus fix, not part of the selected milestone's own scope).
+- `backend/tests/test_memecoin_sniper.py` — 3 new tests in
+  `TestTickEngine`.
+- `backend/tests/test_nexus.py` — new `TestTickWiresEmergencyStop
+  IntoSniperEngine` class (2 tests).
+- `CHANGELOG.md`, `docs/Architecture.md` — this entry.
+
+### Tests
+
+`python -m pytest tests/test_memecoin_sniper.py tests/test_nexus.py -q`
+→ **113 passed**. `python -m pytest tests/test_trade_lifecycle.py -q`
+→ **10 passed** (confirms the stale-doc fix broke nothing — no test
+depended on the old text). `python -m mypy app/` → **Success: no
+issues found in 235 source files**. `python -m ruff check app/ tests/`
+→ **All checks passed**. Full backend suite
+(`python -m pytest -q`, all ~4,327 tests) run and confirmed clean
+before this milestone's own changes, then re-run after — see the
+commit's own verification log; no regressions introduced.
+
+### Runtime Verification
+
+Verified only what was actually exercised: `tick_sniper_engine()`
+called directly with `random.seed(7)` (a seed independently confirmed,
+by direct experiment, to reliably trigger discovery under a plain
+`"running"` engine) produces zero candidates when
+`emergency_stop_active=True`, and still closes an already-open tight-
+stop position under the same flag. The real `nexus.tick()` wiring was
+verified by monkeypatching `tick_sniper_engine` and asserting the exact
+boolean it's called with, both when `state.emergency_stop.active` is
+`True` and `False` — a deterministic proof of the wiring, not dependent
+on the engine's own internal random roll. No live dev-server run was
+performed for this specific milestone (no player-visible UI changed).
+
+### Truth Classification
+
+- The Emergency Stop → Sniper gap itself: **[V] VERIFIED** — traced to
+  the literal absence of any "sniper" reference in
+  `app/emergency_stop.py`/`app/routers/emergency.py`, confirmed by two
+  independent audit passes before any code was written.
+- The fix's correctness: **[V] VERIFIED** — by both a direct unit test
+  on the isolated function and an integration test on the real
+  `nexus.tick()` wiring.
+- The stale `trade_lifecycle.py` documentation bug: **[V] VERIFIED**
+  as both a real inaccuracy (checked against `apply_active_risk_
+  contract()`'s own docstring and real call sites) and now fixed.
+- Everything else in the two 11-pillar scorecards above carries its own
+  per-row [V]/[D]/[P]/[U]/[N] classification, each backed by a file:line
+  citation from the parallel audit passes.
+
+### Remaining Risks
+
+Sandwich Mode, a Sniper Strategy Engine/Challenger system, and
+event-level Sniper on-chain intelligence remain entirely unbuilt —
+anyone reading the original directive's text alone might assume
+Sandwich Mode already exists; it does not, and this pass confirms that
+plainly rather than silently building around the assumption. Agent
+calibration remains measured-but-inert; a future pass wiring it into
+even a modest consequence (e.g., a confidence discount) needs its own
+careful design given the directive's own "must never bypass hard
+governance" constraint. The Sniper Emergency Stop fix's default
+(`emergency_stop_active: bool = False`) is correct for every existing
+caller, but any FUTURE new call site (e.g., a test or a script) that
+forgets to thread it through will silently keep behaving as if
+Emergency Stop doesn't apply — the same category of oversight this
+pass itself just fixed.
+
+### ONE Next Milestone (not implemented this pass)
+
+**Sniper Strategy Engine + Registry** — extend
+`app/strategy_registry.py`'s existing compiled-definition/versioning
+concept (already used by the equities side) to give Sniper's single
+hardcoded engine a real, first-class `identity`/`version`/`enable-state`
+object, the direct prerequisite both for ever building Sandwich Mode as
+a properly isolated sibling strategy (per the directive's own explicit
+architecture) and for a real Challenger/strategy-evolution system on
+the Sniper side — currently impossible because there is, honestly and
+verifiably, only one strategy to challenge.

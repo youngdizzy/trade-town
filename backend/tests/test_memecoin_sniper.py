@@ -553,6 +553,42 @@ class TestTickEngine:
         assert len(result.candidates) == 0
         assert any(p.status == "closed" for p in result.positions) or any(p.hold_time_seconds > 0 for p in result.positions)
 
+    def test_emergency_stop_blocks_new_discovery_even_while_running(self) -> None:
+        """CEO directive "TradeTown Ultimate — Master 11-Pillar
+        Architecture Directive," Governance milestone — the global
+        Emergency Stop must reach Sniper too. seed(7) is a known,
+        verified-reliable roll that discovers a candidate under a plain
+        "running" engine (see the sibling test above) — with
+        emergency_stop_active=True, that same roll must produce nothing."""
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0, emergency_stop_active=True)
+        assert result.candidates == []
+
+    def test_emergency_stop_defaults_to_false_and_does_not_change_existing_behavior(self) -> None:
+        """Every existing caller/test that hasn't been threaded through
+        (the default) must keep discovering exactly as before."""
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0)
+        assert len(result.candidates) == 1
+
+    def test_emergency_stop_does_not_freeze_existing_open_positions(self) -> None:
+        """Mirrors app/emergency_stop.py's own real equities scope:
+        already-open positions keep being managed (marked-to-market,
+        can still exit) even while Emergency Stop is active — only NEW
+        entries are blocked, never a full "stopped"-style freeze."""
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.99, 1.55, _NOW)  # tight stop, guaranteed to trip
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        random.seed(1)
+        result = tick_sniper_engine(config, risk, [], [position], [], [], [], tick_seconds=200.0, emergency_stop_active=True)
+        assert any(p.status == "closed" for p in result.positions)
+        assert result.candidates == []
+
     def test_a_closing_position_produces_a_real_structured_exit_event(self) -> None:
         """Professional Trading Terminal directive, Part VII — the tick
         engine's own events used to be plain formatted strings this pass

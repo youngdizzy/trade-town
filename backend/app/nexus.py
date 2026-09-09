@@ -1822,6 +1822,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # is honestly labeled `dataProvenance: "simulated"`. Only mutates
     # state when the CEO has set the engine to "running"/"paused" via the
     # sniper API — "stopped" (the default) leaves every list untouched.
+    # CEO directive "TradeTown Ultimate — Master 11-Pillar Architecture
+    # Directive," Governance milestone — the CEO's own global Emergency
+    # Stop (already loaded above as `emergency_stop`) now reaches this
+    # domain too: `emergency_stop.active` gates new discovery/entries
+    # here exactly like a "paused" engine (existing positions still get
+    # marked-to-market and can still exit), closing a real, previously-
+    # verified gap where hitting Emergency Stop left Sniper's own
+    # discovery/entry loop running underneath it, unaffected.
     sniper_tick_result = tick_sniper_engine(
         sniper_engine_config,
         sniper_risk_state,
@@ -1837,6 +1845,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # time anchor (this domain's analog of TradeProposal's own
         # created_sim_minutes), never re-derived later from "now."
         discovery_sim_minutes=sim_minutes(new_time),
+        emergency_stop_active=emergency_stop.active,
     )
     sniper_candidates = sniper_tick_result.candidates
     sniper_positions = sniper_tick_result.positions

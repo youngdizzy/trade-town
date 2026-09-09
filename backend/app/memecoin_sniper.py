@@ -714,6 +714,7 @@ def tick_sniper_engine(
     *,
     tick_seconds: float,
     discovery_sim_minutes: int | None = None,
+    emergency_stop_active: bool = False,
 ) -> SniperTickResult:
     """One tick of the engine. `discovery_sim_minutes` ("Sniper AI
     Burn-In + Provider Activation 1.0" directive) is the real, current
@@ -728,7 +729,24 @@ def tick_sniper_engine(
     input list unchanged (Section 21/28: paused entries stop, existing
     positions may still be managed by the exit engine — see the
     `"paused"` branch below, matching Section 26's "pause new entries"
-    distinct from "freeze everything")."""
+    distinct from "freeze everything").
+
+    `emergency_stop_active` (CEO directive "TradeTown Ultimate —
+    Master 11-Pillar Architecture Directive," Governance milestone) —
+    the CEO's own real, global Emergency Stop (app/emergency_stop.py),
+    previously equities-only: activating it left this engine completely
+    unaffected, so a CEO who hit the one button meant to halt all
+    trading company-wide would have kept unknowingly running live
+    Sniper discovery/entries underneath it. `False` (the default) is
+    the exact prior behavior for every existing caller/test that hasn't
+    been threaded through. `True` gates new candidate discovery/new
+    entries exactly like a `"paused"` engine does — never a full
+    `"stopped"` freeze — mirroring app/emergency_stop.py's own real,
+    deliberate scope on the equities side: already-open positions keep
+    being marked-to-market and can still exit via their own stop/
+    target/trailing-stop, the same "don't yank a resting position
+    mid-flight" reasoning that module's docstring already gives for
+    equities' own resting broker orders."""
     now = _now_iso()
     events: list[SniperEvent] = []
     new_trades: list[SniperTrade] = []
@@ -778,7 +796,7 @@ def tick_sniper_engine(
     # formula.
     risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
 
-    if config.status == "running" and random.random() < DISCOVERY_CHANCE_PER_TICK:
+    if config.status == "running" and not emergency_stop_active and random.random() < DISCOVERY_CHANCE_PER_TICK:
         candidate = build_candidate(f"cand-{uuid.uuid4().hex[:10]}", now, discovery_sim_minutes)
         candidates = [candidate, *candidates][:MAX_CANDIDATES]
         events.append(_event("discovered", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"score {candidate.opportunity_score}, {candidate.classification}"))

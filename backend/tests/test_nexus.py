@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from app.market_intelligence import default_market_intelligence_state
 from app.nexus import MAX_DECISIONS, MAX_RISK_DECISIONS, _apply_operating_mode, _generate_trade_proposals, _trim_decisions
 from app.nexus import tick as nexus_tick
@@ -326,6 +328,58 @@ class TestApplyOperatingModeEmergencyStop:
         # Control: confirms the new gate only fires when actually active.
         remaining, _, _ = self._call(operating_mode="executive", emergency_stop_active=False)
         assert remaining == []
+
+
+class TestTickWiresEmergencyStopIntoSniperEngine:
+    """CEO directive "TradeTown Ultimate — Master 11-Pillar Architecture
+    Directive," Governance milestone — the real, full nexus.tick() must
+    thread the CEO's own global Emergency Stop into
+    tick_sniper_engine(), not just _apply_operating_mode() above.
+    Monkeypatches tick_sniper_engine itself (rather than relying on its
+    own internal random discovery roll) so this test is a deterministic
+    proof of the WIRING — the isolated mechanism itself is already
+    proven by tests/test_memecoin_sniper.py's own
+    TestTickEngine::test_emergency_stop_blocks_new_discovery_even_while_running."""
+
+    def test_real_tick_passes_the_real_emergency_stop_state_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.memecoin_sniper import SniperTickResult
+        from app.schemas import EmergencyStopState, SniperEngineConfig
+
+        captured: dict[str, object] = {}
+
+        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False):  # type: ignore[no-untyped-def]
+            captured["emergency_stop_active"] = emergency_stop_active
+            return SniperTickResult(candidates, positions, trade_history, leads, lessons, risk_state, [], [])
+
+        monkeypatch.setattr("app.nexus.tick_sniper_engine", _fake_tick_sniper_engine)
+
+        state = default_state()
+        state = state.model_copy(
+            update={
+                "sniper_engine_config": SniperEngineConfig(status="running"),
+                "emergency_stop": EmergencyStopState(active=True, activatedAt="2026-01-01T00:00:00+00:00"),
+            }
+        )
+        nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        assert captured["emergency_stop_active"] is True
+
+    def test_real_tick_passes_false_when_emergency_stop_is_inactive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.memecoin_sniper import SniperTickResult
+        from app.schemas import SniperEngineConfig
+
+        captured: dict[str, object] = {}
+
+        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False):  # type: ignore[no-untyped-def]
+            captured["emergency_stop_active"] = emergency_stop_active
+            return SniperTickResult(candidates, positions, trade_history, leads, lessons, risk_state, [], [])
+
+        monkeypatch.setattr("app.nexus.tick_sniper_engine", _fake_tick_sniper_engine)
+
+        state = default_state()
+        state = state.model_copy(update={"sniper_engine_config": SniperEngineConfig(status="running")})
+        assert state.emergency_stop.active is False
+        nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        assert captured["emergency_stop_active"] is False
 
 
 class TestApplyOperatingModeRiskContractFailClosed:

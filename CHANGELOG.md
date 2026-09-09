@@ -7,6 +7,90 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown Ultimate — Master 11-Pillar Architecture
+  Directive — TradeTown + Memecoin Sniper v1.0."** A Phase-0-first
+  forensic audit (4 parallel research passes covering TradeTown's own
+  11 architectural pillars re-verified against the current codebase,
+  plus Memecoin Sniper's own separate 11 pillars audited for the first
+  time) followed by exactly ONE selected, highest-leverage milestone,
+  per the directive's own explicit "audit first, implement one" rule.
+  - **Audit highlights** (full scorecard in `docs/Architecture.md`):
+    TradeTown's core trade lifecycle, Gatekeeper (16 checks), Risk
+    Contract dynamic scaling, Research & Alpha Factory lifecycle, and
+    Institutional Memory promotion gating all re-verified as real and
+    substantially complete. Memecoin Sniper was audited in full depth
+    for the first time: its Token Safety hard-gate is real and
+    unconditional (AI opinion cannot override a REJECT — traced and
+    proven, not just claimed); its no-hindsight-leak guarantee for AI
+    reasoning holds under both a content-level and a temporal-cutoff
+    test; but its AI Workforce is a single reused persona (not the
+    named specialist roster the directive describes), its Strategy
+    Engine is one hardcoded engine (no Challenger/versioning, and
+    **Sandwich Mode does not exist anywhere in the current codebase** —
+    confirmed by exhaustive grep, not assumed from the directive's own
+    text), and its on-chain intelligence is scalar-snapshot only (no
+    event-level pool/swap/wallet forensics), all honestly disclosed as
+    gaps rather than papered over.
+  - **The selected milestone — Global Emergency Stop now reaches
+    Memecoin Sniper.** Two independent audit passes (one covering
+    TradeTown's own Governance pillar, one covering Sniper's own
+    Governance pillar) both independently surfaced the same real,
+    previously-undetected safety gap: `app/emergency_stop.py`'s
+    CEO-triggerable Global Emergency Stop — the one button meant to
+    halt all trading company-wide — had **zero effect** on the Sniper
+    engine. A CEO who activated it would have kept unknowingly running
+    live Sniper token discovery and new paper-position entries
+    underneath it. `tick_sniper_engine()` (`app/memecoin_sniper.py`)
+    gained an `emergency_stop_active: bool = False` parameter that
+    gates new candidate discovery/new entries exactly like a `"paused"`
+    engine already does — never a full `"stopped"`-style freeze —
+    mirroring `app/emergency_stop.py`'s own real, deliberate equities
+    scope: already-open Sniper positions keep being marked-to-market
+    and can still exit via their own stop/target/trailing-stop, the
+    same "don't yank a resting position mid-flight" reasoning that
+    module already applies to equities' own resting broker orders.
+    `app/nexus.py::tick()` threads the real `state.emergency_stop.active`
+    straight through — no new persisted field, no new API surface, no
+    change to any existing behavior for a save/caller that doesn't set
+    Emergency Stop.
+  - **Reused, not duplicated**: no second emergency-stop system was
+    built. This is the exact same `EmergencyStopState`/
+    `activate_emergency_stop()`/`resume_trading()` primitive the
+    equities side already uses, given one new consumer.
+  - **Bonus fix, adjacent to the audit's own findings**: the audit
+    surfaced a real, stale documentation bug in
+    `app/trade_lifecycle.py`'s Risk Review stage note — it told players
+    RiskContract dynamic scaling was "advisory/post-hoc only... it does
+    not gate it," when `app/risk_contract.py::apply_active_risk_
+    contract()`'s own docstring and the real call sites
+    (`app/state.py::submit_ceo_decision()`, `app/nexus.py::_apply_
+    operating_mode()`) prove scaling is actually composed into
+    `risk_limits` BEFORE the Gatekeeper/position-sizing ceiling ever
+    run — a freshly-triggered kill switch really does collapse a
+    trade's sizing ceiling to zero pre-order, exactly like a proposal
+    generated after the kill switch already would. This is surfaced
+    verbatim to players in the Command Center's `DecisionDetail`/
+    `TradeLifecycleDrilldown` — a real, player-visible inaccuracy, now
+    corrected to match the actual enforced-pre-order behavior.
+  - **New tests**: `tests/test_memecoin_sniper.py`'s `TestTickEngine`
+    gained 3 tests (Emergency Stop blocks new discovery even while
+    "running"; the new parameter defaults to `False` and changes
+    nothing for every existing caller; Emergency Stop does not freeze
+    already-open positions — they still mark-to-market and can still
+    exit). `tests/test_nexus.py` gained
+    `TestTickWiresEmergencyStopIntoSniperEngine` (2 tests) proving the
+    real, full `nexus.tick()` — not just the isolated function —
+    threads the genuine `state.emergency_stop.active` value through.
+  - **Explicitly NOT built this pass** (recorded as future candidates,
+    not implemented, per the directive's own "implement exactly ONE"
+    rule): a Sniper Strategy Engine/Challenger system, Sandwich Mode,
+    event-level on-chain intelligence, a Sniper-specific specialist AI
+    workforce, wiring Agent Calibration (Brier score) into any real
+    consequence, a unified Debate+ChallengeReport schema with
+    invalidation conditions, Sniper correlated-exposure/volatility
+    risk checks, and a graduated (NORMAL→WARNING→DEGRADED→UNSAFE→
+    SHUTDOWN) failure model for market data/AI reasoning subsystems.
+
 - **CEO directive "TradeTown — Model Validation Enforcement 1.0."** Wires
   Meridian/CIO's `ModelValidationReport.verdict` into the canonical
   Trade Gatekeeper (`app/gatekeeper.py::evaluate_gatekeeper()`) as a
