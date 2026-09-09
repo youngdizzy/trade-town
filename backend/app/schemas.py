@@ -2064,11 +2064,20 @@ class ModelValidationCheck(CamelModel):
 
 class ModelValidationReport(CamelModel):
     """Meridian/CIO's independent validation sign-off for one Company
-    Review cycle (see app/model_validation.py). Advisory-only: nothing
-    in app/sandbox.py's apply_review_decision()/begin_company_review()
-    control flow reads `verdict` — it is generated and surfaced purely
-    for CEO visibility alongside the matching StrategyReview. This
-    codebase has no strategy version-number concept, so
+    Review cycle (see app/model_validation.py). Nothing in
+    app/sandbox.py's apply_review_decision()/begin_company_review()
+    control flow reads `verdict` — it is generated and surfaced for CEO
+    visibility alongside the matching StrategyReview, the same as
+    before. CEO directive "Model Validation Enforcement 1.0" gave
+    `verdict` one real, narrow enforcement consumer outside that Company
+    Review flow: app/gatekeeper.py's `_model_validation_check()`, the
+    Trade Gatekeeper's sixteenth check, blocks a new entry when the most
+    recent report for the entry's own compiled strategy (identified via
+    Strategy.compiled_definition_id <-> TradeProposal.source_definition_id,
+    champion-sourced proposals only) reads "rejected" — see that
+    function's own docstring for the full identity bridge and the
+    disclosed limitation (no strategy version tracking) this leaves
+    open. This codebase has no strategy version-number concept, so
     `existing_review_count` (the same count that already drives that
     cycle's Devil's Advocate rotation assignment) is the honest
     substitute audit-trail/reproducibility field, not a fabricated
@@ -2774,7 +2783,8 @@ NoTradeReasonCode = Literal[
     # never the crude category-co-occurrence proxy app/gatekeeper.py's
     # own later-stage "gatekeeper_correlation" check still uses.
     "correlated_exposure_too_high",
-    # Gatekeeper: app/gatekeeper.py's real checks (15 as of "Hard Risk
+    # Gatekeeper: app/gatekeeper.py's real checks (16 as of "Model
+    # Validation Enforcement 1.0" — previously 15 as of "Hard Risk
     # Gates 2.0 — Stop-Loss / Position-Risk Enforcement")
     "gatekeeper_confidence",
     "gatekeeper_risk_manager",
@@ -2812,6 +2822,13 @@ NoTradeReasonCode = Literal[
     # gate makes that guarantee explicit and auditable rather than an
     # implicit side effect of the sizing formula.
     "gatekeeper_max_loss",
+    # CEO directive "Model Validation Enforcement 1.0" —
+    # app/gatekeeper.py's _model_validation_check(). Meridian/CIO's
+    # ModelValidationReport.verdict (app/model_validation.py), previously
+    # advisory-only, is now the sixteenth real hard refusal check: a
+    # strategy Meridian's most recent Company Review found "rejected"
+    # may not open a new entry under it.
+    "gatekeeper_model_validation",
     # Risk engine: app/risk_engine.py's evaluate_sentinel_risk()/evaluate_guardian_exposure()
     "risk_equity_exhausted",
     "risk_daily_loss_limit",

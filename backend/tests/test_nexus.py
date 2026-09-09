@@ -15,7 +15,7 @@ from app.nexus import MAX_DECISIONS, MAX_RISK_DECISIONS, _apply_operating_mode, 
 from app.nexus import tick as nexus_tick
 from app.portfolio import default_portfolio, open_position
 from app.risk_contract import activate_risk_contract, apply_active_risk_contract, create_draft_risk_contract, mark_validated
-from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, ResearchItem, RiskContract, RiskLimits, TimeState, TradeDecision, TradeProposal
+from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, ModelValidationCheck, ModelValidationReport, ResearchItem, RiskContract, RiskLimits, Strategy, TimeState, TradeDecision, TradeProposal
 from app.state import default_state
 from app.trading_restrictions import activate_trading_restriction
 
@@ -165,6 +165,118 @@ class TestApplyOperatingModePauseTrading:
         # blanket block on every proposal.
         remaining, _, _ = self._call(operating_mode="executive", market_intelligence=default_market_intelligence_state())
         assert remaining == []
+
+
+class TestApplyOperatingModeModelValidationEnforcement:
+    """CEO directive "Model Validation Enforcement 1.0" — proves the
+    AUTO-RESOLUTION path (_apply_operating_mode -> resolve_proposal) is
+    covered by the same real Gatekeeper enforcement as the manual CEO
+    decision path (see test_state.py's TestSubmitCeoDecisionModel
+    ValidationEnforcement for the manual-path counterpart)."""
+
+    def _champion_proposal(self) -> TradeProposal:
+        return _proposal().model_copy(
+            update={
+                "source": "champion",
+                "source_champion_id": "champion-1",
+                "source_strategy_family": "trend",
+                "source_definition_id": "def-1",
+                "source_definition_version": 1,
+                "source_signal_bar_timestamp": _now_iso(),
+            }
+        )
+
+    def _strategy(self) -> Strategy:
+        return Strategy(id="strategy-mv-1", name="Test Strategy", description="test description", createdBy="scout", focusCategory="stock", createdAt=_now_iso(), compiledDefinitionId="def-1")
+
+    def _report(self, *, verdict: str) -> ModelValidationReport:
+        return ModelValidationReport(
+            id="mvr-1",
+            strategyId="strategy-mv-1",
+            strategyName="Test Strategy",
+            reviewId="review-1",
+            existingReviewCount=1,
+            verdict=verdict,  # type: ignore[arg-type]
+            checks=[ModelValidationCheck(id="sample_size", label="Sample Size", passed=verdict != "rejected", evidence="test evidence", reasoning="test reasoning", thresholdSource="test source")],
+            evidenceSummary="test evidence summary.",
+            dataSourcesAndAssumptions=["test data source"],
+            simDay=1,
+            createdAt=_now_iso(),
+        )
+
+    def _call(self, *, verdict: str):  # type: ignore[no-untyped-def]
+        return _apply_operating_mode(
+            "executive",
+            [self._champion_proposal()],
+            [],  # debates
+            default_portfolio(),
+            RiskLimits(),
+            [],  # risk_warnings
+            {"NEXA": 100.0},  # prices
+            0,  # now_sim_minutes
+            [],  # memory
+            [],  # decisions
+            [],  # ceo_decisions
+            [],  # prediction_records
+            [],  # gatekeeper_rejections
+            [],  # news
+            [],  # challenge_reports
+            [],  # coach_reports
+            [],  # meeting_log
+            [],  # decision_vault
+            1,  # sim_day
+            default_market_intelligence_state(),
+            [],  # war_room_sessions
+            "sideways",  # market_environment_regime
+            "balanced_institutional",  # active_weight_profile
+            {},  # custom_department_weights
+            strategies=[self._strategy()],
+            model_validations=[self._report(verdict=verdict)],
+        )
+
+    def test_a_rejected_validation_blocks_auto_resolution(self) -> None:
+        remaining, portfolio, _meeting_log = self._call(verdict="rejected")
+        assert remaining == []  # resolved (rejected), not left pending
+        assert portfolio.positions == []
+
+    def test_an_approved_validation_does_not_block_auto_resolution(self) -> None:
+        remaining, portfolio, _meeting_log = self._call(verdict="approved")
+        assert remaining == []
+        assert len(portfolio.positions) == 1
+
+    def test_omitting_the_new_params_behaves_exactly_as_before(self) -> None:
+        """Every other test in this file calls without strategies/
+        model_validations — confirms the real production default (None
+        for both) still auto-resolves normally, matching this session's
+        own established optional-parameter convention."""
+        remaining, portfolio, _meeting_log = _apply_operating_mode(
+            "executive",
+            [self._champion_proposal()],
+            [],
+            default_portfolio(),
+            RiskLimits(),
+            [],
+            {"NEXA": 100.0},
+            0,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            1,
+            default_market_intelligence_state(),
+            [],
+            "sideways",
+            "balanced_institutional",
+            {},
+        )
+        assert remaining == []
+        assert len(portfolio.positions) == 1
 
 
 class TestApplyOperatingModeEmergencyStop:

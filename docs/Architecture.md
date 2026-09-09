@@ -23663,3 +23663,203 @@ concrete, minimal precondition any future checkpointed sample-size gate
 (N=10/25/50/100) needs before it could be built honestly, and the
 natural, smallest next step now that cohort identity makes "per-cohort"
 grouping a real, provable operation instead of a guess.
+
+## CEO directive "TradeTown — Model Validation Enforcement 1.0"
+
+Wires `ModelValidationReport.verdict` into the canonical Trade
+Gatekeeper (`app/gatekeeper.py::evaluate_gatekeeper()`) as a real 16th
+hard enforcement check — the exact milestone this session's own prior
+"TRADETOWN ULTIMATE ARCHITECTURE AUDIT" (11-Pillar) recommended as the
+single highest-leverage next step, since `ModelValidationReport` was a
+genuinely computed, previously-disclosed-as-unenforced artifact
+(`ModelValidationReport`'s own schema docstring used to read
+"Advisory-only: nothing in app/sandbox.py's ... control flow reads
+verdict") with no consumer anywhere in the codebase.
+
+**Fresh Phase 0 audit, not trusting the prior audit's summary
+verbatim**, re-verified `ModelValidationVerdict`'s real, exhaustive
+four-value `Literal` (`"approved"`/`"rejected"`/`"needs_more_evidence"`/
+`"not_validatable"` — never the "VALID/INVALID" shape a careless
+implementation might assume) and traced `evaluate_gatekeeper()`'s real
+call graph down to its two effective production call sites
+(`app/state.py::submit_ceo_decision()`'s manual CEO-click path,
+`app/nexus.py::_apply_operating_mode()`'s Company Operating Mode
+auto-resolution path — both funnel through the one shared
+`app/executive.py::resolve_proposal()`) plus one structurally-inert
+third site (`app/nexus.py`'s expired-proposal cleanup, which always
+passes `ceo_choice="wait"` and so never reaches the Gatekeeper at all).
+
+**The identity problem this check had to walk, not invent around.**
+`ModelValidationReport.strategy_id` names a `Strategy` — the Strategy
+Lab/Company-Review dossier object — a completely different identity
+space from `TradeProposal`, which carries no `strategy_id` field at
+all for the vast majority of proposals. The only real, pre-existing
+bridge, from an earlier "Strategy Intelligence + Live Strategy
+Attribution" directive: `TradeProposal.source_definition_id` (set only
+for `source == "champion"` proposals, by
+`app/executive.py::build_champion_trade_proposal()`) names a
+`CompiledStrategyDefinition`; `Strategy.compiled_definition_id` (set
+only by `app/strategy_registry.py::register_researchable_strategy()`)
+links a `Strategy` to that same `CompiledStrategyDefinition` by id.
+`_model_validation_check()` walks exactly that existing two-hop join —
+per this directive's own explicit prohibition, no second, parallel
+strategy-identity system was invented to make the join look cleaner.
+
+**Honest, disclosed consequence of reusing the real bridge instead of
+inventing a broader one**: only a champion-sourced proposal whose
+compiled definition has been registered as a Strategy AND reviewed by
+Meridian at least once benefits from real enforcement. A heuristic
+proposal (`source == "heuristic"`, still the majority of proposals
+today per `TradeProposal.source`'s own docstring), an unregistered
+compiled definition, or a Strategy with no validation report on file
+all pass this check vacuously — the same "cannot evaluate, so does not
+block" honesty `_valid_stop_check`/`_max_loss_check` already established
+for their own not-yet-evaluated states. This is a deliberate, disclosed
+scope limit: failing closed on every heuristic-sourced trade this
+codebase has ever produced is not what this milestone authorizes.
+
+**Validation-state policy**, answered from the real verdict semantics
+rather than assumed: `"rejected"` blocks a new entry; `"approved"`/
+`"needs_more_evidence"`/`"not_validatable"` never block (an
+incomplete-evidence state is not a proven failure, and treating it as
+one would punish strategies simply too new to have enough run history
+yet); multiple reports on file for one Strategy — the most recent
+(last in list order, the same convention `app/model_validation.py`
+already uses for `SimulationResult`) governs, so a later approval is
+never still blocked by a stale rejection; a report for a different
+Strategy never applies (the strict `compiled_definition_id`/
+`strategy_id` join makes cross-strategy leakage structurally
+impossible); a malformed verdict cannot exist at runtime (pydantic
+`Literal` validation at every load).
+
+**Disclosed, un-fixed limitation, recorded rather than silently
+ignored**: `Strategy.compiled_definition_id` names a compiled
+definition by id only, with no version field — this codebase has no
+existing mechanism recording which specific compiled version a
+Strategy's own `SimulationResult` history (and therefore its
+`ModelValidationReport`) was actually run against. A proposal's own
+`source_definition_version` is therefore NOT compared here; doing so
+would require adding a new version field to `Strategy`, a schema
+change outside this milestone's strict one-check scope.
+
+**Not the same thing as, and does not implement,** this codebase's own
+previously-documented "Model Validation blocking-gate migration plan"
+(this file's own "Priority 8" section, above) — that plan was scoped
+to gating `app/sandbox.py`'s Company Review stage-advancement pipeline
+(`apply_review_decision()`/`begin_company_review()`), which still does
+not read `verdict`, unchanged by this milestone. This is a narrower,
+different, independently-authorized enforcement point: blocking a live
+trade entry through the Trade Gatekeeper, not a Strategy's stage
+progression through Company Review. The Company-Review blocking-gate
+question remains exactly as undecided, and exactly as un-authorized,
+as Priority 8 left it.
+
+**Bypass audit** (Phase 10 of the directive, performed adversarially —
+actively trying to disprove the enforcement claim rather than confirm
+it): `resolve_proposal()` is the one real function that ever calls
+`open_position()`/`app/broker.py::place_order()` for a real (non-Sniper)
+trade, and both calls sit inside the same `if
+gatekeeper_verdict.approved:` branch this check now participates in —
+so a queued limit/stop order later filled by `app/broker.py`'s own
+tick-driven fill logic was already gated at the moment it was placed;
+there is no separate path to open a position that skips the Gatekeeper.
+The one other `PaperPosition` construction site in the codebase
+(`app/portfolio_risk.py`'s Marginal Risk Test) is an explicitly
+disclosed synthetic, never-persisted what-if position for a portfolio
+stress calculation, not a real trade. Memecoin Sniper
+(`app/memecoin_sniper.py`) is an entirely separate, untouched paper-
+trading subsystem with its own risk model — `Strategy`/
+`ModelValidationReport` are equities-only concepts and this milestone
+does not touch Sniper at all.
+
+**Tests** (all new, all passing; every pre-existing Gatekeeper/
+executive/state/nexus test passes unchanged): `tests/test_gatekeeper.py`
+`TestModelValidationCheck` (10 unit tests on `_model_validation_check()`
+covering every policy branch above, plus 2 integration tests proving a
+full `evaluate_gatekeeper()` call genuinely blocks/approves —
+`test_approves_when_every_check_passes`'s existing 15-check assertion
+updated to 16); `tests/test_executive.py`
+`TestResolveProposalModelValidationEnforcement` (3 tests proving the
+real execution boundary: no position/order opens when blocked, a
+position still opens when the report doesn't apply, a heuristic
+proposal is never affected even with a rejected report on file);
+`tests/test_state.py` `TestSubmitCeoDecisionModelValidationEnforcement`
+(2 tests, manual CEO-decision path); `tests/test_nexus.py`
+`TestApplyOperatingModeModelValidationEnforcement` (3 tests, auto-
+resolution path, including a params-omitted backward-compatibility
+test proving every existing caller that hasn't been threaded through
+behaves exactly as before).
+
+**A real, unrelated pre-existing bug found and fixed as a byproduct of
+this pass's own fresh Phase 0 read of `app/gatekeeper.py`**: a
+prior-session edit had inserted a large explanatory comment block in
+the middle of `_max_loss_check()`, between its `detail = (...)`
+computation and its `return GatekeeperCheck(...)` statement — silently
+truncating the function so it always returned `None` (an
+`AttributeError` the moment any caller touched `.passed` on the
+result) rather than ever reaching the Max Planned Loss check's actual
+verdict. `evaluate_gatekeeper()`'s own `checks = [...]` list still
+called `_max_loss_check(planned_loss_usd, risk_budget_usd)`
+positionally, so this was silent at every real call site that didn't
+supply real planned-loss/risk-budget figures (which vacuously pass
+regardless) and only surfaced as three pre-existing `TestMaxLossCheck`
+test failures once this pass ran the full targeted suite — never
+observed or reported by this pass's own new code, which never called
+`_max_loss_check()` directly. Fixed by restoring the missing `return`
+statement; all three previously-failing tests pass again, and the fix
+is included in this same commit as a directly-adjacent, minimal
+correction rather than deferred to a separate pass.
+
+**No frontend change.** The Gatekeeper rejection UI
+(`ExecutiveVoting.tsx`) renders `verdict.checks` fully generically
+(`.map()` over `id`/`label`/`passed`/`detail`, no per-check
+hardcoding), so the new check surfaces automatically with no UI work.
+`frontend/src/types.ts`'s `NoTradeReasonCode` union is missing this
+new code's string — disclosed, not fixed: that union is also already
+missing several other real gatekeeper codes that shipped in earlier
+directives (`gatekeeper_account_halt`, `gatekeeper_trading_restriction`,
+`gatekeeper_valid_stop`, `gatekeeper_max_loss`), a pre-existing gap
+this milestone did not introduce or worsen, and nothing in the
+frontend actually pattern-matches over that union for display (a full
+grep confirmed no lookup table depends on its exhaustiveness), so
+nothing is materially misleading today.
+
+### Classification
+
+- Enforcement wiring (the 16th check genuinely participates in
+  `evaluate_gatekeeper()`'s `all()`-gate, reachable from both real call
+  sites): **A** — proven by integration-level tests calling the real,
+  unstubbed `evaluate_gatekeeper()`/`resolve_proposal()`/
+  `submit_ceo_decision()`/`_apply_operating_mode()`, not just the
+  isolated check function.
+- Identity-bridge correctness (no cross-strategy leakage, no
+  fabricated identity system): **A** — proven by dedicated tests for
+  the different-Strategy-never-applies and unregistered-definition
+  cases.
+- Fail-open honesty for the un-enforceable majority (heuristic
+  proposals, unregistered strategies, no report on file): **A** —
+  proven directly, and disclosed rather than silently broadened.
+- Non-regression of the other 15 existing checks: **A** — full targeted
+  regression across `test_gatekeeper.py`/`test_executive.py`/
+  `test_state.py`/`test_nexus.py` passes unchanged; `mypy`/`ruff` clean
+  across the full `app/` tree.
+- Coverage breadth (how many real proposals this check can ever
+  actually apply to): **C**, disclosed and unchanged from the
+  directive's own expectation — champion-sourced, Strategy-Lab-
+  registered, Company-Reviewed strategies are still a narrow slice of
+  real trade volume; this was never in scope to widen.
+- Version-level staleness protection: **N/A by disclosed design** — no
+  version comparison is attempted; see the limitation above.
+
+Recommended next milestone (not implemented in this pass, per the
+directive's own one-change scope rule): **Company Review blocking-gate
+decision** — this file's own pre-existing "Priority 8" migration plan
+(above) already designed what gating `app/sandbox.py`'s
+`apply_review_decision()`/`begin_company_review()` on
+`ModelValidationReport.verdict` would require; it remains genuinely
+undecided and un-authorized. A second, smaller candidate surfaced but
+NOT pursued here: extending this same real `compiled_definition_id`
+bridge with an explicit version field on `Strategy` so a proposal's own
+`source_definition_version` could be compared against what was actually
+reviewed, closing this pass's own disclosed staleness gap — both are
+recorded as future candidates only, not implemented.

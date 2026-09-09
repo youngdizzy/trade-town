@@ -2613,6 +2613,8 @@ class GameState:
                 behavioral_cooldown_minutes=self.data.trading_modes.behavioral_cooldown_minutes,
                 behavioral_size_increase_threshold_pct=self.data.trading_modes.behavioral_size_increase_threshold_pct,
                 trading_restrictions=self.data.trading_restrictions,
+                strategies=self.data.strategies,
+                model_validations=self.data.strategy_model_validations,
             )
 
             if override_reason and not ceo_record.agreed_with_ai:

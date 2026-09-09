@@ -3165,10 +3165,12 @@ codebase only keeps a recent slice of.
 Every `RiskWarning`, `GatekeeperCheck`, `GatekeeperRejection`, and
 `OpportunityRejection` this endpoint's underlying data draws on also
 now carries a real `code`/`reasonCodes` field from the same
-directive's `NoTradeReasonCode` taxonomy (41 values as of CEO directive
-"Portfolio Construction, Capital Allocation & Execution Realism," `app/
-schemas.py` — most recently `correlated_exposure_too_high`, Phase 4's
-real pre-proposal Pearson correlation gate; a prior value,
+directive's `NoTradeReasonCode` taxonomy (45 values in `app/schemas.py`
+as of CEO directive "Model Validation Enforcement 1.0"'s
+`gatekeeper_model_validation` — the Gatekeeper's 16th check; a prior
+value, `correlated_exposure_too_high`, was added by CEO directive
+"Portfolio Construction, Capital Allocation & Execution Realism," Phase
+4's real pre-proposal Pearson correlation gate; another,
 `session_regime_unfavorable_evidence`, was added by CEO directive
 "Command Center + Professional Quant Trading Firm Upgrade" to close the
 taxonomy's own previously-disclosed SESSION_FILTER gap with a real

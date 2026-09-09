@@ -279,6 +279,7 @@ from app.schemas import (
     MemoryRecord,
     MeetingMinutes,
     MeetingState,
+    ModelValidationReport,
     MultiTimeframeLiquidityCapture,
     NewsItem,
     OpportunityRejection,
@@ -296,6 +297,7 @@ from app.schemas import (
     RiskDecision,
     RiskLimits,
     StrategicReview,
+    Strategy,
     StrategyHealthState,
     RiskWarning,
     ScannerAlert,
@@ -1055,6 +1057,8 @@ def _apply_operating_mode(
     active_risk_contract: RiskContract | None = None,
     risk_contract_scaling: RiskContractScalingRead | None = None,
     risk_decisions: list[RiskDecision] | None = None,
+    strategies: list[Strategy] | None = None,
+    model_validations: list[ModelValidationReport] | None = None,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -1247,6 +1251,8 @@ def _apply_operating_mode(
             behavioral_cooldown_minutes=behavioral_cooldown_minutes,
             behavioral_size_increase_threshold_pct=behavioral_size_increase_threshold_pct,
             trading_restrictions=trading_restrictions,
+            strategies=strategies,
+            model_validations=model_validations,
         )
         record_ceo_decision(memory, decision, max_records=risk_limits.max_memory_records)
         decisions.append(decision)
@@ -2455,6 +2461,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         active_risk_contract=active_risk_contract,
         risk_contract_scaling=risk_contract_scaling,
         risk_decisions=risk_decisions,
+        strategies=strategies,
+        model_validations=state.strategy_model_validations,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)

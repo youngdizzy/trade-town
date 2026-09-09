@@ -13,7 +13,7 @@ import asyncio
 from app.market_intelligence import default_market_intelligence_state
 from app.nexus import _apply_operating_mode
 from app.paper_trade_journal import build_journal_entry
-from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, PaperTrade, SettingsState, SimulationResult, Strategy, StrategyHealthState, StrategyReport, TierAllocationLimits, TradeProposal
+from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, ModelValidationCheck, ModelValidationReport, PaperTrade, SettingsState, SimulationResult, Strategy, StrategyHealthState, StrategyReport, TierAllocationLimits, TradeProposal
 from app.strategy_lab import MIN_RETIREMENT_TRADE_COUNT
 from app.strategy_registry import _ema_pullback_source_text
 from app.state import MAX_DIALOGUE_HISTORY, GameState
@@ -982,6 +982,76 @@ class TestSubmitCeoDecisionStrategyProvenance:
         assert error is None
         assert len(saved.paper_portfolio.positions) == 1
         assert saved.paper_portfolio.positions[0].strategy_id is None
+
+
+class TestSubmitCeoDecisionModelValidationEnforcement:
+    """CEO directive "Model Validation Enforcement 1.0" — proves the
+    MANUAL CEO-click path (submit_ceo_decision -> resolve_proposal) is
+    covered by the same real Gatekeeper enforcement as auto-resolution,
+    since both call the exact same resolve_proposal() (see
+    app/nexus.py's test_nexus.py counterpart for the auto path)."""
+
+    def _champion_proposal(self, *, source_definition_id: str = "def-1") -> TradeProposal:
+        return _pending_proposal().model_copy(
+            update={
+                "source": "champion",
+                "source_champion_id": "champion-1",
+                "source_strategy_family": "trend",
+                "source_definition_id": source_definition_id,
+                "source_definition_version": 1,
+                "source_signal_bar_timestamp": "2026-01-01T00:00:00+00:00",
+            }
+        )
+
+    def _report(self, *, strategy_id: str, verdict: str) -> ModelValidationReport:
+        return ModelValidationReport(
+            id="mvr-1",
+            strategyId=strategy_id,
+            strategyName="Test Strategy",
+            reviewId="review-1",
+            existingReviewCount=1,
+            verdict=verdict,  # type: ignore[arg-type]
+            checks=[ModelValidationCheck(id="sample_size", label="Sample Size", passed=verdict != "rejected", evidence="test evidence", reasoning="test reasoning", thresholdSource="test source")],
+            evidenceSummary="test evidence summary.",
+            dataSourcesAndAssumptions=["test data source"],
+            simDay=1,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+
+    def _state_with_champion_proposal_and_validation(self, *, verdict: str) -> GameState:
+        state = GameState()
+        strategy = Strategy(
+            id="strategy-mv-1", name="Test Strategy", description="test description", createdBy="scout", focusCategory="stock", createdAt="2026-01-01T00:00:00+00:00", compiledDefinitionId="def-1"
+        )
+        state.data = state.data.model_copy(
+            update={
+                "trade_proposals": [self._champion_proposal()],
+                "strategies": [*state.data.strategies, strategy],
+                "strategy_model_validations": [self._report(strategy_id="strategy-mv-1", verdict=verdict)],
+            }
+        )
+        return state
+
+    def test_a_rejected_validation_blocks_the_manual_ceo_decision(self) -> None:
+        state = self._state_with_champion_proposal_and_validation(verdict="rejected")
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert saved.paper_portfolio.positions == []
+        decision = saved.decisions[-1]
+        assert decision.outcome != "trade"
+        assert decision.gatekeeper_verdict is not None
+        assert decision.gatekeeper_verdict.approved is False
+        model_validation_check = next(c for c in decision.gatekeeper_verdict.checks if c.id == "model_validation")
+        assert model_validation_check.passed is False
+
+    def test_an_approved_validation_does_not_block_the_manual_ceo_decision(self) -> None:
+        state = self._state_with_champion_proposal_and_validation(verdict="approved")
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert len(saved.paper_portfolio.positions) == 1
+        decision = saved.decisions[-1]
+        assert decision.outcome == "trade"
+        assert decision.gatekeeper_verdict is not None and decision.gatekeeper_verdict.approved is True
 
 
 class TestSubmitCeoDecisionRegimeStrategyWarning:
