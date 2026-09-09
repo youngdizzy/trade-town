@@ -49,7 +49,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.backtest_primitives import aggregate_bucket, atr_at, breakout_candle_range_ratio, chandelier_stop, ema_at, regime_trend_at, regime_volatility_at, simulate_exit
-from app.market_data import Candle, market_data_provider
+from app.market_data import Candle, MarketDataProvider, market_data_provider as _default_market_data_provider
 from app.market_intelligence import _session_for_hour
 from app.model_validation import generate_model_validation_report
 from app.schemas import (
@@ -755,11 +755,20 @@ def run_compiled_strategy_backtest(
     timeframe: str = DEFAULT_TIMEFRAME,
     candles_per_symbol: int = DEFAULT_CANDLES_PER_SYMBOL,
     sim_day: int = 0,
+    market_data_provider: MarketDataProvider | None = None,
 ) -> CompiledStrategyBacktestResult:
     """The one real entry point. Refuses (with a clear, honest reason
     surfaced in `detail`) rather than silently guessing whenever
     `definition.status != "compiled"` or the definition references an
-    indicator this engine's current v1 scope cannot resolve."""
+    indicator this engine's current v1 scope cannot resolve.
+
+    CEO directive "Research Provider Injection 1.0" — `market_data_provider`
+    is an optional, explicit override. `None` (every existing caller,
+    unchanged) keeps using this module's own default mock singleton
+    exactly as before; an explicit provider (e.g. a real external
+    adapter) is used verbatim, with no silent fallback to mock on
+    failure — whatever that provider raises propagates unchanged."""
+    provider = market_data_provider if market_data_provider is not None else _default_market_data_provider
     now_iso = datetime.now(timezone.utc).isoformat()
     test_symbols = symbols if symbols is not None else [s for s, _name, _cat in SEED_SYMBOLS]
     unsupported = _unsupported_indicators(definition)
@@ -790,7 +799,7 @@ def run_compiled_strategy_backtest(
     regime_volatility_buckets: dict[str, list[EmaPullbackTradeRecord]] = {}
 
     for symbol in test_symbols:
-        candles = market_data_provider.get_candles(symbol, timeframe, candles_per_symbol)
+        candles = provider.get_candles(symbol, timeframe, candles_per_symbol)
         trades = backtest_symbol_over_candles(definition, symbol, candles)
         for record in trades:
             all_trades.append(record)

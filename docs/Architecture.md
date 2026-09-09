@@ -24659,3 +24659,86 @@ evidence against the existing synthetic/mock baseline — the smallest
 change that actually lets real data reach research, correctly
 identified as the true remaining blocker by this milestone's own
 Phase 0 audit rather than assumed away.
+
+## CEO directive "TradeTown — Research Provider Injection 1.0"
+
+Implements the next milestone identified above: `app/research_experiment.py`
+and the six research modules it calls each gain an optional,
+keyword-only `market_data_provider: MarketDataProvider | None = None`
+parameter, resolved as `provider = market_data_provider if
+market_data_provider is not None else <module's own default mock
+singleton>` — the exact pattern the directive itself specified. `None`
+(every existing caller) is byte-identical to pre-injection behavior;
+an explicit provider is threaded verbatim (the same instance, never
+reconstructed) through `run_compiled_strategy_backtest()`
+(`strategy_engine.py`), `run_walk_forward_validation()`
+(`walk_forward.py`), `run_parameter_sensitivity()`
+(`parameter_sensitivity.py`, which itself never touches a provider
+directly — it delegates entirely to `run_compiled_strategy_backtest()`
+for every swept point, so injection there is pure pass-through),
+`run_cost_sensitivity()` (`cost_sensitivity.py`),
+`audit_definition_for_look_ahead()` (`leakage_audit.py`), and
+`compute_buy_and_hold_baseline()` (`baseline_comparison.py`), plus
+`run_research_experiment()`'s own extra dataset-metadata candle fetch.
+
+**No provider factory, no second abstraction.** The existing
+`MarketDataProvider` ABC is the only interface used; each module's
+local import is renamed from `market_data_provider` to
+`_default_market_data_provider` purely so a same-named parameter can
+shadow it inside the function body — a mechanical rename with zero
+behavioral effect, verified to not break any existing test (nothing in
+this codebase accesses these six modules' own re-exported
+`market_data_provider` attribute; every test imports the singleton
+directly from `app.market_data`).
+
+**Provenance fix this injection surfaced.** `ResearchExperimentRecord.dataHonestyNote`
+previously hardcoded "mock OHLCV series — never real historical market
+data" unconditionally — true before this milestone (no caller could
+inject anything else) but false the moment a real provider is
+supplied. Now branches on the same, already-correct
+`dataset_metadata.source` field (fixed by the prior Real OHLCV
+milestone) rather than a second check. The four sub-module
+`dataHonestyNote`/`DATA_HONESTY_NOTE` disclosures inside
+`strategy_engine.py`/`walk_forward.py`/`cost_sensitivity.py`/
+`parameter_sensitivity.py` themselves were deliberately NOT made
+provider-conditional — a disclosed, narrower remaining gap (see that
+milestone's own final report), not silently fixed under the same pass
+to keep this milestone's diff to dependency injection plus the one
+authoritative top-level record.
+
+**Real, working proof, not just unit tests.** `tests/test_research_provider_injection.py`
+includes a bounded real integration test that runs an actual
+`run_research_experiment()` call with `market_data_provider=
+KrakenMarketDataProvider()` and confirms `datasetMetadata.source ==
+"external_real_provider"` end to end, with the global mock singleton
+spied on and confirmed never touched during that call — proof the
+wire is genuinely connected, not merely that the parameter exists.
+
+### Explicitly not built this pass
+
+No default behavior change anywhere (every existing caller —
+`app/champion_challenger.py`, `app/routers/sandbox.py`, `app/state.py`,
+`app/research_loop.py`, `app/strategy_tournament.py` — verified
+untouched, confirmed still passing zero provider argument), no
+provider factory/registry, no new API endpoint exposing provider
+choice to a client, no frontend change, no Champion/Challenger
+promotion-criteria change, no holdout partitioning change, no risk/
+execution/Sniper change, and no actual real-data research study
+performed (running a real strategy against Kraken data as a deliberate
+research act, comparing it to the mock baseline) — the wire is proven
+connected; using it for a real study is the next, separately-scoped
+step.
+
+### ONE Next Milestone (not implemented this pass)
+
+**REAL-DATA RESEARCH VALIDATION 1.0** — run one existing, already-
+compiled strategy definition through `run_research_experiment(...,
+market_data_provider=KrakenMarketDataProvider())` against a clearly
+identified, bounded real BTC-USD historical window as a deliberate
+research act (not just a connectivity proof), record the resulting
+`ResearchExperimentRecord` (walk-forward/cost-sensitivity/parameter-
+sensitivity/look-ahead verdicts, `dataHonestyNote`, `datasetMetadata`)
+as real evidence, and compare it side by side against the same
+definition's existing mock-data baseline — never claiming the real-data
+result is "better" or "validated," only that it is a second, honestly
+distinct body of evidence. Not implemented in this turn.

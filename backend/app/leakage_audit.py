@@ -42,7 +42,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-from app.market_data import Candle, market_data_provider
+from app.market_data import Candle, MarketDataProvider, market_data_provider as _default_market_data_provider
 from app.schemas import CompiledStrategyDefinition, LookAheadAuditResult, LookAheadViolation
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, _build_series_cache, _detect_generic_setups, _GenericSetup, _SeriesCache, _unsupported_indicators
 from app.watchlist import SEED_SYMBOLS
@@ -92,10 +92,16 @@ def audit_definition_for_look_ahead(
     symbols: list[str] | None = None,
     timeframe: str = DEFAULT_TIMEFRAME,
     candles_per_symbol: int = DEFAULT_CANDLES_PER_SYMBOL,
+    market_data_provider: MarketDataProvider | None = None,
 ) -> LookAheadAuditResult:
     """The one real entry point for auditing a compiled definition end to
     end against real (mock) candle history, one symbol at a time.
-    Refuses exactly when `run_compiled_strategy_backtest()` would."""
+    Refuses exactly when `run_compiled_strategy_backtest()` would.
+
+    CEO directive "Research Provider Injection 1.0" — `market_data_provider`
+    is an optional, explicit override; `None` (every existing caller)
+    keeps using this module's own default mock singleton unchanged."""
+    provider = market_data_provider if market_data_provider is not None else _default_market_data_provider
     now_iso = datetime.now(timezone.utc).isoformat()
     result_id = f"leakage-audit-{definition.id}"
 
@@ -112,7 +118,7 @@ def audit_definition_for_look_ahead(
     all_violations: list[LookAheadViolation] = []
     setups_checked = 0
     for symbol in resolved_symbols:
-        candles = market_data_provider.get_candles(symbol, timeframe, candles_per_symbol)
+        candles = provider.get_candles(symbol, timeframe, candles_per_symbol)
         series = _build_series_cache(candles, definition)
         setups_checked += len(_detect_generic_setups(candles, definition, series))
         all_violations += find_first_look_ahead_violation(definition, candles)
