@@ -8,6 +8,59 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "TradeTown — Sniper Per-Strategy Performance
+  Observability UI 1.0."** Surfaces the previous milestone's read-only
+  `GET /api/sniper/strategy-performance` endpoint inside the existing
+  Sniper Terminal — a new "Strategy performance" panel
+  (`src/sniper/SniperStrategyPerformance.tsx`), mounted into the
+  existing flat `SniperApp.tsx` dashboard (no new top-level tab). Pure
+  presentation only: the panel never recomputes win rate, P&L, or
+  expectancy itself, never reorders the API's own `reads` array (never
+  a leaderboard), and never labels a strategy "best"/"recommended".
+  - **Nullable metrics rendered honestly**: `winRatePct`,
+    `averageRealizedPnlSol`, `averageWinningTradeSol`,
+    `averageLosingTradeSol`, and `observedExpectancyPerClosedTradeSol`
+    all render as `"—"` when `null` — the zero-closed-trade branch
+    doesn't even attempt a rate/average row, showing "No closed trades
+    yet" instead; only a genuine `totalRealizedPnlSol: 0.0` renders as
+    an actual zero.
+  - **Sample size is the most prominent element** on each row (`"N
+    closed trades"`), and a disclaimer — "Historical observed
+    performance from real closed paper trades only. Not a validation
+    score, ranking, or trading recommendation." — is visible on the
+    panel without opening anything.
+  - **Historical version/registry-state honesty preserved**: each row
+    shows `distinctStrategyVersionsObserved` exactly as the API
+    reports it (never collapsed to the current registry version), and
+    a strategy no longer in the current registry (`isRegistered:
+    false`) still renders using its own historical trade record's
+    name, badged "No longer registered" rather than erased.
+  - **New frontend types** (`src/types.ts`): `SniperStrategyStatus`,
+    `SniperStrategyProvenance`, `SniperStrategyPerformanceRead`,
+    `SniperStrategyPerformanceSummary` — hand-mirrored from the
+    backend's real response shape (confirmed via a live `curl`, not
+    guessed), plus one new `api.getSniperStrategyPerformance()` client
+    function following this codebase's existing `request<T>()`
+    convention.
+  - **New Playwright coverage**
+    (`frontend/tests/sniperStrategyPerformance.spec.ts`, 12 tests):
+    real-backend tests against a fresh isolated save (both real
+    strategies render, zero-trade honesty, disclaimer visible, no
+    ranking language anywhere, existing terminal functionality
+    intact) plus a small, explicitly disclosed `page.route()`
+    exception — mirroring this suite's own established precedent in
+    `tests/newGameConfirm.spec.ts` — for the handful of exact,
+    known-outcome scenarios (a 1-trade/100%-win-rate strategy listed
+    before a 100-trade/60%-win-rate one, proving API order is never
+    re-sorted by performance; null-vs-zero rendering; a retired,
+    unregistered strategy; long names not breaking layout; empty/error
+    responses) that a real burn-in cannot reach deterministically.
+  - **Explicitly NOT built this pass**: any ranking, sorting-by-
+    performance, "best"/"recommended" labeling, strategy
+    selection/enable-disable UI change, or new top-level tab — this
+    is presentation only, strictly downstream of the already-
+    authoritative backend endpoint.
+
+- **CEO directive "TradeTown — Sniper Per-Strategy Performance
   Observability 1.0."** A new, read-only `GET /api/sniper/strategy-
   performance` endpoint answers "what actually happened under each
   Sniper strategy?" — pure aggregation over the already-persisted

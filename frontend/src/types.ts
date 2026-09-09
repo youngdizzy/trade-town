@@ -8396,6 +8396,75 @@ export interface SniperTrade {
   dataProvenance: "simulated";
 }
 
+/** CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0" —
+ * the CEO's real enable/disable control state for a registered Sniper
+ * strategy. DISABLED stops new discovery/entries under that strategy;
+ * it never deletes the strategy or affects historical records. */
+export type SniperStrategyStatus = "enabled" | "disabled";
+
+/** The one honest provenance value for either registered Sniper
+ * strategy today — a hand-written, deterministic Python pipeline.
+ * Never "champion"/"ai_discovered"/"backtest_validated" unless
+ * repository evidence actually supports those claims. */
+export type SniperStrategyProvenance = "hardcoded";
+
+/** CEO directive "TradeTown — Sniper Per-Strategy Performance
+ * Observability 1.0" — one strategy's row in the read-only performance
+ * report (`GET /api/sniper/strategy-performance`). Pure observation
+ * over already-persisted SniperTrade records grouped by their own
+ * historical strategyId — never a validation, ranking, or
+ * recommendation signal. See backend/app/sniper_strategy_performance.py
+ * for the full metric definitions this mirrors verbatim (never
+ * recomputed client-side).
+ *
+ * Every rate/average field is `null` — never a fabricated 0%/$0 —
+ * whenever its own denominator is zero (no closed trades, or no
+ * winners/losers respectively). `totalRealizedPnlSol` alone is a real,
+ * valid `0.0` at zero trades (the sum of an empty set). */
+export interface SniperStrategyPerformanceRead {
+  strategyId: string;
+  name: string;
+  /** `null` only when `isRegistered` is false — no current registry
+   * entry exists to read a family from. */
+  family: string | null;
+  provenance: SniperStrategyProvenance | null;
+  /** Distinguishes a strategy the CURRENT registry still knows about
+   * from one only OBSERVED in historical trades (e.g. a since-removed
+   * or foreign id). */
+  isRegistered: boolean;
+  status: SniperStrategyStatus | null;
+  /** Every distinct historical strategyVersionId actually observed
+   * among this id's own trades — never collapsed into whichever
+   * version the registry reports today. */
+  distinctStrategyVersionsObserved: string[];
+  closedTradeCount: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number | null;
+  totalRealizedPnlSol: number;
+  averageRealizedPnlSol: number | null;
+  averageWinningTradeSol: number | null;
+  averageLosingTradeSol: number | null;
+  /** Named "observed" deliberately — a historical realized average,
+   * never a claim about future expected return. */
+  observedExpectancyPerClosedTradeSol: number | null;
+}
+
+export interface SniperStrategyPerformanceSummary {
+  /** Sorted by strategyId — never by any performance metric. This
+   * report does not rank strategies. */
+  reads: SniperStrategyPerformanceRead[];
+  /** A trade excluded because its own persisted pnlSol was not a
+   * finite number — never silently coerced to 0.0. */
+  tradesExcludedMalformed: number;
+  /** How many closed trades this specific report was built from — the
+   * underlying sniper_trade_history journal is itself capped (oldest
+   * evicted first), so this can be less than a strategy's true
+   * lifetime total. */
+  closedTradesConsidered: number;
+  generatedAt: string;
+}
+
 /** "Terminal 2.2" directive — one real point on the Sniper P&L curve: a
  * closed trade's own pnlSol plus the running cumulative realized total.
  * Realized-only, never a mark-to-market equity curve — see
