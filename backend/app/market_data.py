@@ -845,3 +845,246 @@ def get_external_market_data_provider() -> ExternalMarketDataProvider:
     call, never cached at import time, so a test can monkeypatch
     `os.environ` per-test without import-order effects."""
     return ExternalMarketDataProvider()
+
+
+# ============================================================================
+# CEO directive "TradeTown — Real OHLCV Market Data Provider Activation &
+# Provenance 1.0" — the ONE concrete, real vendor adapter this directive
+# asks for, subclassing `ExternalMarketDataProvider` above rather than
+# inventing a second market-data abstraction.
+#
+# WHY KRAKEN. This directive requires an official API, no fabricated
+# credentials, and no signup step this session could honestly complete on
+# a user's behalf (see `ExternalMarketDataProvider`'s own module docstring
+# on why no vendor-specific adapter previously existed: no API key was
+# ever available here). Kraken's public market-data REST endpoints
+# (https://docs.kraken.com/rest/) require NO API key at all for OHLC
+# candles — a genuinely public, keyless, official endpoint, verified
+# reachable from this environment (a real `GET
+# https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=60` returned
+# real HTTP 200 real OHLCV data during this milestone's own Phase 0 — see
+# this milestone's forensic report, "Real External Smoke Test" section).
+# This is the smallest legitimate real provider this codebase could
+# activate without fabricating a credential or an account signup.
+#
+# WHY BTC-USD. `app/watchlist.py`'s own `SEED_SYMBOLS` already carries
+# `("BTC-USD", "Bitcoin", "bitcoin")` as a real, pre-existing canonical
+# TradeTown symbol — this adapter maps that EXISTING symbol onto Kraken's
+# pair code rather than inventing a second symbol taxonomy. Only that one
+# symbol is mapped in this pass (Section 8 of the directive: "Only ONE
+# real external provider may be activated... do not build multi-provider
+# routing" — the same minimalism applies to symbol coverage; adding more
+# mappings is a trivial, separately-auditable follow-up, not bundled in
+# here).
+#
+# NOT WIRED INTO ANYTHING. This class is constructed explicitly by a
+# caller that wants it — nothing in this codebase does that today. The
+# global `market_data_provider` singleton above is completely untouched
+# (still mock, still every existing caller's default). No research
+# module (app/strategy_engine.py, app/walk_forward.py,
+# app/parameter_sensitivity.py, app/cost_sensitivity.py,
+# app/leakage_audit.py, app/baseline_comparison.py) accepts an injectable
+# provider yet — each hardcodes `from app.market_data import
+# market_data_provider` at module scope, so even a caller that wanted to
+# feed this class's real candles into an actual backtest cannot do so
+# without a further, separately-scoped "thread an explicit provider
+# through the research pipeline" change. That is this milestone's own
+# disclosed, correctly-identified next step (see the final forensic
+# report's "Exactly ONE Next Milestone" section) — not implemented here.
+#
+# NO SILENT FALLBACK, NO NEW PROVENANCE VOCABULARY. Every method either
+# returns real Kraken data or raises `ExternalMarketDataProviderUnavailable`
+# with a real, specific, secret-free reason (there are no secrets to leak
+# in the first place — Kraken's public OHLC endpoint takes no
+# Authorization header). Every `Candle` this class returns carries
+# `data_status="historical"` — the same, already-existing `DataStatus`
+# literal (app/schemas.py) the generic `ExternalMarketDataProvider`
+# already uses, never a new "REAL_EXTERNAL" vocabulary invented on top of
+# it. `app/dataset_registry.py::build_dataset_metadata()` is the one
+# place downstream that turns a batch of `Candle`s into a
+# `DatasetSource`/`DataCategory` (`"external_real_provider"`/`"real"`
+# already exist as schema literals — see that module for the fix this
+# directive required to stop it from hardcoding `"mock_provider"`
+# regardless of the candles' actual provenance).
+# ============================================================================
+
+
+class KrakenMarketDataProvider(ExternalMarketDataProvider):
+    """A real, verified adapter for Kraken's public OHLC REST endpoint
+    (https://docs.kraken.com/rest/#tag/Market-Data/operation/getOHLCData).
+    No API key, no account, no signup — Kraken's market-data endpoints are
+    genuinely public. Documented rate limit for unauthenticated public
+    endpoints is modest (Kraken's own docs describe a shared counter-based
+    limit that tolerates well under one request per second in sustained
+    use); this adapter makes exactly one HTTP request per `get_candles()`
+    call and implements no automatic pagination or polling loop, so normal
+    use here cannot hammer it.
+
+    Kraken quirks this adapter handles explicitly rather than reusing the
+    base class's generic JSON contract:
+      - Errors are reported inside a 200 OK body's `"error"` array, not
+        via HTTP status codes — handled before touching `"result"`.
+      - The OHLC series is keyed in the response by Kraken's OWN internal
+        pair name, which can differ from the requested pair alias (e.g.
+        requesting `"XBTUSD"` returns a `"XXBTZUSD"` key) — this adapter
+        takes the one list-valued entry in `"result"` rather than
+        guessing that key.
+      - Kraken's LAST row is always the current, still-forming (not yet
+        closed) candle. `Candle`/`DataStatus` has no "partial bar"
+        concept, so rather than inventing one, this adapter simply never
+        returns that row — every `Candle` produced here is a genuinely
+        closed, complete historical bar.
+
+    `get_quote()` is intentionally NOT implemented (raises
+    `ExternalMarketDataProviderUnavailable`) — this milestone is scoped to
+    OHLCV candle retrieval only."""
+
+    _DEFAULT_BASE_URL = "https://api.kraken.com"
+
+    #: The only symbol mapping activated in this pass — see this class's
+    #: own module-level section docstring for why. `app/watchlist.py`'s
+    #: `SEED_SYMBOLS` already carries `"BTC-USD"` as a real TradeTown
+    #: symbol; Kraken's own pair code for it is `"XBTUSD"`.
+    _SYMBOL_TO_PAIR: dict[str, str] = {"BTC-USD": "XBTUSD"}
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        timeout_seconds: float = 10.0,
+        max_retries: int = 2,
+        transport: _HttpTransport | None = None,
+    ) -> None:
+        super().__init__(
+            provider_name="kraken",
+            api_key="",  # Kraken's public OHLC endpoint takes no Authorization header — never required, never faked.
+            base_url=base_url if base_url is not None else self._DEFAULT_BASE_URL,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            transport=transport,
+        )
+
+    def status(self) -> ExternalProviderStatus:
+        """Overrides the base class's status check: Kraken's public
+        market-data endpoint needs no API key, so requiring one (the base
+        class's generic contract) would make this real, keyless provider
+        report itself falsely unavailable. Only a real base URL is
+        required, and it always defaults to the real Kraken host above."""
+        if not self._base_url:
+            return ExternalProviderStatus(available=False, provider_name=self.provider_name, reason="Missing real configuration: base URL.")
+        return ExternalProviderStatus(available=True, provider_name=self.provider_name, reason="ready")
+
+    def is_available(self) -> bool:
+        return self.status().available
+
+    def get_quote(self, symbol: str) -> Quote:
+        self._require_available()
+        raise ExternalMarketDataProviderUnavailable(f"Real quote retrieval for {symbol!r} is not implemented by this Kraken OHLC-only adapter.")
+
+    def get_candles(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int,
+        *,
+        end_time: datetime | None = None,
+        anchor_price: float | None = None,
+    ) -> list[Candle]:
+        """Never falls back to mock data — see this class's own module
+        section docstring. `end_time`/`anchor_price` are accepted only to
+        satisfy `MarketDataProvider`'s shared interface and are ignored,
+        exactly like the generic base class (see its own docstring)."""
+        del end_time, anchor_price
+        if timeframe not in TIMEFRAMES:
+            raise ValueError(f"Unsupported timeframe {timeframe!r}; supported: {TIMEFRAME_ORDER}")
+        self._require_available()
+        pair = self._SYMBOL_TO_PAIR.get(symbol)
+        if pair is None:
+            raise ExternalMarketDataProviderUnavailable(
+                f"{symbol!r} has no Kraken pair mapping in this adapter (Section 20/21 of the directive this implements — never silently return data for a different instrument). Supported symbols: {sorted(self._SYMBOL_TO_PAIR)}."
+            )
+        interval_minutes = TIMEFRAMES[timeframe]
+        url = f"{self._base_url}/0/public/OHLC?pair={pair}&interval={interval_minutes}"
+        headers = {"Accept": "application/json"}
+
+        last_error: str | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                status_code, body = self._transport.get(url, headers=headers, timeout_seconds=self.timeout_seconds)
+            except TimeoutError as exc:
+                last_error = f"Timeout after {self.timeout_seconds:g}s (attempt {attempt + 1}/{self.max_retries + 1}): {exc}"
+                continue
+            except OSError as exc:
+                last_error = f"Transport error (attempt {attempt + 1}/{self.max_retries + 1}): {exc}"
+                continue
+
+            if status_code == 429:
+                raise ExternalMarketDataProviderUnavailable(f"Rate limited by {self.provider_name!r} (HTTP 429).")
+            if status_code >= 500:
+                last_error = f"Server error HTTP {status_code} (attempt {attempt + 1}/{self.max_retries + 1})."
+                continue
+            if status_code != 200:
+                raise ExternalMarketDataProviderUnavailable(f"Unexpected HTTP {status_code} from {self.provider_name!r}.")
+
+            return self._parse_kraken_response(body, symbol=symbol, pair=pair, timeframe=timeframe, limit=limit)
+
+        raise ExternalMarketDataProviderUnavailable(last_error or "Real retrieval failed for an undisclosed reason.")
+
+    def _parse_kraken_response(self, body: bytes, *, symbol: str, pair: str, timeframe: str, limit: int) -> list[Candle]:
+        """Parses Kraken's real, documented OHLC contract (see this
+        class's own docstring for the two quirks handled here: body-level
+        errors and the pair-name/result-key mismatch), then applies the
+        same real data-quality checks (duplicate/out-of-order timestamps,
+        impossible OHLC, negative volume) `ExternalMarketDataProvider`'s
+        own generic parser already applies — never silently accepted."""
+        try:
+            payload = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise ExternalMarketDataProviderUnavailable(f"Malformed response body from {self.provider_name!r}: {exc}") from None
+        if not isinstance(payload, dict):
+            raise ExternalMarketDataProviderUnavailable(f"Malformed response body from {self.provider_name!r}: expected a JSON object.")
+
+        errors = payload.get("error")
+        if errors:
+            raise ExternalMarketDataProviderUnavailable(f"{self.provider_name!r} reported an error for pair {pair!r}: {errors}.")
+
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise ExternalMarketDataProviderUnavailable(f"Malformed response from {self.provider_name!r}: missing 'result'.")
+
+        rows: list[object] | None = None
+        for key, value in result.items():
+            if key != "last" and isinstance(value, list):
+                rows = value
+                break
+        if rows is None:
+            raise ExternalMarketDataProviderUnavailable(f"Malformed response from {self.provider_name!r}: no OHLC series found for pair {pair!r}.")
+
+        # The last row is always the still-forming, not-yet-closed candle
+        # for the current period — see this class's own docstring. Every
+        # `Candle` this method returns must be a genuinely closed bar.
+        closed_rows = rows[:-1] if rows else rows
+        windowed_rows = closed_rows[-limit:] if limit > 0 else closed_rows
+
+        candles: list[Candle] = []
+        previous_timestamp: int | None = None
+        for index, raw in enumerate(windowed_rows):
+            try:
+                assert isinstance(raw, list)
+                timestamp_epoch = int(raw[0])
+                open_price, high, low, close = float(raw[1]), float(raw[2]), float(raw[3]), float(raw[4])
+                volume = float(raw[6])
+            except (IndexError, TypeError, ValueError, AssertionError) as exc:
+                raise ExternalMarketDataProviderUnavailable(f"Malformed candle at index {index} from {self.provider_name!r}: {exc}") from None
+            if previous_timestamp is not None and timestamp_epoch <= previous_timestamp:
+                raise ExternalMarketDataProviderUnavailable(f"Duplicate or out-of-order timestamp at index {index} from {self.provider_name!r}.")
+            if high < low or high < open_price or high < close or low > open_price or low > close:
+                raise ExternalMarketDataProviderUnavailable(f"Impossible OHLC relationship at index {index} from {self.provider_name!r} (o={open_price}, h={high}, l={low}, c={close}).")
+            if volume < 0:
+                raise ExternalMarketDataProviderUnavailable(f"Negative volume at index {index} from {self.provider_name!r}.")
+            previous_timestamp = timestamp_epoch
+            timestamp_iso = datetime.fromtimestamp(timestamp_epoch, tz=timezone.utc).isoformat()
+            candles.append(
+                Candle(symbol=symbol, timeframe=timeframe, timestamp=timestamp_iso, open=open_price, high=high, low=low, close=close, volume=volume, data_status="historical")
+            )
+        return candles

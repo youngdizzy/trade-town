@@ -7,6 +7,54 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Real OHLCV Market Data Provider
+  Activation & Provenance 1.0."** Activates ONE real, verified external
+  OHLCV provider (`KrakenMarketDataProvider`, `backend/app/market_data.py`)
+  behind the already-existing `ExternalMarketDataProvider` boundary —
+  Kraken's public OHLC REST endpoint, chosen because it is genuinely
+  keyless (no API key, account, or signup this session could honestly
+  fabricate) and was verified reachable from this environment. Maps
+  the existing canonical `"BTC-USD"` watchlist symbol onto Kraken's
+  `"XBTUSD"` pair code; handles Kraken's real response quirks
+  (body-level errors on HTTP 200, mismatched result-key naming, an
+  always-still-forming last candle that is dropped rather than ever
+  mislabeled complete); applies the same duplicate/out-of-order/
+  impossible-OHLC/negative-volume checks the generic adapter already
+  applies. Every candle carries the existing `data_status="historical"`
+  literal — no new provenance vocabulary invented.
+  - **Real external smoke test genuinely passed** (not a fake-transport
+    test): `tests/test_kraken_market_data.py::TestKrakenRealExternalSmokeTest`
+    made one real, bounded HTTP request to Kraken's live API during
+    this milestone's verification and received, parsed, and validated
+    real BTC-USD OHLCV data — see `docs/Architecture.md`'s new section
+    for the full disclosure, including the honest skip-on-network-
+    failure design for environments without connectivity to Kraken.
+  - **Explicit selection only**: nothing in this codebase constructs
+    `KrakenMarketDataProvider` — the global `market_data_provider`
+    singleton and `_select_provider()` are completely untouched; mock
+    remains the default for every existing caller.
+  - **Fixed a real, disclosed provenance defect**:
+    `app/dataset_registry.py::_resolve_source_and_category()` used to
+    unconditionally return `("mock_provider", "simulated")` regardless
+    of the candles it was actually given — correct when written (no
+    real adapter existed at all) but a latent mislabeling risk once one
+    did. Now classifies from the real `Candle.data_status` values
+    present, reusing the already-existing `DatasetSource`/
+    `DataCategory` schema literals (`"external_real_provider"`/`"real"`)
+    verbatim; a genuine mix of real and mock candles in one call is
+    conservatively reported `"unavailable"`, never blessed as real.
+  - **Correctly identified, not silently worked around**: real data
+    still cannot reach `app/research_experiment.py`'s actual backtest/
+    walk-forward/validation pipeline — six research modules hardcode
+    the global mock singleton at module scope rather than accepting an
+    injectable provider. This is the disclosed next milestone, not
+    implemented here.
+  - **Not built this pass**: multi-provider routing, a second mapped
+    symbol, automatic pagination, any wiring into the research/backtest
+    pipeline, any Champion/Challenger or holdout change, any Sniper
+    file, any risk/execution/order/broker/wallet path, any change to
+    the global mock default.
+
 - **CEO directive "TradeTown — Sniper Per-Strategy Performance
   Observability UI 1.0."** Surfaces the previous milestone's read-only
   `GET /api/sniper/strategy-performance` endpoint inside the existing
