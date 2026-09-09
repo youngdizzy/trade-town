@@ -54,3 +54,43 @@ class TestBuildDatasetMetadata:
         metadata = build_dataset_metadata({}, symbols=[], timeframe="1h", candles_per_symbol_requested=10)
         assert metadata.coverage_pct == 0.0
         assert metadata.missing_bar_symbols == []
+
+
+class TestSourceAndCategoryDerivedFromActualCandles:
+    """CEO directive "Real OHLCV Market Data Provider Activation &
+    Provenance 1.0" — `_resolve_source_and_category()` used to hardcode
+    mock unconditionally; it now derives its answer from the real
+    `data_status` values on the candles it was actually given."""
+
+    def _real_candle(self, symbol: str = "BTC-USD", ts: str = "2024-01-01T00:00:00+00:00", close: float = 100.0) -> Candle:
+        return Candle(symbol=symbol, timeframe="1h", timestamp=ts, open=close, high=close + 1, low=close - 1, close=close, volume=1000.0, data_status="historical")
+
+    def test_all_real_candles_are_classified_as_external_real_provider(self) -> None:
+        metadata = build_dataset_metadata({"BTC-USD": [self._real_candle()]}, symbols=["BTC-USD"], timeframe="1h", candles_per_symbol_requested=1)
+        assert metadata.source == "external_real_provider"
+        assert metadata.data_category == "real"
+
+    def test_all_mock_candles_are_still_classified_as_mock_never_broken_by_this_fix(self) -> None:
+        metadata = build_dataset_metadata({"AAPL": [_candle()]}, symbols=["AAPL"], timeframe="1h", candles_per_symbol_requested=1)
+        assert metadata.source == "mock_provider"
+        assert metadata.data_category == "simulated"
+
+    def test_no_candles_at_all_preserves_the_pre_existing_mock_default(self) -> None:
+        metadata = build_dataset_metadata({}, symbols=["AAPL"], timeframe="1h", candles_per_symbol_requested=10)
+        assert metadata.source == "mock_provider"
+        assert metadata.data_category == "simulated"
+
+    def test_mixing_real_and_mock_candles_in_one_call_is_never_blessed_as_real(self) -> None:
+        """A genuine caller anomaly this milestone does not enable
+        (multi-provider blending) — must never be silently reported as
+        confidently real."""
+        candles_by_symbol = {"BTC-USD": [self._real_candle()], "AAPL": [_candle()]}
+        metadata = build_dataset_metadata(candles_by_symbol, symbols=["BTC-USD", "AAPL"], timeframe="1h", candles_per_symbol_requested=1)
+        assert metadata.source == "mock_provider"
+        assert metadata.data_category == "unavailable"
+
+    def test_live_and_delayed_statuses_also_count_as_real(self) -> None:
+        live_candle = Candle(symbol="BTC-USD", timeframe="1h", timestamp="2024-01-01T00:00:00+00:00", open=99.0, high=101.0, low=98.0, close=100.0, volume=1.0, data_status="live")
+        metadata = build_dataset_metadata({"BTC-USD": [live_candle]}, symbols=["BTC-USD"], timeframe="1h", candles_per_symbol_requested=1)
+        assert metadata.source == "external_real_provider"
+        assert metadata.data_category == "real"

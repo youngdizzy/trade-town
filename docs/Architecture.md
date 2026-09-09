@@ -23737,3 +23737,117 @@ have meant changing `app/research.py`, which was out of scope.
   forfeiting the isolation this design exists to provide.
 - Credential rotation is restart-based, and there is no credential expiry
   independent of a mission's own `expiresAt`.
+
+## CEO directive "TradeTown — Real OHLCV Market Data Provider Activation & Provenance 1.0"
+
+Activates ONE real, verified external OHLCV provider behind the
+already-existing `ExternalMarketDataProvider` boundary (`app/market_data.py`,
+added by the Phase 10 directive above) and fixes one narrow, real
+provenance defect this milestone's own audit found downstream of it.
+This is a provider-boundary/provenance milestone only — no strategy
+expansion, no research-pipeline wiring, no live trading, no Sniper
+changes.
+
+### `KrakenMarketDataProvider` (`app/market_data.py`)
+
+A concrete subclass of `ExternalMarketDataProvider` for Kraken's real,
+public, official OHLC REST endpoint
+(https://docs.kraken.com/rest/#tag/Market-Data/operation/getOHLCData).
+Chosen because it is genuinely keyless — no API key, no account, no
+signup step, which this session could not honestly fabricate — and was
+verified reachable from this environment during Phase 0 (a real `GET
+https://api.kraken.com/0/public/OHLC` returned real HTTP 200 OHLCV
+data). Maps `app/watchlist.py`'s existing canonical `"BTC-USD"` symbol
+onto Kraken's `"XBTUSD"` pair code (the only symbol activated this
+pass — Section 8 of the directive: one provider, no multi-symbol/
+multi-provider routing bundled in). Handles two real Kraken-specific
+response quirks the generic base class's contract does not: errors
+reported inside a 200 OK body's `"error"` array rather than via HTTP
+status, and an OHLC series keyed by Kraken's own internal pair name
+(e.g. `"XXBTZUSD"`) rather than the requested alias. Kraken's always-
+still-forming last candle is dropped rather than ever being labeled a
+complete `"historical"` bar. Applies the same duplicate/out-of-order-
+timestamp, impossible-OHLC, and (new) negative-volume checks the
+generic adapter already applies — no relaxed validation for being
+"real." Every returned `Candle` carries `data_status="historical"` —
+the existing `DataStatus` literal, no new provenance vocabulary
+invented.
+
+**Explicit selection, not accidental activation.** Nothing in this
+codebase constructs `KrakenMarketDataProvider` — it is only usable by a
+caller that writes that exact class name. The global `market_data_provider`
+singleton and `_select_provider()` are completely untouched; mock stays
+the default for every existing caller, with no risk of an
+accidentally-present credential silently switching behavior (moot here
+regardless, since Kraken needs none).
+
+**Real external smoke test, disclosed honestly.** `tests/
+test_kraken_market_data.py::TestKrakenRealExternalSmokeTest` makes one
+real, bounded HTTP request to Kraken's live API — during this
+milestone's own verification pass it genuinely succeeded (CASE A: real
+OHLCV retrieved, parsed, and validated — symbol/timeframe/timestamp
+ordering/no-duplicates/valid-OHLC/non-negative-volume/`data_status
+== "historical"` all confirmed against the real response). The test is
+designed to `pytest.skip()` rather than fail the suite if network
+connectivity to Kraken is genuinely unavailable in some other
+environment — an honest CASE B disclosure, never a fabricated pass.
+Every other test in this file and in the pre-existing
+`test_external_market_data.py` continues to use an injected fake HTTP
+transport with zero real network calls.
+
+### Provenance fix: `app/dataset_registry.py::_resolve_source_and_category()`
+
+Before this pass, this function unconditionally returned
+`("mock_provider", "simulated")` regardless of which candles it was
+actually given — correct when written (no real adapter existed at
+all), but a latent provenance defect once a real one did: a caller
+that ever passes real external candles through `build_dataset_metadata()`
+would have had them silently mislabeled as mock/simulated. Fixed to
+classify from the actual `Candle.data_status` values present: all-real
+(`"historical"`/`"live"`/`"delayed"`) → `"external_real_provider"`/`"real"`;
+all-mock (`"simulated"`) or no candles at all → unchanged
+`"mock_provider"`/`"simulated"` default; a genuine MIX of real and mock
+statuses in one call (a caller anomaly this milestone does not enable)
+→ conservatively `"mock_provider"`/`"unavailable"`, never blessed as
+confidently real. Reuses the already-existing `DatasetSource`/
+`DataCategory` schema literals (`"external_real_provider"`/`"real"`)
+verbatim — no new provenance enum.
+
+### The correctly-identified remaining gap: real data cannot yet reach the research/backtest pipeline
+
+`app/research_experiment.py` and every module it calls
+(`app/strategy_engine.py`, `app/walk_forward.py`,
+`app/parameter_sensitivity.py`, `app/cost_sensitivity.py`,
+`app/leakage_audit.py`, `app/baseline_comparison.py`) hardcode
+`from app.market_data import market_data_provider` at module scope and
+call `market_data_provider.get_candles(...)` directly — none accept an
+injectable provider parameter. This means `KrakenMarketDataProvider`
+cannot yet feed a real backtest/walk-forward/experiment run without
+either replacing the global mock singleton (forbidden by this
+directive) or a separately-scoped change threading an explicit
+`provider: MarketDataProvider` parameter through that entire chain.
+Correctly identified rather than silently worked around — see "ONE
+Next Milestone" below.
+
+### Explicitly not built this pass
+
+Multi-provider routing/failover/scoring, a second symbol mapped beyond
+`BTC-USD`, automatic pagination beyond one bounded request, wiring into
+`app/research_experiment.py` or any backtest/walk-forward/validation
+engine, any change to `app/champion_challenger.py`/`app/holdout.py`,
+any change to the global `market_data_provider` default, any Sniper
+file, any risk/execution/order/broker/wallet code path, and any new
+provenance vocabulary beyond the schema literals that already existed.
+
+### ONE Next Milestone (not implemented this pass)
+
+**Thread an explicit, optional `provider: MarketDataProvider` parameter
+through `app/research_experiment.py` and the six research modules it
+calls** (each defaulting to the existing global mock singleton, so
+every current caller's behavior is byte-identical), so a new,
+explicitly-opted-in caller can run one real experiment against
+`KrakenMarketDataProvider()`'s real BTC-USD candles and compare that
+evidence against the existing synthetic/mock baseline — the smallest
+change that actually lets real data reach research, correctly
+identified as the true remaining blocker by this milestone's own
+Phase 0 audit rather than assumed away.
