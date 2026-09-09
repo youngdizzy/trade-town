@@ -4313,6 +4313,30 @@ never touches `sniperPositions`/`sniperTradeHistory`.
 Marks one wallet active and every other wallet inactive. 404 if no
 wallet with that id exists. Returns the full updated `SniperWallet[]`.
 
+### `GET /api/sniper/strategies`
+
+CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0" —
+returns `SniperStrategyDefinition[]`, the persisted Sniper strategy
+registry (self-healing to `default_sniper_strategies()` — one entry,
+`id: "memecoin-sniper"` — if the save predates this milestone or the
+list is otherwise empty). Pure identity/governance metadata only:
+`id`, `name`, `family`, `version`, `status` (`"enabled"|"disabled"`),
+`provenance` (currently always `"hardcoded"`), `createdAt`. This is not
+a performance or validation signal — `enabled` means "eligible to
+originate new discovery/entries," nothing more.
+
+### `POST /api/sniper/strategies/{strategy_id}/status`
+
+Body: `{ "status": "enabled" | "disabled" }`. 400 if `strategy_id` is
+not a registered strategy, or if `status` is neither `"enabled"` nor
+`"disabled"`. Disabling closes the discovery/new-entry gate in
+`tick_sniper_engine()` on the very next tick — it does not delete the
+strategy, does not affect already-open positions (they keep
+marking-to-market and can still exit via their own stop/target/
+trailing-stop), and does not alter any historical `SniperTrade`/
+`SniperPosition` record already stamped with this strategy's identity.
+Returns the full updated `SniperStrategyDefinition[]`.
+
 ### `POST /api/sniper/engine`
 
 Body: `{ "status": "stopped" | "running" | "paused", "mode": "dry_run", "turbo": bool, "copyTradingEnabled": bool }`

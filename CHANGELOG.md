@@ -7,6 +7,102 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0."**
+  Replaces Memecoin Sniper's single hardcoded strategy identity with a
+  first-class, persisted, versioned, enable/disable-aware strategy
+  registry and a single canonical execution-selection boundary — the
+  directive's own explicit successor to the Master 11-Pillar audit's
+  "Sniper Strategy Engine is one hardcoded engine, no
+  Challenger/versioning" finding. This is an **architectural foundation
+  milestone only**: Sniper's candidate/safety/risk/emergency-stop/
+  execution/telemetry behavior is byte-for-byte unchanged for the
+  registry's sole seeded entry — the registry establishes identity and
+  governance, never authorization.
+  - **Phase 0 forensic finding, not assumption**: `evaluate_entry_
+    firewall(candidate, config, risk_state, open_position_count)` has
+    exactly four parameters and no strategy argument at all (proven via
+    `inspect.signature()` in a new test, not just read) — structural
+    proof the registry cannot influence firewall verdicts even if a
+    caller tried. `close_position()` already copies `strategy_id`/
+    `strategy_name`/`strategy_version_id`/`strategy_version_status`
+    FROM the position being closed, so the manual-exit path needed zero
+    changes — it inherits whatever identity a position already carries.
+  - **Duplication audit result: a separate registry is justified, not a
+    default**. Equities' `Strategy`/`CompiledStrategyDefinition`/
+    `app/strategy_registry.py` are built around a text-compiled DSL
+    (`compile_strategy_text()`) and equities-only `ResearchCategory`
+    categories — neither has an honest analog for Sniper's hardcoded,
+    deterministic Python pipeline. The new `app/
+    sniper_strategy_registry.py` is pure metadata + governance
+    (register/resolve-by-id/enable-disable/enumerate) — explicitly NOT a
+    plugin framework, NOT dynamic imports, and structurally incapable of
+    arbitrary code registration (no callable/code field exists on
+    `SniperStrategyDefinition` anywhere in its schema).
+  - **New identity contract** (`SniperStrategyDefinition` in
+    `app/schemas.py`): `id`, `name`, `family`, `version`, `status`
+    (`"enabled"|"disabled"`, default `"enabled"`), `provenance`
+    (currently only `"hardcoded"` — no champion/research-validated/
+    AI-discovered label is used anywhere, because none is true yet),
+    `created_at`. The current Sniper engine is migrated into the
+    registry's first (and, honestly, only) entry —
+    `id="memecoin-sniper"`, `family="liquidity_momentum"`, `version="1"`
+    — with no fabricated historical metadata.
+  - **Selection boundary**: `tick_sniper_engine()` gained an optional
+    `strategies: list[SniperStrategyDefinition] | None = None`
+    parameter. `None` (every pre-existing caller/test) preserves the
+    exact prior behavior with zero resolution attempted. A real list is
+    resolved once per tick against the canonical strategy id; an
+    unresolvable-or-disabled strategy closes the discovery/new-entry
+    gate — mirroring `emergency_stop_active`'s exact gating shape, as
+    an independent, orthogonal gate — while never touching the
+    unconditional position-management loop above it, so existing
+    positions always keep marking-to-market and can still exit.
+    `open_position()` gained a matching optional `strategy` parameter
+    that stamps `strategy_id`/`strategy_name`/`strategy_version_id`/
+    `strategy_version_status="versioned"` onto newly opened positions —
+    the pre-existing `SniperStrategyVersionStatus` field's own
+    docstring foreshadowed exactly this: it was "kept only so a future
+    real versioning system has a real state to report into," and now
+    genuinely does, with zero frontend changes needed (`SniperTerminal.
+    tsx` already branches on `"versioned"` vs "Not versioned").
+  - **Legacy migration**: `GameSaveState.sniper_strategies` defaults to
+    an empty list at the schema layer (the established codebase
+    convention — schemas.py never seeds meaningful default content).
+    Read sites self-heal via the same already-established
+    `state.X or default_X()` pattern equities' own `strategies` field
+    uses (`app/nexus.py`), so an old save loads cleanly, gets exactly
+    one real registered strategy on its very next tick, and that
+    healed value is persisted back — never silently rewritten again
+    afterward. A later registry change never mutates
+    `trade.strategy_version` on an already-closed historical trade
+    (proven with a dedicated regression test).
+  - **New minimal governance API**: `GET /api/sniper/strategies` and
+    `POST /api/sniper/strategies/{strategy_id}/status` (enable/disable
+    only — no new top-level UI tab; disabling is not deleting, and
+    historical trades opened under a strategy remain queryable exactly
+    as before).
+  - **New tests**: `tests/test_sniper_strategy_registry.py` (16 tests
+    on the pure registry functions), plus new coverage in
+    `tests/test_memecoin_sniper.py` (`TestOpenPositionWithRegistry`,
+    7 new `TestTickEngine` cases covering backward compatibility,
+    enabled/disabled gating, unresolvable/empty-registry fail-closed
+    behavior, and Emergency Stop/disabled-strategy acting as
+    independent gates), `tests/test_nexus.py`
+    (`TestTickWiresStrategyRegistryIntoSniperEngine`), and
+    `tests/test_state.py`/`tests/test_persistence.py` (status-toggle
+    round trip, restart persistence, and a legacy pre-registry save
+    loading cleanly to an empty list without corrupting unrelated
+    fields).
+  - **Explicitly NOT built this pass** (the directive's own hard scope
+    boundary): Sandwich Mode, Champion/Challenger comparison, AI
+    strategy generation or authorization, a second risk engine, a
+    second Gatekeeper, a second emergency-stop mechanism, live trading,
+    wallet signing, or any change to Sniper's actual trading behavior.
+    The two new enable/disable endpoints are the one deliberate,
+    minimal, in-scope addition beyond the registry's pure data model —
+    without them "enable/disable-aware" would be dead code with no real
+    invocation path.
+
 - **CEO directive "TradeTown Ultimate — Master 11-Pillar Architecture
   Directive — TradeTown + Memecoin Sniper v1.0."** A Phase-0-first
   forensic audit (4 parallel research passes covering TradeTown's own

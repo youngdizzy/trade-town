@@ -24091,3 +24091,168 @@ a properly isolated sibling strategy (per the directive's own explicit
 architecture) and for a real Challenger/strategy-evolution system on
 the Sniper side — currently impossible because there is, honestly and
 verifiably, only one strategy to challenge.
+
+## CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0"
+
+Implements exactly the milestone the Master 11-Pillar audit above named
+as its own single recommended next step: Memecoin Sniper's one
+hardcoded strategy identity becomes a first-class, persisted,
+versioned, enable/disable-aware registry with a single canonical
+execution-selection boundary. **Architectural foundation only** —
+Sniper's actual trading behavior for the registry's sole seeded entry
+is unchanged; the registry establishes identity/governance, never
+authorization.
+
+### Phase 0 forensic findings (traced, not assumed)
+
+- `evaluate_entry_firewall(candidate, config, risk_state,
+  open_position_count)` has exactly four parameters — confirmed via
+  `inspect.signature()` in a new test. There is no strategy parameter
+  anywhere in the firewall's call signature, so the registry is
+  structurally incapable of influencing a firewall verdict, whatever a
+  future caller might try to pass it.
+- `close_position()` already copies `strategy_id`/`strategy_name`/
+  `strategy_version_id`/`strategy_version_status` from the position
+  being closed to the closed record. The manual-exit path
+  (`GameState.close_sniper_position()`) needed zero changes — it
+  inherits whatever identity a position already carries at open time.
+- `SniperPosition.strategy_version_status` (`SniperStrategyVersionStatus
+  = Literal["versioned", "unavailable"]`) already existed and was
+  always `"unavailable"`, with a docstring that explicitly anticipated
+  this exact milestone ("kept only so a future real versioning system
+  has a real state to report into"). `SniperTerminal.tsx` already
+  branches on `"versioned"` vs. showing "Not versioned" in two places —
+  confirmed via grep, meaning **zero frontend changes were required**
+  for the UI to start showing real version data once the backend
+  populates it.
+- No FastAPI `TestClient`-based router tests exist anywhere in this
+  codebase (confirmed via grep) — the new router endpoints are tested
+  at the `GameState` method / pure-function level, consistent with
+  every other router in this project.
+
+### Duplication audit: why a separate registry, not reuse
+
+Equities' `Strategy`/`CompiledStrategyDefinition`/
+`app/strategy_registry.py` are built around a text-compiled DSL
+(`compile_strategy_text()`) and equities-only `ResearchCategory`
+categories. Neither concept has an honest analog for Sniper's
+hardcoded, deterministic Python discovery/entry pipeline — there is no
+DSL to compile and no research category to assign. Reusing that
+machinery would mean either fabricating a fake compiled-definition body
+for a strategy that isn't actually DSL-driven, or bending
+`ResearchCategory` to cover a domain it was never designed for. The new
+`app/sniper_strategy_registry.py` is a separate, much smaller module:
+pure metadata plus governance (register / resolve-by-id / enable-disable
+/ enumerate), explicitly **not** a plugin framework, not dynamic
+imports, and structurally incapable of registering arbitrary executable
+code — `SniperStrategyDefinition` has no callable/code field anywhere
+in its schema.
+
+### Identity contract
+
+`SniperStrategyDefinition` (`app/schemas.py`):
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Deterministic identity string (`"memecoin-sniper"` for the seeded entry) |
+| `name` | Display name |
+| `family` | Strategy family (`"liquidity_momentum"`) |
+| `version` | Explicit version string, captured on the position/trade at creation time, never rewritten later |
+| `status` | `"enabled"` \| `"disabled"`, default `"enabled"` |
+| `provenance` | Currently only `"hardcoded"` — no champion/research-validated/AI-discovered label exists anywhere, because none would be true |
+| `created_at` | Registration timestamp |
+
+The current engine is migrated in as the registry's first entry with no
+fabricated historical metadata: `id="memecoin-sniper"`,
+`name=SNIPER_STRATEGY_NAME` (pre-existing constant), `family=
+"liquidity_momentum"`, `version="1"`, `status="enabled"`,
+`provenance="hardcoded"`.
+
+### Selection boundary
+
+`tick_sniper_engine()` gained an optional `strategies: list[
+SniperStrategyDefinition] | None = None` parameter. `None` — every
+pre-existing caller and test — preserves the exact prior behavior with
+no resolution attempted at all. When a real list is passed,
+`resolve_sniper_strategy()` looks up the canonical `SNIPER_STRATEGY_ID`
+once per tick; an unresolvable id or a `"disabled"` status closes the
+discovery/new-entry gate, in the same position and the same boolean
+shape as the pre-existing `emergency_stop_active` gate — an independent
+condition ANDed into the same `if`, never a replacement for it. Neither
+gate touches the unconditional position-management loop that runs
+above it, so existing open positions always keep marking-to-market and
+can still exit via their own stop/target/trailing-stop regardless of
+the strategy's or Emergency Stop's current state.
+
+`open_position()` gained a matching optional `strategy:
+SniperStrategyDefinition | None = None` parameter. When resolved, it
+stamps `strategy_id`/`strategy_name`/`strategy_version_id`/
+`strategy_version_status="versioned"` onto the newly opened position
+via `.model_copy(update={...})` after normal construction (not via
+`**dict` unpacking, which fails mypy's strict per-field checking
+against a pydantic model).
+
+`app/nexus.py::tick()` reads `sniper_strategies = list(state.
+sniper_strategies) or default_sniper_strategies()` and threads it
+straight into the real `tick_sniper_engine()` call, and persists the
+(possibly just-healed) list back into the returned state — one
+canonical selection path, not scattered strategy `if`/`elif` checks
+anywhere in the codebase.
+
+### Legacy migration
+
+`GameSaveState.sniper_strategies` defaults to an empty list at the
+schema layer — matching the established convention that `schemas.py`
+never seeds meaningful default *content* (only `app/state.py::
+default_state()` does). The generic `_migrate_dict()` deep-merge
+migration does not fire here (it only triggers on an outright pydantic
+`ValidationError`, never on a benign missing key with a
+`default_factory`). Instead, every read site uses the same
+already-established self-healing pattern equities' own `strategies`
+field uses (`app/nexus.py:1389`: `strategies = state.strategies or
+default_strategies()`): `sniper_strategies = list(state.
+sniper_strategies) or default_sniper_strategies()`. A save from before
+this milestone loads with `sniper_strategies == []`, self-heals to the
+one real default entry on its very next tick, and that healed value is
+written back into persisted state — it is never silently recomputed
+from scratch on every subsequent tick, and a later registry-version
+bump never rewrites `strategy_version` on an already-closed historical
+trade (proven directly with a dedicated regression test).
+
+### API surface
+
+- `GET /api/sniper/strategies` — returns the registry (self-healing to
+  the default list if empty).
+- `POST /api/sniper/strategies/{strategy_id}/status` — body `{"status":
+  "enabled"|"disabled"}`; 400 for an unknown id or invalid status.
+  Disabling is not deleting — historical trades opened under a
+  strategy remain queryable exactly as before, and disabling never
+  affects already-open position management.
+
+No new top-level UI tab was added; the existing Sniper Terminal simply
+starts showing real version data because it already reads
+`strategyVersionStatus`.
+
+### Explicitly not built this pass
+
+Sandwich Mode, Champion/Challenger comparison, AI strategy generation
+or authorization, a second risk engine, a second Gatekeeper, a second
+emergency-stop mechanism, live trading, wallet signing, or any change
+to Sniper's real trading behavior. The two enable/disable endpoints are
+the one deliberate, minimal, in-scope addition beyond the pure registry
+data model — without them, "enable/disable-aware" would be dead code
+with no real invocation path.
+
+### ONE Next Milestone (not implemented this pass)
+
+**A second, distinct Sniper strategy family, still deterministic and
+hardcoded (not Sandwich Mode, not AI-generated)** — the smallest
+possible next step that actually proves the selection boundary
+dispatches between more than one implementation, rather than just
+having capacity to. Today `resolve_sniper_strategy()` is exercised only
+ever resolving a registry of exactly one entry; a second real
+strategy is the only way to prove `tick_sniper_engine()`'s dispatch
+path genuinely selects rather than merely gates a single hardcoded
+identity, and is the direct, honest prerequisite for a real
+Champion/Challenger comparison system later — without which that
+system would have nothing to compare against.

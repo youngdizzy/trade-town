@@ -13187,6 +13187,30 @@ SniperStrategyVersionStatus = Literal["versioned", "unavailable"]
 # SniperPosition and SniperTrade below.
 SNIPER_STRATEGY_ID = "memecoin-sniper"
 SNIPER_STRATEGY_NAME = "Memecoin Sniper — Liquidity/Momentum Discovery"
+# CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0" —
+# the real category this domain's one strategy belongs to (see
+# SniperStrategyDefinition below). Named for what the engine actually
+# does (liquidity + momentum discovery, per SNIPER_STRATEGY_NAME above),
+# not a placeholder — a real future sibling (e.g. a sandwich-detection
+# strategy, explicitly NOT built by this directive) would register under
+# a DIFFERENT family, never this one.
+SNIPER_STRATEGY_FAMILY = "liquidity_momentum"
+# The current hardcoded engine's own real, deterministic version — "1"
+# because this is genuinely the first and only implementation that has
+# ever existed. Bumped only on a future pass that deliberately changes
+# this engine's actual entry/exit/scoring logic; never auto-incremented,
+# never guessed.
+SNIPER_STRATEGY_VERSION = "1"
+# The one real, honest provenance value for today's single strategy — a
+# hand-written, deterministic Python pipeline (see
+# app/memecoin_sniper.py's own module docstring). Deliberately a
+# single-value Literal, not a free string: this directive's own rule is
+# "do not label it champion / research-validated / AI-discovered /
+# backtest-validated unless repository evidence actually supports those
+# claims" — none of those are true today, so no such value exists here
+# to be misapplied. A future value (e.g. "compiled_from_research") would
+# only ever be added once a real such pipeline exists.
+SniperStrategyProvenance = Literal["hardcoded"]
 # "Terminal 2.1" directive, Phase 3 — one real category per real gate
 # inside `app/memecoin_sniper.py::evaluate_entry_firewall()`, in the
 # exact order that function checks them. Never a decorative taxonomy:
@@ -13196,6 +13220,53 @@ SNIPER_STRATEGY_NAME = "Memecoin Sniper — Liquidity/Momentum Discovery"
 SniperBlockReason = Literal[
     "safety", "data_quality", "timing", "score", "risk_profile", "kill_switch", "daily_loss", "max_positions", "max_open_risk"
 ]
+# CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0" —
+# real, explicit enable/disable state for one registered Sniper
+# strategy. "disabled" stops new discovery/entries for that strategy
+# exactly like the CEO's own global Emergency Stop does (see
+# app/memecoin_sniper.py::tick_sniper_engine()'s own docstring) — it
+# never deletes the strategy or its historical positions/trades, and it
+# never stops already-open positions from being managed/exited.
+SniperStrategyStatus = Literal["enabled", "disabled"]
+
+
+class SniperStrategyDefinition(CamelModel):
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — the real, first-class registry entry replacing this domain's
+    previous bare module-level constants (`SNIPER_STRATEGY_ID`/
+    `SNIPER_STRATEGY_NAME` above). `id` is the one stable, deterministic
+    identity every `SniperPosition`/`SniperTrade` stamps at creation
+    time (see `app/memecoin_sniper.py::open_position()`); `version` is
+    real and explicit (never auto-incremented — see
+    `SNIPER_STRATEGY_VERSION`'s own comment); `status` is the CEO's own
+    real enable/disable control (`app/sniper_strategy_registry.py::
+    set_sniper_strategy_status()`) — DISABLED stops new discovery/
+    entries under this strategy exactly like the global Emergency Stop
+    does, but it never deletes this record or affects any historical
+    position/trade already stamped with it, and it never stops an
+    already-open position from being managed or exiting.
+
+    Deliberately NOT the same object as the equities side's `Strategy`/
+    `CompiledStrategyDefinition` (see app/strategy_registry.py): those
+    represent a strategy COMPILED FROM AUTHORED TEXT through
+    app/strategy_compiler.py's real trigger/requirement/entry/stop/
+    target DSL, backed by a stage-gated Research Sandbox lifecycle
+    (`Strategy.stage`) — none of which exists or applies here. This
+    domain's one strategy is a hand-written, deterministic Python
+    pipeline with no source text to compile and no research-sandbox
+    stage; forcing it into `Strategy`'s shape would mean either
+    fabricating a fake `source_text`/`focus_category` (equities-only
+    categories that don't describe a memecoin/liquidity domain at all)
+    or leaving most of that object's real fields permanently null — a
+    worse fit than this small, honest, domain-specific registry."""
+
+    id: str
+    name: str
+    family: str
+    version: str
+    status: SniperStrategyStatus = "enabled"
+    provenance: SniperStrategyProvenance
+    created_at: str = Field(alias="createdAt")
 
 
 class SniperSafetyCheck(CamelModel):
@@ -14033,7 +14104,29 @@ class GameSaveState(CamelModel):
     # (never a secret). Small, user-curated list — no cap needed, unlike
     # the tick-mutated sniper_* lists above.
     sniper_wallets: list[SniperWallet] = Field(default_factory=list, alias="sniperWallets")
-    # CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+    # CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0"
+    # — the real, first-class strategy registry (see
+    # SniperStrategyDefinition's own docstring). Defaults to `[]` here,
+    # matching this codebase's own established convention (see
+    # `strategies: list[Strategy]` below, also `default_factory=list`)
+    # of never seeding meaningful default CONTENT at the schema layer —
+    # a fresh game's real seed list is assigned once by
+    # `app/state.py::default_state()`
+    # (`app.sniper_strategy_registry.default_sniper_strategies()`), and
+    # a save that predates this field (or any save reaching
+    # `app/nexus.py::tick()` before its first post-load tick) reads
+    # `[]` here and self-heals via that exact same real fallback at
+    # read time — the identical `state.X or default_X()` pattern
+    # `app/nexus.py`'s own `strategies = state.strategies or
+    # default_strategies()` already established for the equities
+    # Strategy list, never a bespoke migration function. `[]` can only
+    # ever mean "this save predates the registry": disabling a strategy
+    # sets `status="disabled"`, it never removes the entry (see
+    # SniperStrategyDefinition's own docstring), so an empty list is
+    # never a legitimate "zero strategies" state once the registry
+    # exists.
+    sniper_strategies: list[SniperStrategyDefinition] = Field(default_factory=list, alias="sniperStrategies")
+    # CEO directive "TradeTown — Persisted Risk Contract and Dynamic Risk
     # Scaling" — the real, permanent, append-only audit trail naming
     # exactly which `RiskContract` version governed each real sizing/
     # gatekeeper decision (Phase 4/5). Lives alongside `decisions`/

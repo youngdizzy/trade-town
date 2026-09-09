@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from app.schemas import (
+    SNIPER_STRATEGY_ID,
     SniperBlockReason,
     SniperCandidate,
     SniperClassification,
@@ -57,9 +58,11 @@ from app.schemas import (
     SniperSafetyCheck,
     SniperSafetyStatus,
     SniperScoreComponent,
+    SniperStrategyDefinition,
     SniperTimingState,
     SniperTrade,
 )
+from app.sniper_strategy_registry import resolve_sniper_strategy
 
 # Section 20/32 — real, disclosed defaults; also mirrored on
 # `SniperEngineConfig`'s own field defaults so a fresh config and this
@@ -425,8 +428,33 @@ def position_risk_sol(entry_price: float, stop_price: float, size_sol: float) ->
     return size_sol * stop_distance_pct
 
 
-def open_position(candidate: SniperCandidate, size_sol: float, stop_price: float, target_price: float, opened_at: str) -> SniperPosition:
-    return SniperPosition(
+def open_position(
+    candidate: SniperCandidate,
+    size_sol: float,
+    stop_price: float,
+    target_price: float,
+    opened_at: str,
+    *,
+    strategy: SniperStrategyDefinition | None = None,
+) -> SniperPosition:
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — `strategy` (optional, defaulting to `None`) is the real,
+    already-resolved registry entry (see
+    `app/sniper_strategy_registry.py::resolve_sniper_strategy()`) this
+    position is being opened under. `None` (every existing direct
+    caller/test that hasn't been threaded through) preserves the exact
+    prior behavior: `SniperPosition`'s own schema defaults
+    (`SNIPER_STRATEGY_ID`/`SNIPER_STRATEGY_NAME`/`"unavailable"`) apply
+    unchanged. A real `strategy` stamps this position's identity fields
+    explicitly and for the first time honestly reports
+    `strategyVersionStatus="versioned"` — a real, deterministic version
+    now genuinely exists (`strategy.version`), so this is no longer the
+    permanently-unreachable state it always was before this directive.
+    Set once, here, at creation time — never re-derived later, matching
+    every other field on this position (see `SniperStrategyDefinition`'s
+    own docstring for why a later registry change never mutates this
+    position's own identity)."""
+    position = SniperPosition(
         id=f"snipe-{candidate.mint[:12]}-{opened_at}",
         mint=candidate.mint,
         symbol=candidate.symbol,
@@ -443,6 +471,16 @@ def open_position(candidate: SniperCandidate, size_sol: float, stop_price: float
         pnlPct=0.0,
         riskSol=round(position_risk_sol(candidate.price_usd, stop_price, size_sol), 6),
     )
+    if strategy is not None:
+        position = position.model_copy(
+            update={
+                "strategy_id": strategy.id,
+                "strategy_name": strategy.name,
+                "strategy_version_id": strategy.version,
+                "strategy_version_status": "versioned",
+            }
+        )
+    return position
 
 
 def manage_position_tick(position: SniperPosition, current_price: float, elapsed_seconds: float, *, now: str | None = None) -> tuple[SniperPosition, SniperExitReason | None]:
@@ -715,6 +753,7 @@ def tick_sniper_engine(
     tick_seconds: float,
     discovery_sim_minutes: int | None = None,
     emergency_stop_active: bool = False,
+    strategies: list[SniperStrategyDefinition] | None = None,
 ) -> SniperTickResult:
     """One tick of the engine. `discovery_sim_minutes` ("Sniper AI
     Burn-In + Provider Activation 1.0" directive) is the real, current
@@ -746,7 +785,29 @@ def tick_sniper_engine(
     being marked-to-market and can still exit via their own stop/
     target/trailing-stop, the same "don't yank a resting position
     mid-flight" reasoning that module's docstring already gives for
-    equities' own resting broker orders."""
+    equities' own resting broker orders.
+
+    `strategies` (CEO directive "TradeTown — Sniper Strategy Engine +
+    Registry 1.0") — the caller's real, persisted
+    `GameSaveState.sniper_strategies` registry. `None` (every existing
+    caller/test that hasn't been threaded through) preserves the exact
+    prior behavior: no resolution is attempted, `open_position()` below
+    is called without a `strategy` and falls back to its own schema
+    defaults, identical to this function's behavior before this
+    directive. A real, non-`None` list is resolved against the one real
+    `SNIPER_STRATEGY_ID` this engine has ever run: if that id resolves
+    AND its `status == "enabled"`, new discovery/entries proceed exactly
+    as before, now stamping the resolved identity onto any new position
+    (see `open_position()`'s own docstring). If the id is
+    `"disabled"` OR genuinely cannot be resolved (a real, if defensive,
+    "identity required but unknown — fail closed" case per this
+    directive's own rule, never silently falling back to the old bare-
+    constant behavior), new discovery/entries are gated off for this
+    tick exactly like `emergency_stop_active` above — never a full
+    `"stopped"` freeze: already-open positions are still managed by the
+    loop below regardless of this resolution, matching this directive's
+    own explicit "disabled strategy != stopped position management"
+    rule."""
     now = _now_iso()
     events: list[SniperEvent] = []
     new_trades: list[SniperTrade] = []
@@ -796,7 +857,23 @@ def tick_sniper_engine(
     # formula.
     risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
 
-    if config.status == "running" and not emergency_stop_active and random.random() < DISCOVERY_CHANCE_PER_TICK:
+    # CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    # 1.0" — the one real, canonical selection point. `strategies is
+    # None` (no registry threaded through) preserves the exact prior
+    # behavior (`active_strategy=None`, gate stays open) — see this
+    # function's own docstring. A real, non-None list is resolved
+    # exactly once per tick against the one real strategy id this
+    # engine has ever run; an unresolvable or disabled result closes
+    # the new-discovery/entry gate for this tick without ever falling
+    # back to the old bare-constant behavior (fail closed, per this
+    # directive's own explicit rule).
+    active_strategy: SniperStrategyDefinition | None = None
+    strategy_gate_open = True
+    if strategies is not None:
+        active_strategy = resolve_sniper_strategy(strategies, SNIPER_STRATEGY_ID)
+        strategy_gate_open = active_strategy is not None and active_strategy.status == "enabled"
+
+    if config.status == "running" and not emergency_stop_active and strategy_gate_open and random.random() < DISCOVERY_CHANCE_PER_TICK:
         candidate = build_candidate(f"cand-{uuid.uuid4().hex[:10]}", now, discovery_sim_minutes)
         candidates = [candidate, *candidates][:MAX_CANDIDATES]
         events.append(_event("discovered", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"score {candidate.opportunity_score}, {candidate.classification}"))
@@ -810,7 +887,7 @@ def tick_sniper_engine(
                 sizing = size_paper_position(config, risk_state, candidate)
                 if sizing is not None:
                     size_sol, stop_price, target_price = sizing
-                    new_position = open_position(candidate, size_sol, stop_price, target_price, now)
+                    new_position = open_position(candidate, size_sol, stop_price, target_price, now, strategy=active_strategy)
                     updated_positions.append(new_position)
                     events.append(_event("sniped", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"size {size_sol} SOL, score {candidate.opportunity_score}"))
                     risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})

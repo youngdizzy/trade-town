@@ -21,9 +21,11 @@ from app.schemas import (
     SniperPnlHistoryPoint,
     SniperPosition,
     SniperRiskState,
+    SniperStrategyDefinition,
     SniperTrade,
     SniperWallet,
 )
+from app.sniper_strategy_registry import default_sniper_strategies
 from app.state import game_state
 
 router = APIRouter(prefix="/api/sniper", tags=["sniper"])
@@ -178,6 +180,39 @@ async def activate_sniper_wallet(wallet_id: str) -> list[SniperWallet]:
         raise HTTPException(status_code=404, detail=error)
     persist_modules(state)
     return state.sniper_wallets
+
+
+@router.get("/strategies", response_model=list[SniperStrategyDefinition])
+async def sniper_strategies() -> list[SniperStrategyDefinition]:
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — the real, persisted strategy registry (see
+    `SniperStrategyDefinition`'s own docstring). `or
+    default_sniper_strategies()` is the same self-healing read
+    `app/nexus.py::tick()`/`GameState.set_sniper_strategy_status()`
+    already use, so a save that predates this field never returns an
+    empty list here either."""
+    state = await game_state.snapshot()
+    return state.sniper_strategies or default_sniper_strategies()
+
+
+class SetSniperStrategyStatusRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: str
+
+
+@router.post("/strategies/{strategy_id}/status", response_model=list[SniperStrategyDefinition])
+async def set_sniper_strategy_status(strategy_id: str, payload: SetSniperStrategyStatusRequest) -> list[SniperStrategyDefinition]:
+    """The CEO's real enable/disable control. DISABLED stops new
+    discovery/entries under this strategy exactly like the global
+    Emergency Stop does (see `app/memecoin_sniper.py::
+    tick_sniper_engine()`'s own docstring) — it never deletes the
+    strategy or affects any already-open position."""
+    state, error = await game_state.set_sniper_strategy_status(strategy_id, payload.status)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return state.sniper_strategies or default_sniper_strategies()
 
 
 class UpdateSniperEngineRequest(BaseModel):

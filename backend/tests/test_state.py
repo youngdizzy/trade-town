@@ -1377,6 +1377,69 @@ class TestCloseSniperPosition:
         assert saved.sniper_risk_state.open_risk_sol == 0.0
 
 
+class TestSetSniperStrategyStatus:
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — the CEO's real enable/disable control surface, mirroring
+    TestCloseSniperPosition's own style above."""
+
+    def test_disabling_the_canonical_strategy_persists(self) -> None:
+        from app.schemas import SNIPER_STRATEGY_ID
+
+        state = GameState()
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        assert error is None
+        resolved = next(s for s in saved.sniper_strategies if s.id == SNIPER_STRATEGY_ID)
+        assert resolved.status == "disabled"
+
+    def test_re_enabling_persists(self) -> None:
+        from app.schemas import SNIPER_STRATEGY_ID
+
+        state = GameState()
+        asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "enabled"))
+        assert error is None
+        resolved = next(s for s in saved.sniper_strategies if s.id == SNIPER_STRATEGY_ID)
+        assert resolved.status == "enabled"
+
+    def test_unknown_strategy_id_returns_a_named_error(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.set_sniper_strategy_status("does-not-exist", "disabled"))
+        assert error is not None
+        assert "no registered sniper strategy" in error.lower()
+        assert saved is state.data
+
+    def test_invalid_status_value_is_rejected(self) -> None:
+        from app.schemas import SNIPER_STRATEGY_ID
+
+        state = GameState()
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "not-a-real-status"))
+        assert error is not None
+        assert saved is state.data
+
+    def test_a_legacy_empty_registry_self_heals_before_toggling(self) -> None:
+        """The exact same self-healing read app/nexus.py::tick() uses —
+        a save predating this field must not silently no-op the CEO's
+        real toggle."""
+        from app.schemas import SNIPER_STRATEGY_ID
+
+        state = GameState()
+        state.data = state.data.model_copy(update={"sniper_strategies": []})
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        assert error is None
+        assert len(saved.sniper_strategies) == 1
+        assert saved.sniper_strategies[0].status == "disabled"
+
+    def test_disabling_never_mutates_a_sibling_strategys_status(self) -> None:
+        from app.schemas import SNIPER_STRATEGY_ID, SniperStrategyDefinition
+
+        state = GameState()
+        sibling = SniperStrategyDefinition(id="sibling", name="Sibling", family="test", version="1", status="enabled", provenance="hardcoded", createdAt="2026-01-01T00:00:00+00:00")  # type: ignore[arg-type]
+        state.data = state.data.model_copy(update={"sniper_strategies": [*state.data.sniper_strategies, sibling]})
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        assert error is None
+        assert next(s for s in saved.sniper_strategies if s.id == "sibling").status == "enabled"
+
+
 class TestSniperWallets:
     """"Terminal 2.1" directive, Phase 5 — real wallet METADATA CRUD, no
     secrets anywhere (SniperWallet has no field for one at all)."""

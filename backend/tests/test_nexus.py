@@ -347,7 +347,7 @@ class TestTickWiresEmergencyStopIntoSniperEngine:
 
         captured: dict[str, object] = {}
 
-        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False):  # type: ignore[no-untyped-def]
+        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False, strategies=None):  # type: ignore[no-untyped-def]
             captured["emergency_stop_active"] = emergency_stop_active
             return SniperTickResult(candidates, positions, trade_history, leads, lessons, risk_state, [], [])
 
@@ -369,7 +369,7 @@ class TestTickWiresEmergencyStopIntoSniperEngine:
 
         captured: dict[str, object] = {}
 
-        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False):  # type: ignore[no-untyped-def]
+        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False, strategies=None):  # type: ignore[no-untyped-def]
             captured["emergency_stop_active"] = emergency_stop_active
             return SniperTickResult(candidates, positions, trade_history, leads, lessons, risk_state, [], [])
 
@@ -380,6 +380,61 @@ class TestTickWiresEmergencyStopIntoSniperEngine:
         assert state.emergency_stop.active is False
         nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
         assert captured["emergency_stop_active"] is False
+
+
+class TestTickWiresStrategyRegistryIntoSniperEngine:
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — the real, full nexus.tick() must thread the real
+    GameSaveState.sniper_strategies registry into tick_sniper_engine(),
+    including the self-healing "empty persisted list -> real defaults"
+    fallback. Monkeypatches tick_sniper_engine itself (deterministic
+    proof of the WIRING) — the isolated selection/gating mechanism
+    itself is already proven by tests/test_memecoin_sniper.py."""
+
+    def _patch(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+        from app.memecoin_sniper import SniperTickResult
+
+        captured: dict[str, object] = {}
+
+        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False, strategies=None):  # type: ignore[no-untyped-def]
+            captured["strategies"] = strategies
+            return SniperTickResult(candidates, positions, trade_history, leads, lessons, risk_state, [], [])
+
+        monkeypatch.setattr("app.nexus.tick_sniper_engine", _fake_tick_sniper_engine)
+        return captured
+
+    def test_real_tick_passes_the_real_persisted_registry_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.schemas import SniperEngineConfig
+        from app.sniper_strategy_registry import set_sniper_strategy_status
+
+        captured = self._patch(monkeypatch)
+        state = default_state()
+        disabled_strategies, error = set_sniper_strategy_status(state.sniper_strategies, "memecoin-sniper", "disabled")
+        assert error is None
+        state = state.model_copy(update={"sniper_engine_config": SniperEngineConfig(status="running"), "sniper_strategies": disabled_strategies})
+        nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        assert captured["strategies"] == disabled_strategies
+
+    def test_a_legacy_empty_registry_self_heals_to_real_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A save that predates this field has `sniper_strategies == []`
+        — the real production symptom of loading an old save (see
+        GameSaveState.sniper_strategies's own schema docstring). The
+        real tick must never pass that empty list through untouched;
+        it must self-heal to the real, one-strategy default."""
+        from app.schemas import SNIPER_STRATEGY_ID, SniperEngineConfig
+
+        captured = self._patch(monkeypatch)
+        state = default_state()
+        state = state.model_copy(update={"sniper_engine_config": SniperEngineConfig(status="running"), "sniper_strategies": []})
+        result = nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        healed = captured["strategies"]
+        assert isinstance(healed, list) and len(healed) == 1
+        assert healed[0].id == SNIPER_STRATEGY_ID
+        assert healed[0].status == "enabled"
+        # And the healed value is actually persisted back, not just used
+        # in-memory for this one tick.
+        assert len(result.sniper_strategies) == 1
+        assert result.sniper_strategies[0].id == SNIPER_STRATEGY_ID
 
 
 class TestApplyOperatingModeRiskContractFailClosed:

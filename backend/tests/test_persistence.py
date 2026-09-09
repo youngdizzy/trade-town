@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -99,6 +100,62 @@ def test_risk_decisions_survive_a_real_restart_round_trip(temp_db):
     assert loaded is not None
     assert len(loaded.risk_decisions) == 1
     assert loaded.risk_decisions[0] == auto_risk_decision
+
+
+def test_sniper_strategy_registry_survives_a_real_restart_round_trip(temp_db):
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — proves a real, CEO-toggled (disabled) registry entry
+    survives a real save/restart round trip through SQLite with the
+    exact same identity/version/status, not just "no schema changed."""
+    from app.schemas import SNIPER_STRATEGY_ID
+    from app.sniper_strategy_registry import default_sniper_strategies, set_sniper_strategy_status
+
+    disabled_strategies, error = set_sniper_strategy_status(default_sniper_strategies(), SNIPER_STRATEGY_ID, "disabled")
+    assert error is None
+    state = default_state().model_copy(update={"sniper_strategies": disabled_strategies})
+    persistence.persist_modules(state)
+
+    loaded = persistence.load_modules()
+    assert loaded is not None
+    assert loaded.sniper_strategies == disabled_strategies
+    assert loaded.sniper_strategies[0].status == "disabled"
+
+
+def test_a_save_predating_the_registry_loads_cleanly_with_an_empty_list(temp_db):
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — a genuinely old save (the `sniperStrategies` key never
+    existed at all, simulated the same way
+    test_migration_recovers_an_old_save_missing_a_newer_field simulates
+    a pre-v0.5 save above) must still load without error (never corrupt
+    unrelated state), reading the honest `[]` per
+    GameSaveState.sniper_strategies's own schema docstring — pydantic's
+    own `default_factory=list` fills the missing key directly, this
+    never even reaches `_migrate_dict()`'s deep-merge path. The real
+    self-healing to real defaults happens at the next tick (see
+    tests/test_nexus.py's TestTickWiresStrategyRegistryIntoSniperEngine)
+    and in GameState.set_sniper_strategy_status() — not here."""
+    modules = persistence.split_state(default_state())
+    company = dict(modules["company"])
+    del company["sniperStrategies"]
+    modules["company"] = company
+
+    session = db.SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        for module_name, payload_dict in modules.items():
+            payload = json.dumps(payload_dict, separators=(",", ":"))
+            session.add(SaveModule(slot="default", module=module_name, data=payload, data_hash=persistence._hash(payload), updated_at=now))
+        session.commit()
+    finally:
+        session.close()
+
+    loaded = persistence.load_modules()
+    assert loaded is not None
+    assert loaded.sniper_strategies == []
+    # Confirms this is a targeted, minimal migration gap — every OTHER
+    # field in the same "company" module survives untouched.
+    assert loaded.sniper_engine_config == default_state().sniper_engine_config
+    assert len(loaded.strategies) == len(default_state().strategies)
 
 
 def test_knowledge_events_survive_a_real_restart_round_trip(temp_db):

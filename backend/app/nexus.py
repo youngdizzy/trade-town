@@ -197,6 +197,7 @@ from app.travel_mode import (
     travel_mode_confidence_bonus,
 )
 from app.memecoin_sniper import append_sniper_equity_snapshot, build_sniper_equity_snapshot, tick_sniper_engine
+from app.sniper_strategy_registry import default_sniper_strategies
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
 from app.treasury import apply_monthly_savings_rules, record_monthly_report
@@ -1437,6 +1438,15 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     sniper_lessons = list(state.sniper_lessons)
     sniper_risk_state = state.sniper_risk_state
     sniper_engine_config = state.sniper_engine_config
+    # CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    # 1.0" — the real strategy registry. `or default_sniper_strategies()`
+    # is the exact same self-healing "empty persisted list means this
+    # save predates the field" read this codebase already established
+    # for the equities `strategies` list a few lines below in this same
+    # function (`strategies = state.strategies or default_strategies()`)
+    # — never a bespoke migration function (see
+    # GameSaveState.sniper_strategies's own schema docstring).
+    sniper_strategies = list(state.sniper_strategies) or default_sniper_strategies()
     sniper_events = list(state.sniper_events)
     # "Equity Snapshot Telemetry 1.0" directive — real, capped rolling
     # account-equity history (see MAX_SNIPER_EQUITY_SNAPSHOTS above).
@@ -1846,6 +1856,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # created_sim_minutes), never re-derived later from "now."
         discovery_sim_minutes=sim_minutes(new_time),
         emergency_stop_active=emergency_stop.active,
+        strategies=sniper_strategies,
     )
     sniper_candidates = sniper_tick_result.candidates
     sniper_positions = sniper_tick_result.positions
@@ -3826,6 +3837,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "sniper_risk_state": sniper_risk_state,
             "sniper_events": sniper_events,
             "sniper_equity_history": sniper_equity_history,
+            "sniper_strategies": sniper_strategies,
             "decisions": decisions,
             "trade_proposals": trade_proposals,
             "ceo_decisions": ceo_decisions,
