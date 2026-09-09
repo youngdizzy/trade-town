@@ -24256,3 +24256,151 @@ path genuinely selects rather than merely gates a single hardcoded
 identity, and is the direct, honest prerequisite for a real
 Champion/Challenger comparison system later — without which that
 system would have nothing to compare against.
+
+## CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof 1.0"
+
+Implements exactly the milestone the previous section recommended:
+registers a second, genuinely distinct, deterministic, hardcoded Sniper
+strategy and gives `tick_sniper_engine()` a single canonical dispatch
+loop, proving the registry is a real dispatch boundary rather than a
+one-entry formality. **Architecture proof only** — no claim of
+profitability, no Sandwich Mode, no Champion/Challenger, no
+optimization; the shared firewall/risk/emergency-stop/execution
+pipeline is untouched.
+
+### Available-data audit and strategy selection
+
+Per this directive's own "choose scientifically, don't fabricate"
+rule: `RawCandidate`/`SniperCandidate` (`app/memecoin_sniper.py`) has
+always carried `whale_signal_count` — an existing, already-scored
+field (`score_candidate()`'s `whale_confirmation` component, a mere
+10% weight) that Strategy A has never treated as a hard requirement.
+This is the one field on the candidate that supports a genuinely
+different, honestly-supportable alpha hypothesis without fabricating
+new simulated data: smart-money/whale confirmation instead of
+momentum. The new strategy — `memecoin-sniper-whale-confirmation`,
+family `whale_confirmation` — requires at least 2 independent whale
+entries (`MIN_WHALE_SIGNALS_FOR_STRATEGY_B`), deliberately NOT also
+requiring the momentum-weighted `"qualified"`/`"high_conviction"`
+classification Strategy A depends on, so it is a real, independent
+selection criterion rather than a narrower copy of Strategy A's.
+
+### Duplication audit
+
+No second registry, no second registration path, no second bootstrap
+mechanism: Strategy B is registered through the exact same
+`app/sniper_strategy_registry.py::default_sniper_strategies()`/
+`register_sniper_strategy()` this codebase already established for
+Strategy A — this directive only extends that existing seed list from
+one entry to two.
+
+### Canonical dispatch
+
+New pure function `app/memecoin_sniper.py::strategy_accepts_candidate
+(strategy, candidate) -> bool` is the ONE real per-strategy acceptance
+gate — deliberately answers only "should this strategy evaluate this
+candidate," never "is this candidate safe" (it has no
+firewall/risk/config parameters at all). `family == SNIPER_STRATEGY_
+FAMILY` (Strategy A) preserves the engine's own original rule byte-
+for-byte: `candidate.classification in ("qualified", "high_conviction")`.
+`family == SNIPER_STRATEGY_B_FAMILY` (Strategy B) requires
+`candidate.whale_signal_count >= MIN_WHALE_SIGNALS_FOR_STRATEGY_B`. Any
+other family fails closed (`False`) — a corrupted or foreign registry
+entry can never be silently accepted or silently treated as either
+known strategy's rule.
+
+`tick_sniper_engine()`'s own discovery block now branches on
+`strategies is None` (the exact prior, pre-registry behavior,
+byte-for-byte unchanged — no dispatch of any kind) vs. a real registry,
+in which case a single loop walks the registry in order, calling
+`strategy_accepts_candidate()` for each enabled, known-family entry;
+the FIRST one that accepts wins the entry attempt for that candidate,
+through the exact same, unmodified `evaluate_entry_firewall()` →
+`size_paper_position()` → `open_position()` sequence every strategy has
+always used, stamping that strategy's own real identity on any
+resulting position. Registry order is the one real priority rule — if
+a candidate would satisfy both strategies, Strategy A (listed first)
+wins, proven with a dedicated test. No accepting strategy means no
+entry attempt for that candidate at all, exactly like a below-threshold
+candidate always has.
+
+### Discovery gate, generalized
+
+The previous milestone's gate resolved one specific hardcoded id and
+failed closed if it was missing or disabled. The gate now opens while
+at least one registry entry is BOTH `status == "enabled"` AND belongs
+to a family this engine actually implements (`SNIPER_STRATEGY_FAMILY`
+or `SNIPER_STRATEGY_B_FAMILY`) — an entry with an unrecognized family
+never counts, so a garbage or foreign registry row can never silently
+keep discovery running. Disabling one strategy alone, with the other
+left enabled, now correctly leaves discovery open and only removes
+that one strategy's own ability to produce new entries — distinguished
+with dedicated tests from the "sole strategy disabled" case the
+previous milestone already covered (which still holds, unchanged, for
+a single-strategy registry).
+
+### Legacy migration, generalized past a single default
+
+The previous milestone's self-heal — `sniper_strategies or default_
+sniper_strategies()` — only handled an outright-empty list (a save
+predating the registry entirely). It does not handle a real,
+non-empty, ONE-entry registry (a save persisted between the two
+directives, which has Strategy A registered but has never seen
+Strategy B) — that `or` short-circuits on a non-empty list, so
+Strategy B would never appear on it. New `app/sniper_strategy_
+registry.py::ensure_default_sniper_strategies()` generalizes
+correctly: self-heals an empty list exactly as before, then back-fills
+— via the existing `register_sniper_strategy()`, never a hand-rolled
+append — any default strategy id genuinely missing from the list,
+without ever touching an already-registered entry's own status,
+version, or identity. `app/nexus.py::tick()`, `GameState.set_sniper_
+strategy_status()`, and the `GET /api/sniper/strategies`/`POST
+.../status` router endpoints all use this one function, never a
+second migration mechanism. **Live-verified**, not just unit-tested:
+this session's own real, already-trading dev save (equity 10.07 SOL,
+2 consecutive losses, real prior history) had only `memecoin-sniper`
+persisted from the previous milestone; after restarting on this
+directive's code, `GET /api/sniper/strategies` genuinely returned both
+strategies on the very first call, with the dev save's own trading
+history completely untouched.
+
+### Safety/risk/Emergency Stop/AI boundary — re-verified, not re-argued
+
+`evaluate_entry_firewall()` still has exactly four parameters
+(`candidate`, `config`, `risk_state`, `open_position_count`) — no
+strategy argument exists, confirmed again via `inspect.signature()` in
+a new test, so this directive could not have added strategy-based
+firewall authorization even by accident. A candidate a strategy
+accepts but the firewall rejects (e.g. `rug_risk == "high"`) still
+opens no position for either strategy — proven with a dedicated test
+asserting a `"no_trade"` event with `block_reason == "risk_profile"`.
+Emergency Stop still gates the entire dispatch loop for both
+strategies simultaneously via the same pre-existing
+`emergency_stop_active` parameter — it was never made strategy-aware,
+and no second emergency-stop mechanism exists. `app/sniper_ai_
+reasoning.py` has zero references to the registry, `strategy_accepts_
+candidate()`, or the dispatch loop (confirmed via grep) — AI shadow
+reasoning still cannot select, enable, or authorize a strategy.
+
+### Explicitly not built this pass
+
+Sandwich Mode, Champion/Challenger comparison, AI strategy generation
+or authorization, a second risk engine, a second Gatekeeper, a second
+emergency-stop mechanism, live trading, wallet signing, any change to
+either strategy's own entry/exit/sizing mechanics beyond acceptance
+logic, and any claim that Strategy B is profitable, validated, or
+superior to Strategy A — it carries exactly the same honest,
+unvalidated `provenance: "hardcoded"` Strategy A always has.
+
+### ONE Next Milestone (not implemented this pass)
+
+**A real, structured comparison surface between the two now-genuinely-
+distinct strategies** (e.g. per-strategy trade counts/win-rate/
+expectancy read from the existing `SniperTrade` journal, grouped by
+`strategy_id` — a real aggregation over already-persisted records,
+never a new scoring/risk system) — the direct, honest prerequisite for
+a future Champion/Challenger system, which cannot exist honestly until
+there is something real to compare. Not Champion/Challenger itself:
+this would be read-only observability, no promotion/demotion
+mechanism, no automatic strategy switching, and no claim of
+statistical significance until a real sample size exists.

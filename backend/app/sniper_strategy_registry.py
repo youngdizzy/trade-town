@@ -48,6 +48,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.schemas import (
+    SNIPER_STRATEGY_B_FAMILY,
+    SNIPER_STRATEGY_B_ID,
+    SNIPER_STRATEGY_B_NAME,
+    SNIPER_STRATEGY_B_VERSION,
     SNIPER_STRATEGY_FAMILY,
     SNIPER_STRATEGY_ID,
     SNIPER_STRATEGY_NAME,
@@ -62,13 +66,21 @@ def _now_iso() -> str:
 
 
 def default_sniper_strategies() -> list[SniperStrategyDefinition]:
-    """The one real registered strategy today — the exact hardcoded
-    engine `app/memecoin_sniper.py` has always run, given a real,
-    resolvable identity for the first time instead of bare constants.
-    Mirrors `app/simulation.py::default_strategies()`'s own seed-list
+    """CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof
+    1.0" — now TWO real registered strategies: the original hardcoded
+    engine (`SNIPER_STRATEGY_ID`, unchanged from the previous
+    directive) plus a second, genuinely distinct hardcoded
+    implementation (`SNIPER_STRATEGY_B_ID` — see
+    `app/memecoin_sniper.py::strategy_accepts_candidate()` for its own
+    real, different decision logic). Mirrors
+    `app/simulation.py::default_strategies()`'s own seed-list
     convention for `GameSaveState.strategies`. `provenance="hardcoded"`
-    is the one honest value that applies — never "backtest_validated"/
-    "champion"/"ai_discovered", none of which are true of this engine."""
+    is the one honest value for BOTH — never "backtest_validated"/
+    "champion"/"ai_discovered", none of which are true of either
+    engine. Registry ORDER matters here: strategy A is listed first,
+    which is also this codebase's one real canonical dispatch-priority
+    rule (see `strategy_accepts_candidate()`'s own caller in
+    `tick_sniper_engine()`) — never re-ordered by this function."""
     return [
         SniperStrategyDefinition(
             id=SNIPER_STRATEGY_ID,
@@ -78,8 +90,45 @@ def default_sniper_strategies() -> list[SniperStrategyDefinition]:
             status="enabled",
             provenance="hardcoded",
             createdAt=_now_iso(),
-        )
+        ),
+        SniperStrategyDefinition(
+            id=SNIPER_STRATEGY_B_ID,
+            name=SNIPER_STRATEGY_B_NAME,
+            family=SNIPER_STRATEGY_B_FAMILY,
+            version=SNIPER_STRATEGY_B_VERSION,
+            status="enabled",
+            provenance="hardcoded",
+            createdAt=_now_iso(),
+        ),
     ]
+
+
+def ensure_default_sniper_strategies(strategies: list[SniperStrategyDefinition]) -> list[SniperStrategyDefinition]:
+    """CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof
+    1.0" — the real legacy-migration policy for a growing default
+    catalog. The previous directive's self-heal was `strategies or
+    default_sniper_strategies()`: correct for "empty list" (a save that
+    predates the registry entirely) but insufficient the moment
+    `default_sniper_strategies()` grows a SECOND entry — a save
+    persisted between the two directives already has a real,
+    non-empty, one-entry list (`[memecoin-sniper]`), so the old `or`
+    short-circuits and Strategy B would never appear on it, forever.
+    This function generalizes correctly: start from the existing list
+    (self-healing an outright-empty one first, exactly as before), then
+    back-fill — via `register_sniper_strategy()`, never a hand-rolled
+    append — any DEFAULT id genuinely missing from it. An id already
+    present (whatever its current status/version) is never touched,
+    so this can never silently revert a CEO's own disable/re-enable
+    choice or rewrite an already-registered entry's identity. A
+    registry that already contains both defaults (or has been extended
+    with unrelated custom strategies) round-trips through this
+    function unchanged."""
+    result = list(strategies) or default_sniper_strategies()
+    for default in default_sniper_strategies():
+        if resolve_sniper_strategy(result, default.id) is None:
+            registered, _ = register_sniper_strategy(result, default)
+            result = registered
+    return result
 
 
 def resolve_sniper_strategy(strategies: list[SniperStrategyDefinition], strategy_id: str) -> SniperStrategyDefinition | None:

@@ -197,7 +197,7 @@ from app.travel_mode import (
     travel_mode_confidence_bonus,
 )
 from app.memecoin_sniper import append_sniper_equity_snapshot, build_sniper_equity_snapshot, tick_sniper_engine
-from app.sniper_strategy_registry import default_sniper_strategies
+from app.sniper_strategy_registry import ensure_default_sniper_strategies
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
 from app.treasury import apply_monthly_savings_rules, record_monthly_report
@@ -1439,14 +1439,19 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     sniper_risk_state = state.sniper_risk_state
     sniper_engine_config = state.sniper_engine_config
     # CEO directive "TradeTown — Sniper Strategy Engine + Registry
-    # 1.0" — the real strategy registry. `or default_sniper_strategies()`
-    # is the exact same self-healing "empty persisted list means this
-    # save predates the field" read this codebase already established
-    # for the equities `strategies` list a few lines below in this same
-    # function (`strategies = state.strategies or default_strategies()`)
-    # — never a bespoke migration function (see
-    # GameSaveState.sniper_strategies's own schema docstring).
-    sniper_strategies = list(state.sniper_strategies) or default_sniper_strategies()
+    # 1.0," generalized by "Sniper Multi-Strategy Dispatch Proof 1.0"
+    # — the real strategy registry. `ensure_default_sniper_strategies()`
+    # self-heals an outright-empty persisted list (a save predating the
+    # registry entirely — the same "empty means this save predates the
+    # field" case the equities `strategies` list a few lines below
+    # already established) AND back-fills any individual default
+    # strategy id missing from an otherwise real, non-empty registry (a
+    # save persisted between the two directives, which has Strategy A
+    # registered but has never seen Strategy B) — never touching an
+    # already-registered entry's own status/version/identity. See that
+    # function's own docstring for why the plain `or` self-heal this
+    # module used before this directive stopped being sufficient.
+    sniper_strategies = ensure_default_sniper_strategies(list(state.sniper_strategies))
     sniper_events = list(state.sniper_events)
     # "Equity Snapshot Telemetry 1.0" directive — real, capped rolling
     # account-equity history (see MAX_SNIPER_EQUITY_SNAPSHOTS above).

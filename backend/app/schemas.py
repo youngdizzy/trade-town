@@ -13211,6 +13211,20 @@ SNIPER_STRATEGY_VERSION = "1"
 # to be misapplied. A future value (e.g. "compiled_from_research") would
 # only ever be added once a real such pipeline exists.
 SniperStrategyProvenance = Literal["hardcoded"]
+# CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof 1.0"
+# — the second, genuinely distinct hardcoded strategy identity, proving
+# the registry is a real dispatch boundary rather than a single-entry
+# formality. See app/memecoin_sniper.py::strategy_accepts_candidate()
+# for its real, distinct deterministic decision logic (smart-money/
+# whale confirmation, never momentum — a different existing field this
+# engine has always computed) and app/sniper_strategy_registry.py's own
+# docstring for why both strategies stay hardcoded, deterministic
+# Python — never AI-generated, never optimized, never claimed
+# profitable, never a plugin/arbitrary-code mechanism.
+SNIPER_STRATEGY_B_ID = "memecoin-sniper-whale-confirmation"
+SNIPER_STRATEGY_B_NAME = "Memecoin Sniper — Whale Confirmation"
+SNIPER_STRATEGY_B_FAMILY = "whale_confirmation"
+SNIPER_STRATEGY_B_VERSION = "1"
 # "Terminal 2.1" directive, Phase 3 — one real category per real gate
 # inside `app/memecoin_sniper.py::evaluate_entry_firewall()`, in the
 # exact order that function checks them. Never a decorative taxonomy:

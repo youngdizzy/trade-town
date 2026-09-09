@@ -37,7 +37,8 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from app.schemas import (
-    SNIPER_STRATEGY_ID,
+    SNIPER_STRATEGY_B_FAMILY,
+    SNIPER_STRATEGY_FAMILY,
     SniperBlockReason,
     SniperCandidate,
     SniperClassification,
@@ -62,7 +63,6 @@ from app.schemas import (
     SniperTimingState,
     SniperTrade,
 )
-from app.sniper_strategy_registry import resolve_sniper_strategy
 
 # Section 20/32 — real, disclosed defaults; also mirrored on
 # `SniperEngineConfig`'s own field defaults so a fresh config and this
@@ -84,6 +84,17 @@ MAX_LESSONS = 50
 # Mirrors app/scanner.py's own ALERT_CHANCE_PER_TICK pacing convention —
 # a real "don't flood the feed" throttle, not a second mechanism.
 DISCOVERY_CHANCE_PER_TICK = 0.25
+# CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof 1.0"
+# — Strategy B's (whale_confirmation) one real, deterministic
+# threshold: see strategy_accepts_candidate() below. Two, not one,
+# because a single independent whale wallet is exactly as common as
+# "no signal" in this engine's own simulated distribution (see
+# `_generate_raw_candidate()`'s own `whale_signal_count` weights: a
+# lone signal is the single most common non-zero outcome) — requiring
+# two is the real, minimal bar for genuine "multiple independent
+# parties agree" confirmation, not an arbitrarily larger number chosen
+# to look more selective than it is.
+MIN_WHALE_SIGNALS_FOR_STRATEGY_B = 2
 
 _SCORE_WEIGHTS: dict[str, float] = {
     "buy_pressure": 25.0,
@@ -410,6 +421,55 @@ def size_paper_position(config: SniperEngineConfig, risk_state: SniperRiskState,
     stop_price = entry_price * (1.0 - stop_distance_pct)
     target_price = entry_price * (1.0 + DEFAULT_TAKE_PROFIT_PCT / 100.0)
     return round(size_sol, 4), round(stop_price, 12), round(target_price, 12)
+
+
+def strategy_accepts_candidate(strategy: SniperStrategyDefinition, candidate: SniperCandidate) -> bool:
+    """CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof
+    1.0" — the ONE canonical per-strategy acceptance gate, and the
+    entire "strategy implementation" half of the dispatch boundary
+    `tick_sniper_engine()` calls into. Answers exactly Section 5's own
+    question — "should THIS strategy produce/evaluate THIS candidate?"
+    — and nothing else: safety/data-quality/timing/score/risk/kill-
+    switch/daily-loss/position-limit gating all stay entirely inside
+    `evaluate_entry_firewall()`/`risk_state`, untouched here, and this
+    function is never given the power to authorize an entry by itself
+    (its own caller always still runs the candidate through that same
+    firewall regardless of which strategy accepted it).
+
+    family == SNIPER_STRATEGY_FAMILY ("liquidity_momentum", this
+    engine's original and, before this directive, only strategy):
+    byte-for-byte the same rule this engine has always used before a
+    firewall attempt was ever considered worthwhile — a candidate is
+    only worth attempting entry for once the shared classification
+    pipeline (`build_candidate()`, itself completely unaffected by
+    this directive) already called it `"qualified"` or
+    `"high_conviction"`. Preserved exactly so Strategy A cannot
+    regress.
+
+    family == SNIPER_STRATEGY_B_FAMILY ("whale_confirmation"): a
+    genuinely distinct, deterministic alpha hypothesis — smart-money
+    confirmation instead of momentum/buy-pressure. Uses a field this
+    engine has always computed and already scores at a mere 10% weight
+    (`candidate.whale_signal_count` — see `score_candidate()`'s own
+    `whale_confirmation` component) as a HARD requirement instead: at
+    least `MIN_WHALE_SIGNALS_FOR_STRATEGY_B` independent smart-money
+    wallets must already have entered. Deliberately does NOT also
+    require `"qualified"`/`"high_conviction"` — that classification is
+    itself momentum-weighted (see `score_candidate()`'s scoring
+    formula), so requiring it here would make Strategy B nothing more
+    than a narrower copy of Strategy A rather than a real, independent
+    hypothesis; a candidate the momentum-weighted score would never
+    flag as promising can still be whale-confirmed, and vice versa.
+
+    Any other family — a real, if defensive, "unrecognized strategy
+    family" case (e.g. a corrupted or foreign registry entry) — fails
+    closed: `False`, never a silent accept and never a silent fallback
+    to either known family's own rule."""
+    if strategy.family == SNIPER_STRATEGY_FAMILY:
+        return candidate.classification in ("qualified", "high_conviction")
+    if strategy.family == SNIPER_STRATEGY_B_FAMILY:
+        return candidate.whale_signal_count >= MIN_WHALE_SIGNALS_FOR_STRATEGY_B
+    return False
 
 
 def position_risk_sol(entry_price: float, stop_price: float, size_sol: float) -> float:
@@ -788,26 +848,37 @@ def tick_sniper_engine(
     equities' own resting broker orders.
 
     `strategies` (CEO directive "TradeTown — Sniper Strategy Engine +
-    Registry 1.0") — the caller's real, persisted
-    `GameSaveState.sniper_strategies` registry. `None` (every existing
-    caller/test that hasn't been threaded through) preserves the exact
-    prior behavior: no resolution is attempted, `open_position()` below
-    is called without a `strategy` and falls back to its own schema
-    defaults, identical to this function's behavior before this
-    directive. A real, non-`None` list is resolved against the one real
-    `SNIPER_STRATEGY_ID` this engine has ever run: if that id resolves
-    AND its `status == "enabled"`, new discovery/entries proceed exactly
-    as before, now stamping the resolved identity onto any new position
-    (see `open_position()`'s own docstring). If the id is
-    `"disabled"` OR genuinely cannot be resolved (a real, if defensive,
-    "identity required but unknown — fail closed" case per this
-    directive's own rule, never silently falling back to the old bare-
-    constant behavior), new discovery/entries are gated off for this
-    tick exactly like `emergency_stop_active` above — never a full
-    `"stopped"` freeze: already-open positions are still managed by the
-    loop below regardless of this resolution, matching this directive's
-    own explicit "disabled strategy != stopped position management"
-    rule."""
+    Registry 1.0", extended by "Sniper Multi-Strategy Dispatch Proof
+    1.0") — the caller's real, persisted `GameSaveState.sniper_
+    strategies` registry. `None` (every existing caller/test that
+    hasn't been threaded through) preserves the EXACT prior behavior —
+    the original, single-branch "attempt entry iff classification is
+    qualified/high_conviction" rule, no strategy dispatch of any kind,
+    `open_position()` called with no `strategy` and falling back to its
+    own schema defaults — byte-for-byte identical to this function's
+    behavior before either directive. A real, non-`None` list makes
+    this tick's discovery/entry gate depend on the registry: it stays
+    open only while at least one entry is BOTH `status == "enabled"`
+    AND belongs to a family this engine actually has an implementation
+    for (see `strategy_accepts_candidate()`'s own two known families) —
+    a registry containing only disabled entries, only unrecognized
+    families, or nothing at all fails closed, the same "identity
+    required but unknown/unusable — never silently fall back to the
+    old bare-constant behavior" rule the previous directive already
+    established, now generalized past a single hardcoded id. When the
+    gate is open and a candidate is discovered, exactly one canonical
+    dispatch loop (registry order) asks each enabled, known-family
+    strategy's own `strategy_accepts_candidate()` whether it wants this
+    candidate; the FIRST one that accepts is the strategy that attempts
+    entry — through the exact same, unmodified `evaluate_entry_
+    firewall()`/`size_paper_position()`/`open_position()` sequence
+    every strategy has always used — and stamps its own real identity
+    onto any resulting position. No accepting strategy means no entry
+    attempt at all for this candidate, exactly like a below-threshold
+    classification always has. Either way, already-open positions are
+    still managed by the loop above regardless of this tick's
+    resolution, matching this directive's own explicit "disabled
+    strategy != stopped position management" rule."""
     now = _now_iso()
     events: list[SniperEvent] = []
     new_trades: list[SniperTrade] = []
@@ -858,20 +929,18 @@ def tick_sniper_engine(
     risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
 
     # CEO directive "TradeTown — Sniper Strategy Engine + Registry
-    # 1.0" — the one real, canonical selection point. `strategies is
-    # None` (no registry threaded through) preserves the exact prior
-    # behavior (`active_strategy=None`, gate stays open) — see this
-    # function's own docstring. A real, non-None list is resolved
-    # exactly once per tick against the one real strategy id this
-    # engine has ever run; an unresolvable or disabled result closes
-    # the new-discovery/entry gate for this tick without ever falling
-    # back to the old bare-constant behavior (fail closed, per this
-    # directive's own explicit rule).
-    active_strategy: SniperStrategyDefinition | None = None
+    # 1.0"/"Sniper Multi-Strategy Dispatch Proof 1.0" — the one real,
+    # canonical selection point. `strategies is None` preserves the
+    # exact prior behavior (see this function's own docstring): no
+    # gating, no dispatch. A real list opens the gate only while at
+    # least one entry is both enabled and a KNOWN family — a garbage
+    # or foreign registry entry never counts, so it can never silently
+    # keep the gate open (fail closed, per this directive's own
+    # explicit rule, generalized past the previous directive's single
+    # hardcoded id).
     strategy_gate_open = True
     if strategies is not None:
-        active_strategy = resolve_sniper_strategy(strategies, SNIPER_STRATEGY_ID)
-        strategy_gate_open = active_strategy is not None and active_strategy.status == "enabled"
+        strategy_gate_open = any(s.status == "enabled" and s.family in (SNIPER_STRATEGY_FAMILY, SNIPER_STRATEGY_B_FAMILY) for s in strategies)
 
     if config.status == "running" and not emergency_stop_active and strategy_gate_open and random.random() < DISCOVERY_CHANCE_PER_TICK:
         candidate = build_candidate(f"cand-{uuid.uuid4().hex[:10]}", now, discovery_sim_minutes)
@@ -879,20 +948,55 @@ def tick_sniper_engine(
         events.append(_event("discovered", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"score {candidate.opportunity_score}, {candidate.classification}"))
         if candidate.safety_status == "rejected":
             events.append(_event("safety_reject", now, mint=candidate.mint, symbol=candidate.symbol, detail=candidate.decision_reason))
-        elif candidate.classification in ("qualified", "high_conviction"):
-            events.append(_event("qualified", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"score {candidate.opportunity_score}"))
-            open_count = sum(1 for p in updated_positions if p.status == "open")
-            allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk_state, open_count)
-            if allowed:
-                sizing = size_paper_position(config, risk_state, candidate)
-                if sizing is not None:
-                    size_sol, stop_price, target_price = sizing
-                    new_position = open_position(candidate, size_sol, stop_price, target_price, now, strategy=active_strategy)
-                    updated_positions.append(new_position)
-                    events.append(_event("sniped", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"size {size_sol} SOL, score {candidate.opportunity_score}"))
-                    risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
-            else:
-                events.append(_event("no_trade", now, mint=candidate.mint, symbol=candidate.symbol, detail=reason, block_reason=block_reason))
+        elif strategies is None:
+            # Byte-for-byte the exact prior behavior — no registry was
+            # threaded through, so no strategy dispatch is attempted at
+            # all, matching this function's own pre-registry behavior.
+            if candidate.classification in ("qualified", "high_conviction"):
+                events.append(_event("qualified", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"score {candidate.opportunity_score}"))
+                open_count = sum(1 for p in updated_positions if p.status == "open")
+                allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk_state, open_count)
+                if allowed:
+                    sizing = size_paper_position(config, risk_state, candidate)
+                    if sizing is not None:
+                        size_sol, stop_price, target_price = sizing
+                        new_position = open_position(candidate, size_sol, stop_price, target_price, now)
+                        updated_positions.append(new_position)
+                        events.append(_event("sniped", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"size {size_sol} SOL, score {candidate.opportunity_score}"))
+                        risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
+                else:
+                    events.append(_event("no_trade", now, mint=candidate.mint, symbol=candidate.symbol, detail=reason, block_reason=block_reason))
+        else:
+            # CEO directive "Sniper Multi-Strategy Dispatch Proof 1.0"
+            # — the ONE canonical dispatch boundary. Registry order
+            # decides priority: the first enabled, known-family
+            # strategy whose own strategy_accepts_candidate() accepts
+            # this candidate wins the entry attempt; every other
+            # registered strategy simply never sees it. Firewall/risk/
+            # sizing/execution are the exact same shared calls
+            # regardless of which strategy won — this loop only ever
+            # decides WHO gets to try, never whether the attempt is
+            # safe (evaluate_entry_firewall() has no strategy parameter
+            # at all — see its own docstring).
+            for strategy in strategies:
+                if strategy.status != "enabled":
+                    continue
+                if not strategy_accepts_candidate(strategy, candidate):
+                    continue
+                events.append(_event("qualified", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"{strategy.id}: score {candidate.opportunity_score}"))
+                open_count = sum(1 for p in updated_positions if p.status == "open")
+                allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk_state, open_count)
+                if allowed:
+                    sizing = size_paper_position(config, risk_state, candidate)
+                    if sizing is not None:
+                        size_sol, stop_price, target_price = sizing
+                        new_position = open_position(candidate, size_sol, stop_price, target_price, now, strategy=strategy)
+                        updated_positions.append(new_position)
+                        events.append(_event("sniped", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"{strategy.id}: size {size_sol} SOL, score {candidate.opportunity_score}"))
+                        risk_state = risk_state.model_copy(update={"open_risk_sol": round(sum(p.risk_sol for p in updated_positions if p.status == "open"), 6)})
+                else:
+                    events.append(_event("no_trade", now, mint=candidate.mint, symbol=candidate.symbol, detail=f"{strategy.id}: {reason}", block_reason=block_reason))
+                break
 
     if trade_history and len(trade_history) % 20 == 0:
         lesson = generate_lesson_from_history(trade_history, now)

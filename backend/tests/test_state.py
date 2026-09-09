@@ -1417,17 +1417,39 @@ class TestSetSniperStrategyStatus:
         assert saved is state.data
 
     def test_a_legacy_empty_registry_self_heals_before_toggling(self) -> None:
-        """The exact same self-healing read app/nexus.py::tick() uses —
-        a save predating this field must not silently no-op the CEO's
-        real toggle."""
-        from app.schemas import SNIPER_STRATEGY_ID
+        """The exact same self-heal/back-fill read app/nexus.py::tick()
+        uses (CEO directive "TradeTown — Sniper Multi-Strategy
+        Dispatch Proof 1.0" generalized this to both default
+        strategies) — a save predating the registry must not silently
+        no-op the CEO's real toggle."""
+        from app.schemas import SNIPER_STRATEGY_B_ID, SNIPER_STRATEGY_ID
 
         state = GameState()
         state.data = state.data.model_copy(update={"sniper_strategies": []})
         saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
         assert error is None
-        assert len(saved.sniper_strategies) == 1
-        assert saved.sniper_strategies[0].status == "disabled"
+        assert {s.id for s in saved.sniper_strategies} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+        resolved_a = next(s for s in saved.sniper_strategies if s.id == SNIPER_STRATEGY_ID)
+        assert resolved_a.status == "disabled"
+
+    def test_a_registry_missing_only_the_newer_default_strategy_backfills_it_before_toggling(self) -> None:
+        """CEO directive "TradeTown — Sniper Multi-Strategy Dispatch
+        Proof 1.0" — the real production symptom of a save persisted
+        between the two directives: `sniper_strategies` already has
+        Strategy A registered (a real, non-empty list), so the OLD
+        self-heal (`strategies or default_sniper_strategies()`) would
+        never add Strategy B. Toggling Strategy A's status must still
+        result in Strategy B being present too."""
+        from app.schemas import SNIPER_STRATEGY_B_ID, SNIPER_STRATEGY_ID
+        from app.sniper_strategy_registry import default_sniper_strategies
+
+        state = GameState()
+        state.data = state.data.model_copy(update={"sniper_strategies": [default_sniper_strategies()[0]]})
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        assert error is None
+        assert {s.id for s in saved.sniper_strategies} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+        resolved_b = next(s for s in saved.sniper_strategies if s.id == SNIPER_STRATEGY_B_ID)
+        assert resolved_b.status == "enabled"
 
     def test_disabling_never_mutates_a_sibling_strategys_status(self) -> None:
         from app.schemas import SNIPER_STRATEGY_ID, SniperStrategyDefinition

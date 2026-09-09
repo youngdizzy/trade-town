@@ -4315,27 +4315,39 @@ wallet with that id exists. Returns the full updated `SniperWallet[]`.
 
 ### `GET /api/sniper/strategies`
 
-CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0" —
-returns `SniperStrategyDefinition[]`, the persisted Sniper strategy
-registry (self-healing to `default_sniper_strategies()` — one entry,
-`id: "memecoin-sniper"` — if the save predates this milestone or the
-list is otherwise empty). Pure identity/governance metadata only:
+CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0,"
+extended by "Sniper Multi-Strategy Dispatch Proof 1.0" — returns
+`SniperStrategyDefinition[]`, the persisted Sniper strategy registry.
+Self-heals/back-fills via `ensure_default_sniper_strategies()`: an
+empty list (a save predating the registry entirely) heals to both real
+default entries; a real, non-empty list missing just the newer default
+(a save persisted before this second directive) gets that one entry
+back-filled without touching the already-registered one. Today returns
+TWO entries by default: `id: "memecoin-sniper"` (family
+`liquidity_momentum`) and `id: "memecoin-sniper-whale-confirmation"`
+(family `whale_confirmation`) — see `app/memecoin_sniper.py::
+strategy_accepts_candidate()` for each one's real, distinct
+deterministic decision logic. Pure identity/governance metadata only:
 `id`, `name`, `family`, `version`, `status` (`"enabled"|"disabled"`),
-`provenance` (currently always `"hardcoded"`), `createdAt`. This is not
-a performance or validation signal — `enabled` means "eligible to
-originate new discovery/entries," nothing more.
+`provenance` (currently always `"hardcoded"` for both), `createdAt`.
+This is not a performance or validation signal — `enabled` means
+"eligible to originate new discovery/entries," nothing more; neither
+strategy is claimed to be profitable or validated.
 
 ### `POST /api/sniper/strategies/{strategy_id}/status`
 
 Body: `{ "status": "enabled" | "disabled" }`. 400 if `strategy_id` is
 not a registered strategy, or if `status` is neither `"enabled"` nor
-`"disabled"`. Disabling closes the discovery/new-entry gate in
-`tick_sniper_engine()` on the very next tick — it does not delete the
-strategy, does not affect already-open positions (they keep
-marking-to-market and can still exit via their own stop/target/
-trailing-stop), and does not alter any historical `SniperTrade`/
-`SniperPosition` record already stamped with this strategy's identity.
-Returns the full updated `SniperStrategyDefinition[]`.
+`"disabled"`. Disabling one strategy closes ONLY that strategy's own
+ability to originate new entries on the very next tick — the other
+strategy (if enabled) keeps discovering/entering independently, and
+overall discovery only stops once every registered, known-family
+strategy is disabled. Disabling never deletes the strategy, never
+affects already-open positions (they keep marking-to-market and can
+still exit via their own stop/target/trailing-stop), and never alters
+any historical `SniperTrade`/`SniperPosition` record already stamped
+with that strategy's identity. Returns the full updated
+`SniperStrategyDefinition[]`.
 
 ### `POST /api/sniper/engine`
 

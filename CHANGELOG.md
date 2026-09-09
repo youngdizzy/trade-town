@@ -7,6 +7,106 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof
+  1.0."** Proves the Sniper Strategy Registry (previous milestone) is a
+  REAL dispatch architecture, not a single-entry formality, by
+  registering exactly one second, distinct, deterministic, hardcoded
+  strategy — `memecoin-sniper-whale-confirmation` (family
+  `whale_confirmation`) — alongside the original `memecoin-sniper`
+  (family `liquidity_momentum`), and giving the tick engine a single
+  canonical dispatch loop that resolves which registered strategy
+  (if any) gets to attempt an entry for each discovered candidate.
+  **Dispatch architecture proof only** — no claim of profitability, no
+  Sandwich Mode, no Champion/Challenger, no AI authorization, no
+  optimization; the shared firewall/risk/emergency-stop/execution
+  pipeline is completely unmodified.
+  - **New strategy's own real, distinct alpha logic**
+    (`app/memecoin_sniper.py::strategy_accepts_candidate()`) — smart-
+    money/whale confirmation instead of momentum: a candidate is
+    accepted only once at least 2 independent whale wallets have
+    already entered (`candidate.whale_signal_count`, a field this
+    engine has always computed and previously only used as a 10%-
+    weighted score component, now also a hard per-strategy
+    requirement), deliberately NOT also requiring the momentum-
+    weighted `"qualified"`/`"high_conviction"` classification Strategy
+    A depends on — otherwise Strategy B would just be a narrower copy
+    of Strategy A, not a genuinely independent hypothesis. Strategy
+    A's own acceptance rule is preserved byte-for-byte from before this
+    directive.
+  - **One canonical dispatch loop, registry order decides priority**:
+    for a discovered candidate, `tick_sniper_engine()` asks each
+    enabled, known-family strategy (in registry order) whether it
+    accepts; the first "yes" attempts entry through the exact same,
+    unmodified `evaluate_entry_firewall()` → `size_paper_position()` →
+    `open_position()` sequence every strategy has always used, and
+    stamps that strategy's own real identity on any resulting position.
+    No accepting strategy means no entry attempt for that candidate —
+    exactly like a below-threshold candidate always has. Proven, not
+    just claimed: a battery of monkeypatched-candidate tests shows the
+    same fixed candidate opens under Strategy A when
+    momentum-qualified/not whale-confirmed, under Strategy B when
+    whale-confirmed/not momentum-qualified, under neither when it
+    satisfies nobody, and under A (registry-order priority) when it
+    would satisfy both.
+  - **Legacy migration, generalized past a single default**: the
+    previous milestone's `sniper_strategies or default_sniper_
+    strategies()` self-heal only handled an outright-empty list — a
+    save persisted between the two directives already has a real,
+    non-empty, ONE-entry registry, so that `or` would never add
+    Strategy B to it. New `app/sniper_strategy_registry.py::ensure_
+    default_sniper_strategies()` generalizes correctly: self-heals an
+    empty list exactly as before, AND back-fills any individual
+    default strategy id missing from an otherwise real registry —
+    verified live against this session's own real, already-trading dev
+    save (equity 10.07 SOL, 2 consecutive losses, real history), which
+    had only `memecoin-sniper` persisted from the previous milestone
+    and genuinely displayed both strategies through the real `GET /api/
+    sniper/strategies` endpoint on the very next call after restart,
+    with zero corruption to its own trading history.
+  - **Discovery gate generalized past a single hardcoded id**: the
+    previous milestone's gate resolved one specific `SNIPER_STRATEGY_ID`
+    and failed closed if it was missing/disabled. The gate now opens
+    while at least one registry entry is BOTH enabled AND belongs to a
+    family this engine actually implements — an entry with an
+    unrecognized family (a corrupted or foreign registry row) never
+    counts, so it can never silently keep discovery running. Disabling
+    one strategy alone (the other left enabled) now correctly leaves
+    discovery open and simply removes that one strategy's own ability
+    to produce new entries — proven with dedicated tests distinguishing
+    this from the "sole strategy disabled" case the previous milestone
+    already covered.
+  - **Firewall/risk/Emergency Stop/AI boundary re-verified unchanged**:
+    `evaluate_entry_firewall()` still has exactly four parameters and
+    no strategy argument at all (re-confirmed via `inspect.signature()`
+    — this directive could not have added strategy-based authorization
+    even by accident). A candidate accepted by a strategy but rejected
+    by the firewall (e.g. `rug_risk == "high"`) still opens no position
+    for either strategy. Emergency Stop still blocks the entire
+    dispatch loop for both strategies simultaneously — it is not, and
+    was never made, strategy-aware. `app/sniper_ai_reasoning.py` has
+    zero references to the registry or the new dispatch function —
+    AI shadow reasoning still cannot select, enable, or authorize a
+    strategy.
+  - **New tests**: `tests/test_memecoin_sniper.py` gained
+    `TestStrategyAcceptsCandidate` (8 tests on the pure dispatch
+    function, including both required directions of "A accepts/B
+    rejects" and "B accepts/A rejects," plus a fail-closed test for an
+    unrecognized strategy family) and `TestMultiStrategyDispatchInTick`
+    (9 tests proving the real tick-level dispatch loop, using a
+    monkeypatched candidate for determinism). `tests/test_sniper_
+    strategy_registry.py` gained `TestEnsureDefaultSniperStrategies` (5
+    tests) and updated identity tests for two strategies instead of
+    one. `tests/test_state.py` and `tests/test_nexus.py` each gained a
+    dedicated "registry missing only the newer default" backfill test.
+  - **Explicitly NOT built this pass**: Sandwich Mode, Champion/
+    Challenger comparison, AI strategy generation or authorization, a
+    second risk engine, a second Gatekeeper, a second emergency-stop
+    mechanism, live trading, wallet signing, any change to either
+    strategy's actual entry/exit/sizing mechanics beyond acceptance
+    logic, and any claim that Strategy B is profitable, validated, or
+    superior to Strategy A — it is exactly as unvalidated as Strategy A
+    always honestly was.
+
 - **CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0."**
   Replaces Memecoin Sniper's single hardcoded strategy identity with a
   first-class, persisted, versioned, enable/disable-aware strategy

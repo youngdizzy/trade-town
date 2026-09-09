@@ -25,7 +25,7 @@ from app.schemas import (
     SniperTrade,
     SniperWallet,
 )
-from app.sniper_strategy_registry import default_sniper_strategies
+from app.sniper_strategy_registry import ensure_default_sniper_strategies
 from app.state import game_state
 
 router = APIRouter(prefix="/api/sniper", tags=["sniper"])
@@ -185,14 +185,16 @@ async def activate_sniper_wallet(wallet_id: str) -> list[SniperWallet]:
 @router.get("/strategies", response_model=list[SniperStrategyDefinition])
 async def sniper_strategies() -> list[SniperStrategyDefinition]:
     """CEO directive "TradeTown — Sniper Strategy Engine + Registry
-    1.0" — the real, persisted strategy registry (see
-    `SniperStrategyDefinition`'s own docstring). `or
-    default_sniper_strategies()` is the same self-healing read
-    `app/nexus.py::tick()`/`GameState.set_sniper_strategy_status()`
-    already use, so a save that predates this field never returns an
-    empty list here either."""
+    1.0," generalized by "Sniper Multi-Strategy Dispatch Proof 1.0" —
+    the real, persisted strategy registry (see
+    `SniperStrategyDefinition`'s own docstring).
+    `ensure_default_sniper_strategies()` is the same self-heal/back-
+    fill read `app/nexus.py::tick()`/`GameState.set_sniper_strategy_
+    status()` already use, so a save that predates the registry
+    entirely, or that predates just the newer default strategy, never
+    under-reports what's really registered here either."""
     state = await game_state.snapshot()
-    return state.sniper_strategies or default_sniper_strategies()
+    return ensure_default_sniper_strategies(state.sniper_strategies)
 
 
 class SetSniperStrategyStatusRequest(BaseModel):
@@ -212,7 +214,7 @@ async def set_sniper_strategy_status(strategy_id: str, payload: SetSniperStrateg
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
-    return state.sniper_strategies or default_sniper_strategies()
+    return ensure_default_sniper_strategies(state.sniper_strategies)
 
 
 class UpdateSniperEngineRequest(BaseModel):

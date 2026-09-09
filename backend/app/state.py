@@ -232,7 +232,7 @@ from app.foundational_mentors import (
     skip_to_next_mentor,
 )
 from app.simulation import default_strategies, queue_backtest_now
-from app.sniper_strategy_registry import default_sniper_strategies, set_sniper_strategy_status as _set_sniper_strategy_status
+from app.sniper_strategy_registry import default_sniper_strategies, ensure_default_sniper_strategies as _ensure_default_sniper_strategies, set_sniper_strategy_status as _set_sniper_strategy_status
 from app.strategy_lab import (
     cap_strategy_executive_reviews,
     cap_strategy_failed_archive,
@@ -1232,20 +1232,20 @@ class GameState:
         """CEO directive "TradeTown — Sniper Strategy Engine + Registry
         1.0" — the CEO's real enable/disable control surface, mirroring
         `update_sniper_engine_config()`'s own shape immediately above.
-        Reuses `self.data.sniper_strategies or default_sniper_strategies()`
-        — the exact same "an empty persisted list means this save
-        predates the registry" self-healing read `app/nexus.py::tick()`
-        already established for this same field (see
-        `GameSaveState.sniper_strategies`'s own schema docstring) —
-        rather than ever operating on a bare `[]` and silently
-        discarding the toggle. Delegates the actual mutation to
-        `app/sniper_strategy_registry.py::set_sniper_strategy_status()`,
-        never a second, inline implementation of the same lookup/update
-        logic."""
+        Reuses `ensure_default_sniper_strategies()` (CEO directive
+        "TradeTown — Sniper Multi-Strategy Dispatch Proof 1.0") — the
+        same self-healing/back-fill read `app/nexus.py::tick()` already
+        uses for this same field (see `GameSaveState.sniper_strategies`
+        's own schema docstring) — rather than ever operating on a bare
+        `[]`/a registry still missing a newer default strategy and
+        silently discarding the toggle. Delegates the actual mutation
+        to `app/sniper_strategy_registry.py::set_sniper_strategy_
+        status()`, never a second, inline implementation of the same
+        lookup/update logic."""
         if status not in ("enabled", "disabled"):
             return self.data, f"Invalid strategy status {status!r} — must be enabled or disabled."
         async with self.lock:
-            strategies = self.data.sniper_strategies or default_sniper_strategies()
+            strategies = _ensure_default_sniper_strategies(self.data.sniper_strategies)
             updated, error = _set_sniper_strategy_status(strategies, strategy_id, status)  # type: ignore[arg-type]
             if error is not None:
                 return self.data, error

@@ -420,21 +420,43 @@ class TestTickWiresStrategyRegistryIntoSniperEngine:
         — the real production symptom of loading an old save (see
         GameSaveState.sniper_strategies's own schema docstring). The
         real tick must never pass that empty list through untouched;
-        it must self-heal to the real, one-strategy default."""
-        from app.schemas import SNIPER_STRATEGY_ID, SniperEngineConfig
+        it must self-heal to the real, now-two-strategy default (CEO
+        directive "TradeTown — Sniper Multi-Strategy Dispatch Proof
+        1.0")."""
+        from app.schemas import SNIPER_STRATEGY_B_ID, SNIPER_STRATEGY_ID, SniperEngineConfig
 
         captured = self._patch(monkeypatch)
         state = default_state()
         state = state.model_copy(update={"sniper_engine_config": SniperEngineConfig(status="running"), "sniper_strategies": []})
         result = nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
         healed = captured["strategies"]
-        assert isinstance(healed, list) and len(healed) == 1
-        assert healed[0].id == SNIPER_STRATEGY_ID
-        assert healed[0].status == "enabled"
+        assert isinstance(healed, list)
+        healed_ids = {s.id for s in healed}
+        assert healed_ids == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+        assert all(s.status == "enabled" for s in healed)
         # And the healed value is actually persisted back, not just used
         # in-memory for this one tick.
-        assert len(result.sniper_strategies) == 1
-        assert result.sniper_strategies[0].id == SNIPER_STRATEGY_ID
+        assert {s.id for s in result.sniper_strategies} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+
+    def test_a_registry_missing_only_strategy_b_backfills_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """CEO directive "TradeTown — Sniper Multi-Strategy Dispatch
+        Proof 1.0" — the real production symptom of a save persisted
+        between the two directives: a real, non-empty registry that
+        only has Strategy A registered. The old `or default_sniper_
+        strategies()` self-heal would never add Strategy B to a
+        non-empty list; `ensure_default_sniper_strategies()` must."""
+        from app.schemas import SNIPER_STRATEGY_B_ID, SNIPER_STRATEGY_ID, SniperEngineConfig
+        from app.sniper_strategy_registry import default_sniper_strategies
+
+        captured = self._patch(monkeypatch)
+        state = default_state()
+        only_a = [default_sniper_strategies()[0]]
+        state = state.model_copy(update={"sniper_engine_config": SniperEngineConfig(status="running"), "sniper_strategies": only_a})
+        result = nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        healed = captured["strategies"]
+        assert isinstance(healed, list)
+        assert {s.id for s in healed} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+        assert {s.id for s in result.sniper_strategies} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
 
 
 class TestApplyOperatingModeRiskContractFailClosed:
