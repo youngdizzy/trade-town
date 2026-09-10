@@ -70,6 +70,21 @@ class TestKrakenAdapterFakeTransport:
         assert candles[0].timestamp == "2024-01-01T00:00:00+00:00"
         assert candles[1].timestamp == "2024-01-01T01:00:00+00:00"
 
+    def test_eth_usd_maps_to_its_own_kraken_pair_and_result_key(self) -> None:
+        """CEO directive "Multi-Symbol Real-Data Expansion 1.0" —
+        `"ETH-USD"` -> `"ETHUSD"`, echoed by Kraken under its own
+        internal key `"XETHZUSD"` (verified live during this milestone's
+        own Phase 0), the same requested-alias/result-key mismatch every
+        other mapped symbol already has to tolerate."""
+        rows = [_kraken_row(1704067200, 2000.0), _kraken_row(1704070800, 2010.0), _kraken_row(1704074400, 9999.0)]
+        transport = _FakeTransport([(200, _kraken_body("XETHZUSD", rows))])
+        provider = KrakenMarketDataProvider(transport=transport)
+        candles = provider.get_candles("ETH-USD", "1h", 10)
+        assert len(candles) == 2  # the still-forming third row was dropped, same as every other symbol
+        assert all(c.symbol == "ETH-USD" for c in candles)
+        assert all(c.data_status == "historical" for c in candles)
+        assert transport.calls[0][0] == "https://api.kraken.com/0/public/OHLC?pair=ETHUSD&interval=60"
+
     def test_result_key_mismatch_between_requested_pair_and_response_is_handled(self) -> None:
         """Kraken echoes the OHLC series under ITS OWN internal pair name
         (`XXBTZUSD`), not the requested alias (`XBTUSD`) — the adapter
@@ -214,8 +229,10 @@ class TestKrakenSecretsNeverLeak:
 
 class TestKrakenRealExternalSmokeTest:
     """CASE A vs CASE B of the directive's Section 58 — see this file's
-    own module docstring. This is the ONLY test in this file (or in
-    tests/test_external_market_data.py) that makes a real network call."""
+    own module docstring. Both tests in this class make a real network
+    call (CEO directive "Multi-Symbol Real-Data Expansion 1.0" added the
+    ETH-USD one) — no other test in this file or in
+    tests/test_external_market_data.py does."""
 
     def test_real_bounded_request_against_the_real_kraken_api(self) -> None:
         provider = KrakenMarketDataProvider(max_retries=1, timeout_seconds=8.0)
@@ -238,3 +255,28 @@ class TestKrakenRealExternalSmokeTest:
         timestamps = [c.timestamp for c in candles]
         assert timestamps == sorted(timestamps)  # deterministic chronological ordering
         assert len(set(timestamps)) == len(timestamps)  # no duplicate timestamps
+
+    def test_real_bounded_request_for_eth_usd_against_the_real_kraken_api(self) -> None:
+        """CEO directive "Multi-Symbol Real-Data Expansion 1.0" — the
+        same real, bounded verification as the BTC-USD test above,
+        against the newly mapped `"ETH-USD"` -> `"ETHUSD"` pair."""
+        provider = KrakenMarketDataProvider(max_retries=1, timeout_seconds=8.0)
+        try:
+            candles = provider.get_candles("ETH-USD", "1h", 5)
+        except ExternalMarketDataProviderUnavailable as exc:
+            pytest.skip(f"Real Kraken external verification could not be completed in this environment: {exc}")
+        except (urllib.error.URLError, socket.timeout, ConnectionError, TimeoutError) as exc:
+            pytest.skip(f"Real network connectivity to Kraken unavailable in this environment: {exc}")
+
+        assert len(candles) > 0, "a real request that did not raise must have returned real candles, not an empty silent success"
+        for candle in candles:
+            assert candle.symbol == "ETH-USD"
+            assert candle.timeframe == "1h"
+            assert candle.data_status == "historical"  # real provenance — never "simulated"
+            assert candle.high >= candle.low
+            assert candle.high >= candle.open >= candle.low or candle.high >= candle.close >= candle.low
+            assert candle.volume >= 0
+            assert candle.open > 0 and candle.close > 0  # a real ETH price is never zero/negative
+        timestamps = [c.timestamp for c in candles]
+        assert timestamps == sorted(timestamps)
+        assert len(set(timestamps)) == len(timestamps)

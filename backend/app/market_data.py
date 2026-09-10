@@ -877,6 +877,14 @@ def get_external_market_data_provider() -> ExternalMarketDataProvider:
 # mappings is a trivial, separately-auditable follow-up, not bundled in
 # here).
 #
+# UPDATE — CEO directive "Multi-Symbol Real-Data Expansion 1.0": that
+# disclosed follow-up happened. `_SYMBOL_TO_PAIR` below now also maps
+# `"ETH-USD"` (`app/asset_discovery.py`'s own pre-existing
+# `DISCOVERY_SYMBOL_POOL` entry) — chosen because it is this codebase's
+# entire remaining canonical crypto universe, not because it looked
+# favorable. See that dict's own comment for the exact rule and the live
+# verification this milestone performed.
+#
 # NOT WIRED INTO ANYTHING. This class is constructed explicitly by a
 # caller that wants it — nothing in this codebase does that today. The
 # global `market_data_provider` singleton above is completely untouched
@@ -941,11 +949,21 @@ class KrakenMarketDataProvider(ExternalMarketDataProvider):
 
     _DEFAULT_BASE_URL = "https://api.kraken.com"
 
-    #: The only symbol mapping activated in this pass — see this class's
-    #: own module-level section docstring for why. `app/watchlist.py`'s
-    #: `SEED_SYMBOLS` already carries `"BTC-USD"` as a real TradeTown
-    #: symbol; Kraken's own pair code for it is `"XBTUSD"`.
-    _SYMBOL_TO_PAIR: dict[str, str] = {"BTC-USD": "XBTUSD"}
+    #: CEO directive "Multi-Symbol Real-Data Expansion 1.0" — extended by
+    #: exactly the codebase's own pre-existing canonical crypto universe,
+    #: never a symbol chosen because it looked favorable. `"BTC-USD"` is
+    #: `app/watchlist.py`'s own `SEED_SYMBOLS` entry (Kraken pair
+    #: `"XBTUSD"`); `"ETH-USD"` is `app/asset_discovery.py`'s own
+    #: `DISCOVERY_SYMBOL_POOL` entry (Kraken pair `"ETHUSD"`, verified
+    #: live against Kraken's public `/0/public/AssetPairs?pair=ETHUSD`
+    #: during this milestone's own Phase 0 — its `altname` is `"ETHUSD"`,
+    #: the same short-alias convention `"XBTUSD"` already uses). No third
+    #: symbol exists in this codebase's own taxonomy
+    #: (`SEED_SYMBOLS`/`EXTRA_SYMBOL_POOL`/`DISCOVERY_SYMBOL_POOL`) for
+    #: any other cryptocurrency — this mapping stays exactly two entries
+    #: because that is the codebase's entire real crypto universe, not a
+    #: scope choice made for this milestone.
+    _SYMBOL_TO_PAIR: dict[str, str] = {"BTC-USD": "XBTUSD", "ETH-USD": "ETHUSD"}
 
     def __init__(
         self,
