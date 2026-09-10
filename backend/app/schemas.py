@@ -481,6 +481,24 @@ class ResearchItem(CamelModel):
     confidence: float
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
+    # TradeTown Read-Only MCP Boundary 1.0 — external-agent read approval.
+    # Additive and FAIL-CLOSED: a save predating this field deep-merges to
+    # `False` (app/persistence.py::_deep_merge_defaults), so nothing becomes
+    # agent-readable by default or by omission. Nothing inside the MCP
+    # boundary can set these — approval is authored TradeTown-side only
+    # (v0: scripts/seed_agent_read_approval.py). See
+    # docs/SCOUT_READONLY_TOOL_CONTRACT_V0.md.
+    #
+    # `approved_for_agent_read_at_sim_minutes` exists because ResearchItem
+    # carries NO simulated-clock field of its own (only real wall-clock
+    # createdAt/updatedAt), so it is the only honest anchor this record can
+    # offer a mission knowledge-cutoff check. It means "approved at or
+    # before this sim-minute", NOT "created at or before it" — a weaker,
+    # explicitly disclosed guarantee (see routers/mcp_read.py).
+    approved_for_agent_read: bool = Field(default=False, alias="approvedForAgentRead")
+    approved_for_agent_read_at: str | None = Field(default=None, alias="approvedForAgentReadAt")
+    approved_for_agent_read_at_sim_minutes: int | None = Field(default=None, alias="approvedForAgentReadAtSimMinutes")
+    approved_for_agent_read_by: str | None = Field(default=None, alias="approvedForAgentReadBy")
 
 
 class WatchlistEntry(CamelModel):
@@ -9450,6 +9468,18 @@ class InstitutionalMemoryEntry(CamelModel):
     # save defaults to "equities" (this codebase's only domain before
     # this directive), which is honestly correct for all of them.
     domain: KnowledgeDomain = "equities"
+    # TradeTown Read-Only MCP Boundary 1.0 — external-agent read approval.
+    # Same fail-closed, additive, TradeTown-authored-only contract as
+    # ResearchItem's identical block above; see that one for the full
+    # reasoning. Unlike ResearchItem, this record DOES carry a real
+    # simulated-clock anchor of its own (`sim_day`), so the MCP read
+    # boundary enforces a mission knowledge-cutoff against `sim_day`
+    # FIRST (day granularity, the finest this record honestly has) and
+    # against the approval sim-minute second — both must pass.
+    approved_for_agent_read: bool = Field(default=False, alias="approvedForAgentRead")
+    approved_for_agent_read_at: str | None = Field(default=None, alias="approvedForAgentReadAt")
+    approved_for_agent_read_at_sim_minutes: int | None = Field(default=None, alias="approvedForAgentReadAtSimMinutes")
+    approved_for_agent_read_by: str | None = Field(default=None, alias="approvedForAgentReadBy")
 
 
 # "TradeTown — Learning Organization 1.0." The Phase 0 forensic audit for
@@ -15667,6 +15697,124 @@ class PaperTradingEvidenceReport(CamelModel):
     open_exposure_pct_of_equity: float = Field(alias="openExposurePctOfEquity")
     evidence: EvidenceCheckpointRead
     limitations: list[str] = Field(default_factory=list)
+
+
+# ============================================================================
+# TradeTown Read-Only MCP Boundary 1.0 — external-agent read models.
+#
+# These are CLOSED FIELD ALLOWLISTS, not convenience projections. They exist
+# so that adding a field to ResearchItem / InstitutionalMemoryEntry /
+# AIReasoningResult can never silently widen what leaves the building: a new
+# upstream field is simply absent here until someone deliberately adds it and
+# bumps the contract version. See
+# docs/SCOUT_READONLY_TOOL_CONTRACT_V0.md §7.4 for the allowlist rule.
+#
+# Deliberately WITHHELD and never to be added without a contract major bump:
+#   - InstitutionalMemoryEntry.originating_agent  (in-world employee
+#     attribution; withheld as an anti-anchoring control)
+#   - InstitutionalMemoryEntry.relevance_pct      (recomputed per reader;
+#     meaningless once exported across a boundary)
+#   - AIReasoningResult.thesis / reasoning bodies (continuity needs the
+#     claim and its outcome, not another agent's deliberation)
+# ============================================================================
+
+
+class ApprovedResearchRead(CamelModel):
+    """One approved ResearchItem, projected for external-agent reading."""
+
+    id: str
+    title: str
+    category: ResearchCategory
+    symbol: str | None = None
+    summary: str
+    confidence: float
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+    approved_for_agent_read_at: str | None = Field(default=None, alias="approvedForAgentReadAt")
+    approved_for_agent_read_at_sim_minutes: int | None = Field(default=None, alias="approvedForAgentReadAtSimMinutes")
+    approved_for_agent_read_by: str | None = Field(default=None, alias="approvedForAgentReadBy")
+    schema_version: Literal["v0"] = Field(default="v0", alias="schemaVersion")
+
+
+class ApprovedMemoryRead(CamelModel):
+    """One approved InstitutionalMemoryEntry, projected for external-agent
+    reading. `interpretation`/`lesson` stay nullable exactly as the source
+    record defines them — a source with nothing to interpret returns null
+    rather than padded text (see InstitutionalMemoryEntry's own docstring).
+    Superseded entries ARE included, with their supersession links intact,
+    because the source design never deletes or overwrites history and
+    hiding them would misrepresent it."""
+
+    id: str
+    source: InstitutionalMemorySource
+    created_at: str = Field(alias="createdAt")
+    sim_day: int = Field(alias="simDay")
+    event_ref: str = Field(alias="eventRef")
+    market_regime: MarketEnvironmentRegime | None = Field(default=None, alias="marketRegime")
+    symbol: str | None = None
+    domain: KnowledgeDomain = "equities"
+    observation: str
+    interpretation: str | None = None
+    lesson: str | None = None
+    confidence: float
+    provenance: str
+    status: InstitutionalMemoryStatus = "active"
+    supersedes_id: str | None = Field(default=None, alias="supersedesId")
+    superseded_by_id: str | None = Field(default=None, alias="supersededById")
+    approved_for_agent_read_at: str | None = Field(default=None, alias="approvedForAgentReadAt")
+    approved_for_agent_read_at_sim_minutes: int | None = Field(default=None, alias="approvedForAgentReadAtSimMinutes")
+    approved_for_agent_read_by: str | None = Field(default=None, alias="approvedForAgentReadBy")
+    schema_version: Literal["v0"] = Field(default="v0", alias="schemaVersion")
+
+
+class AgentFindingRead(CamelModel):
+    """One prior finding produced by an external agent, projected for
+    continuity and calibration. `outcomeStatus` is "not_evaluated" in v0:
+    outcome evaluation exists in this codebase for in-game records
+    (app/prediction_tracking.py, app/performance_attribution.py) but is
+    NOT wired to external-agent findings, and this model will not claim an
+    evaluation that never ran."""
+
+    id: str
+    external_agent_id: str = Field(alias="externalAgentId")
+    mission_id: str | None = Field(default=None, alias="missionId")
+    produced_at: str = Field(alias="producedAt")
+    produced_at_sim_minutes: int = Field(alias="producedAtSimMinutes")
+    claim: str
+    confidence: Literal["high", "medium", "low"]
+    evidence_references: list[str] = Field(default_factory=list, alias="evidenceReferences")
+    status: AIReasoningStatus
+    outcome_status: Literal["pending", "evaluated", "not_evaluated"] = Field(default="not_evaluated", alias="outcomeStatus")
+    evaluation_result: str | None = Field(default=None, alias="evaluationResult")
+    schema_version: Literal["v0"] = Field(default="v0", alias="schemaVersion")
+
+
+class McpReadEnvelope(CamelModel):
+    """Shared envelope for every MCP read endpoint. `dataCategory` reuses
+    this codebase's existing DataCategory vocabulary verbatim — never a
+    second provenance enum."""
+
+    contract_version: Literal["v0"] = Field(default="v0", alias="contractVersion")
+    simulation_context: Literal["paper_simulated"] = Field(default="paper_simulated", alias="simulationContext")
+    run_id: str = Field(alias="runId")
+    data_category: DataCategory = Field(alias="dataCategory")
+    result_count: int = Field(alias="resultCount")
+    truncated: bool = False
+    cutoff_enforcement: str = Field(alias="cutoffEnforcement")
+    as_of_sim_minutes: int = Field(alias="asOfSimMinutes")
+    retrieved_at: str = Field(alias="retrievedAt")
+
+
+class ApprovedResearchResponse(McpReadEnvelope):
+    results: list[ApprovedResearchRead] = Field(default_factory=list)
+
+
+class ApprovedMemoryResponse(McpReadEnvelope):
+    results: list[ApprovedMemoryRead] = Field(default_factory=list)
+
+
+class AgentFindingsResponse(McpReadEnvelope):
+    results: list[AgentFindingRead] = Field(default_factory=list)
 
 
 class HealthResponse(CamelModel):

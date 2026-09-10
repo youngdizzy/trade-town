@@ -8,6 +8,13 @@ single-tenant (one company, one save slot) by design; see
 `backend/app/schemas.py`), regardless of the snake_case Python field names
 used internally.
 
+> **Deployment boundary (Read-Only MCP Boundary 1.0).** Because there is no
+> authentication, the frontend's host port is bound to `127.0.0.1` by default
+> (`HTTP_BIND` in `docker-compose.yml`). `/api` and `/ws` are therefore not
+> reachable from the public internet; use an SSH tunnel
+> (`ssh -L 8080:127.0.0.1:80 <vps>`). Setting `HTTP_BIND=0.0.0.0` publishes
+> the entire unauthenticated API and the full-state WebSocket feed.
+
 ## `GET /api/health`
 
 Liveness check used by Docker's healthcheck and load balancers.
@@ -4446,3 +4453,85 @@ A real, computed-fresh (never persisted) map of `{resultId: "agree" |
 Sniper `AIReasoningResult`, never a single aggregate score. See
 `app/sniper_ai_context.py::compare_sniper_ai_to_deterministic()`'s own
 docstring for exactly how each value is derived.
+
+## Read-Only MCP Boundary (`/api/mcp-read/*`)
+
+Three read-only endpoints serving the external-agent boundary. See
+`docs/SCOUT_READONLY_TOOL_CONTRACT_V0.md` for the full contract and
+`backend/app/routers/mcp_read.py` for the implementation.
+
+**These are not general query endpoints.** In the deployed topology they are
+reachable only through an internal nginx listener (port 8081, never published
+to the host) that forwards an exact allowlist of GET paths; the MCP service is
+never given an address that can reach `backend:8000` directly.
+
+**Approval is fail-closed.** Every endpoint filters on
+`approvedForAgentRead == true`. A save that predates the approval fields
+deep-merges them to `false`, so an un-seeded deployment returns an empty
+result set — never everything. Approval is authored TradeTown-side only, in
+v0 by `scripts/seed_agent_read_approval.py`; nothing inside the MCP boundary
+can set it.
+
+Every response carries a shared envelope:
+
+```json
+{
+  "contractVersion": "v0",
+  "simulationContext": "paper_simulated",
+  "runId": "default",
+  "dataCategory": "simulated",
+  "resultCount": 0,
+  "truncated": false,
+  "cutoffEnforcement": "...",
+  "asOfSimMinutes": 306720,
+  "retrievedAt": "2026-09-09T20:00:00+00:00",
+  "results": []
+}
+```
+
+`dataCategory` reuses the existing `DataCategory` vocabulary
+(`real | synthetic | simulated | user_provided | unavailable`) — never a
+second provenance enum.
+
+### `GET /api/mcp-read/approved-research`
+
+Query: `knowledgeCutoffSimMinutes` (required, >= 0), `category`, `symbol`,
+`limit` (1–50, default 20). Ordered `createdAt` descending, then `id`
+ascending.
+
+**`cutoffEnforcement` is `approval_sim_minutes_only`.** `ResearchItem` carries
+no creation-time simulated-clock field — only real wall-clock
+`createdAt`/`updatedAt` — so containment is proven against the sim-minute at
+which the record was *approved*, not when it was created. This is a weaker
+guarantee than creation-time containment and is disclosed rather than
+presented as equivalent. A record approved without a sim-minute anchor is
+withheld.
+
+### `GET /api/mcp-read/approved-memory`
+
+Query: `knowledgeCutoffSimMinutes` (required), `source`, `marketRegime`,
+`symbol`, `limit` (1–50, default 20). Ordered `simDay` descending, then
+`confidence` descending, then `id` ascending.
+
+**`cutoffEnforcement` is `sim_day_and_approval_sim_minutes`** — both anchors
+must fall at or before the cutoff.
+
+The response projection is a **closed allowlist**. `originatingAgent` is
+withheld (in-world employee attribution, an anti-anchoring control) and
+`relevancePct` is withheld (recomputed per reader; meaningless once exported).
+`interpretation` and `lesson` stay `null` when the source record has nothing
+to offer, never padded. Superseded entries are included with their
+`supersedesId`/`supersededById` links intact.
+
+### `GET /api/mcp-read/agent-findings`
+
+Query: `externalAgentId` (required, non-blank), `knowledgeCutoffSimMinutes`
+(required), `limit` (1–25, default 10).
+
+**Always returns an empty list in v0, and that is correct rather than
+unimplemented.** No external-agent finding can exist: submission is out of
+scope for this milestone, `AIReasoningRole` has no external-agent value, and
+`AIReasoningResult` has no `externalAgentId` field. Projecting the existing
+in-game `ai_reasoning_results` here would expose another agent's private
+reasoning to an external agent, which the contract forbids. `dataCategory` is
+`unavailable`.

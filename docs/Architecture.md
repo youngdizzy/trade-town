@@ -23663,3 +23663,77 @@ concrete, minimal precondition any future checkpointed sample-size gate
 (N=10/25/50/100) needs before it could be built honestly, and the
 natural, smallest next step now that cohort identity makes "per-cohort"
 grouping a real, provable operation instead of a guess.
+
+## "TradeTown — Read-Only MCP Boundary 1.0"
+
+An observation-only boundary that lets a future external agent (`tt-scout`,
+hosted on a separate OpenClaw runtime) read a narrow, explicitly approved
+slice of TradeTown. A security/boundary milestone: no trading logic,
+Gatekeeper, Risk Contract, execution, Sniper, Champion/Challenger, research
+algorithm, market-data implementation or institutional-memory implementation
+was touched.
+
+### The topology, and why each hop exists
+
+```
+tt-scout (future, OpenClaw)  ──bearer──▶  mcp-service        (no host port)
+                                              │
+                                              ▼
+                                    nginx :8081 GET allowlist (no host port)
+                                              │
+                                              ▼
+                                    backend:8000            (unchanged)
+```
+
+The MCP service is **never** given an address that resolves to
+`backend:8000`. The backend exposes 135 POST/PUT/PATCH/DELETE endpoints and
+network reach to it is all-or-nothing, so reach is granted to an nginx
+listener that forwards eight exact GET paths and answers everything else —
+including every non-GET method, via `limit_except GET` — with 403. The
+service's own client is a second, redundant layer: it has no method parameter
+and contains no `.post`/`.put`/`.patch`/`.delete` call anywhere.
+
+`mcp_service/` is a separate image because it must be. `mcp 2.2.0` requires
+`pydantic>=2.12.0`; `backend/requirements.txt` pins `pydantic==2.10.2` across
+~15,700 lines of schema gated by mypy, ruff and 194 test files. The isolation
+is mechanically forced, not stylistic.
+
+### The public-exposure fix that had to come first
+
+`docker-compose.yml` published the frontend's nginx on `0.0.0.0:80`, and that
+nginx reverse-proxies `/api` and `/ws` to the backend. Those surfaces have no
+authentication of their own and `/ws` broadcasts full game state, so the whole
+unauthenticated API was internet-reachable. The host port is now bound to
+`${HTTP_BIND}`, default `127.0.0.1`; reach the UI over an SSH tunnel. A host
+firewall was rejected as the fix because Docker's published ports install
+DNAT rules that bypass ufw's INPUT chain.
+
+### Approval is fail-closed, and cutoff enforcement is honest
+
+`ResearchItem` and `InstitutionalMemoryEntry` gained additive
+`approvedForAgentRead*` fields defaulting to `false`. An un-seeded deployment
+returns an empty result set rather than everything. Approval is authored
+TradeTown-side only (v0: `scripts/seed_agent_read_approval.py`).
+
+Cutoff enforcement is **deliberately not uniform**, and every response says
+which anchor was used. `InstitutionalMemoryEntry` has a real simulated-clock
+anchor (`sim_day`), so both it and the approval sim-minute are enforced.
+`ResearchItem` has none — only real wall-clock timestamps — so the only honest
+anchor is the sim-minute at which it was approved, which is a weaker
+guarantee and is reported as exactly that. Adding a creation-time anchor would
+have meant changing `app/research.py`, which was out of scope.
+
+### Scope cuts, stated plainly
+
+- `/api/mcp-read/agent-findings` returns an empty list. No external-agent
+  finding can exist yet, and projecting the in-game `ai_reasoning_results`
+  there would leak another agent's private reasoning.
+- Missions carry a **frozen, self-contained evidence manifest** rather than
+  referencing an `AIEvidencePacket` store, because no such store exists —
+  packets are transient and `AIReasoningResult.evidence_packet_id` is a
+  dangling reference.
+- The run-binding check is time-of-check/time-of-use. Closing that window
+  would require holding `GameState.lock` from inside the backend process,
+  forfeiting the isolation this design exists to provide.
+- Credential rotation is restart-based, and there is no credential expiry
+  independent of a mission's own `expiresAt`.

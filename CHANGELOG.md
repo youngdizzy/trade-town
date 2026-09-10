@@ -7,6 +7,105 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Read-Only MCP Boundary 1.0."** A security/boundary
+  milestone, not a trading or AI-intelligence upgrade: an isolated,
+  observation-only MCP server that lets a future external agent
+  (`tt-scout`, hosted on a separate OpenClaw runtime) read a narrow,
+  explicitly approved slice of TradeTown — and nothing else. No trading
+  logic, Gatekeeper, Risk Contract, execution, Sniper,
+  Champion/Challenger, research algorithm, market-data implementation or
+  institutional-memory implementation was touched.
+  - **Closed a live public exposure first.** `docker-compose.yml`
+    published the frontend's nginx on `0.0.0.0:80`, which reverse-proxies
+    `/api` and `/ws` to the backend. Those surfaces have no
+    authentication of their own (`docs/API.md`: "There is no
+    authentication — the app is single-tenant by design") and `/ws`
+    broadcasts full game state, so the entire unauthenticated API was
+    reachable from the public internet. Verified before the fix:
+    `GET /api/health` and `/api/runs/active` both returned `200` with no
+    credential. The port is now bound to `${HTTP_BIND}`, default
+    `127.0.0.1`; reach the UI over an SSH tunnel
+    (`ssh -L 8080:127.0.0.1:80 <vps>`). A host firewall was rejected as
+    the fix: Docker's published ports install DNAT rules that bypass
+    ufw's INPUT chain, so `ufw deny 80` would have looked like it worked
+    while the port stayed open.
+  - **Additive, fail-closed approval fields** on `ResearchItem` and
+    `InstitutionalMemoryEntry` (`approvedForAgentRead` plus
+    `approvedForAgentReadAt`/`AtSimMinutes`/`By`). A save predating them
+    deep-merges to `False` (`_deep_merge_defaults`), so an un-seeded
+    deployment honestly returns an EMPTY result set — never "everything,
+    because nothing is marked unapproved." Nothing inside the MCP
+    boundary can set them; v0 approval is authored by
+    `scripts/seed_agent_read_approval.py` only.
+  - **Three read-only endpoints** (`app/routers/mcp_read.py`):
+    `/api/mcp-read/approved-research`, `/api/mcp-read/approved-memory`,
+    `/api/mcp-read/agent-findings`. They exist so the MCP service never
+    receives unapproved data at all, rather than receiving everything and
+    filtering client-side. Same convention as
+    `routers/institutional_memory.py`: `await game_state.snapshot()`,
+    computed fresh, nothing mutated.
+  - **SCOPE CUT, DISCLOSED: cutoff enforcement is not uniform.**
+    `InstitutionalMemoryEntry` carries a real simulated-clock anchor
+    (`sim_day`), so both it and the approval sim-minute are enforced.
+    `ResearchItem` carries NO simulated-clock field — only real
+    wall-clock `createdAt`/`updatedAt` — so the only honest anchor
+    available is the sim-minute at which it was approved. That is a
+    weaker guarantee than creation-time containment, and every response
+    says so in a real `cutoffEnforcement` field rather than presenting
+    the two as equivalent. Adding a creation-time anchor would mean
+    changing how research records are created (`app/research.py`), which
+    was out of scope.
+  - **`/api/mcp-read/agent-findings` honestly returns an empty list.**
+    No external-agent finding can exist yet: submission is out of scope,
+    `AIReasoningRole` has no external-agent value, and
+    `AIReasoningResult` has no `externalAgentId` field. Empty is
+    *correct*, not unimplemented — projecting the existing in-game
+    `ai_reasoning_results` there would expose Nova's and the Devil's
+    Advocate's private reasoning to an external agent.
+  - **Isolated `mcp_service/`** (new top-level directory, own Dockerfile,
+    own pinned `requirements.txt`, own SQLite). Not a stylistic choice:
+    `mcp 2.2.0` requires `pydantic>=2.12.0` and resolves to
+    `pydantic 2.13.5`, while `backend/requirements.txt` pins
+    `pydantic==2.10.2` across ~15,700 lines of schema. Installing the SDK
+    into the backend would have forced that upgrade. Verified by
+    resolution in a clean `python:3.12-slim` container.
+  - **The MCP service cannot reach `backend:8000`.** Two independent
+    layers: a new internal nginx listener on port 8081 (never published
+    to the host) forwards an exact allowlist of eight GET paths and
+    answers everything else — including every non-GET method, via
+    `limit_except GET` — with 403; and the service's own HTTP client has
+    no method parameter and no `.post`/`.put`/`.patch`/`.delete`
+    anywhere. The backend exposes 135 mutation endpoints; network reach
+    to it is all-or-nothing, so it is never granted.
+  - **Frozen mission evidence manifests.** Missions carry a
+    self-contained, immutable manifest instead of referencing an
+    `AIEvidencePacket` store — because no such store exists: a packet is
+    built transiently by `app/ai_context_builder.py`, used for citation
+    validation inside one call, then discarded, leaving
+    `AIReasoningResult.evidence_packet_id` a dangling reference. Citation
+    validation uses the identical algorithm as `app/ai_reasoning.py:283`,
+    applied against the frozen manifest.
+  - **Run binding.** `persistence.SLOT` is a process global and
+    `game_state` a process-wide singleton that `switch_run()` can
+    repoint, so a mission records the run it was issued against and every
+    call re-checks TradeTown's active run, refusing with `RUN_MISMATCH`
+    rather than silently reading another save's data.
+  - **Append-only agent-access audit log** in the service's own SQLite,
+    guarded by UPDATE/DELETE triggers. Deliberately not `AuditEntry`:
+    that record has no actor/credential/tool/latency/digest field and
+    lives inside `GameSaveState`, so a save-slot switch would wipe it and
+    every row would pollute game state with machine telemetry. Rows carry
+    a `credentialId` digest, never the credential; request metadata
+    records field names and value *shapes*, never free-text bodies.
+  - **Accepted v0 limitations, documented rather than hidden:** the run
+    check is time-of-check/time-of-use (closing it would require holding
+    `GameState.lock` in-process, forfeiting the isolation the whole
+    design buys); credential rotation is restart-based; and there is no
+    credential expiry independent of a mission's own `expiresAt`.
+  - Not built, deliberately: no submit/write tool, no dormant mutation
+    endpoint, no web access, no second agent, no OpenClaw configuration,
+    no host port for the MCP service, no live trading.
+
 - **CEO directive "TradeTown — Memecoin Sniper AI Burn-In Cohort
   Identity 1.0."** An experiment-integrity milestone, not an AI
   intelligence/trading/dashboard upgrade: gives every completed

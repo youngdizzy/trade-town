@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import init_db
 from app.persistence import DEFAULT_SLOT, ensure_default_run_registered, get_active_run_id, load_state, persist_modules, register_run, set_active_slot
-from app.routers import accounts, agent_trading_status, ai_reasoning, audit, black_box, black_swan, board, calendar, calibration, collaboration_intelligence, constitution, decision_vault, education, emergency, energy, executive, failure_review, foundational_mentors, goals, health, institutional_memory, knowledge_graph, market, mentor, performance_review, player_vs_ai, prediction_tracking, quant_developer, risk, runs, sandbox, save, self_improvement, situation_room, skill_progression, sniper, sniper_ai_reasoning, talent, time, trades, trading_modes, trading_restrictions, travel_mode, treasury, vision_board, ws
+from app.routers import accounts, agent_trading_status, ai_reasoning, audit, black_box, black_swan, board, calendar, calibration, collaboration_intelligence, constitution, decision_vault, education, emergency, energy, executive, failure_review, foundational_mentors, goals, health, institutional_memory, knowledge_graph, market, mcp_read, mentor, performance_review, player_vs_ai, prediction_tracking, quant_developer, risk, runs, sandbox, save, self_improvement, situation_room, skill_progression, sniper, sniper_ai_reasoning, talent, time, trades, trading_modes, trading_restrictions, travel_mode, treasury, vision_board, ws
 from app.sim import run_sim_loop
 from app.state import game_state
 
@@ -70,6 +70,10 @@ app.include_router(agent_trading_status.router)
 app.include_router(save.router)
 app.include_router(ws.router)
 app.include_router(market.router)
+# TradeTown Read-Only MCP Boundary 1.0 — approval-filtered read surface for
+# the external tt-scout agent. Read-only; reachable in the deployed topology
+# only through the internal nginx GET allowlist, never from the host.
+app.include_router(mcp_read.router)
 app.include_router(energy.router)
 app.include_router(calibration.router)
 app.include_router(player_vs_ai.router)
