@@ -17044,6 +17044,25 @@ market stalls — rather than TradeTown's original evenly-spaced rows.
   rename had missed because it wasn't wrapped in matching quotes. It
   silently no-opped since the key no longer existed in the manifest.
 
+### Fixed
+
+- **Frontend Docker healthcheck false-negative on `localhost` IPv6/IPv4
+  ambiguity.** `docker-compose.yml`'s frontend `healthcheck` ran `wget
+  -qO- http://localhost/api/health` — a pattern present since the
+  original Docker deployment commits, unrelated to any milestone in
+  this repository's history. `frontend/deploy/nginx.conf`'s server
+  block only ever binds IPv4 (`listen 80;`, no `listen [::]:80;`). In
+  an environment where `localhost` resolves to `::1` before
+  `127.0.0.1`, `wget` connects to a port nothing is listening on and
+  reports a false "Connection refused" even though nginx is running
+  and healthy and a direct IPv4 request succeeds — exactly the
+  symptom observed (`FailingStreak` climbing on an otherwise-healthy
+  container). Fixed by pointing the healthcheck at the explicit IPv4
+  loopback address (`http://127.0.0.1/api/health`) instead of the
+  ambiguous hostname. No change to nginx's listen directives, ports,
+  or backend health semantics — the healthcheck now unambiguously
+  tests the same thing it always intended to.
+
 ## v0.6
 
 ### Added

@@ -52,7 +52,13 @@ services:
     ports:
       - "${HTTP_PORT:-80}:80"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/api/health"]
+      # 127.0.0.1, not "localhost" — nginx's own server block (frontend/deploy/
+      # nginx.conf) only ever binds IPv4 (`listen 80;`, no `listen [::]:80;`).
+      # If "localhost" resolves to ::1 before 127.0.0.1 inside the container,
+      # wget connects to a port nothing is listening on and reports a
+      # false-negative "Connection refused" even though nginx is healthy and
+      # a direct IPv4 request succeeds.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/health"]
       interval: 15s
       timeout: 5s
       retries: 5
