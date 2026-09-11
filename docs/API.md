@@ -3172,10 +3172,12 @@ codebase only keeps a recent slice of.
 Every `RiskWarning`, `GatekeeperCheck`, `GatekeeperRejection`, and
 `OpportunityRejection` this endpoint's underlying data draws on also
 now carries a real `code`/`reasonCodes` field from the same
-directive's `NoTradeReasonCode` taxonomy (41 values as of CEO directive
-"Portfolio Construction, Capital Allocation & Execution Realism," `app/
-schemas.py` — most recently `correlated_exposure_too_high`, Phase 4's
-real pre-proposal Pearson correlation gate; a prior value,
+directive's `NoTradeReasonCode` taxonomy (45 values in `app/schemas.py`
+as of CEO directive "Model Validation Enforcement 1.0"'s
+`gatekeeper_model_validation` — the Gatekeeper's 16th check; a prior
+value, `correlated_exposure_too_high`, was added by CEO directive
+"Portfolio Construction, Capital Allocation & Execution Realism," Phase
+4's real pre-proposal Pearson correlation gate; another,
 `session_regime_unfavorable_evidence`, was added by CEO directive
 "Command Center + Professional Quant Trading Firm Upgrade" to close the
 taxonomy's own previously-disclosed SESSION_FILTER gap with a real
@@ -4317,6 +4319,73 @@ never touches `sniperPositions`/`sniperTradeHistory`.
 
 Marks one wallet active and every other wallet inactive. 404 if no
 wallet with that id exists. Returns the full updated `SniperWallet[]`.
+
+### `GET /api/sniper/strategies`
+
+CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0,"
+extended by "Sniper Multi-Strategy Dispatch Proof 1.0" — returns
+`SniperStrategyDefinition[]`, the persisted Sniper strategy registry.
+Self-heals/back-fills via `ensure_default_sniper_strategies()`: an
+empty list (a save predating the registry entirely) heals to both real
+default entries; a real, non-empty list missing just the newer default
+(a save persisted before this second directive) gets that one entry
+back-filled without touching the already-registered one. Today returns
+TWO entries by default: `id: "memecoin-sniper"` (family
+`liquidity_momentum`) and `id: "memecoin-sniper-whale-confirmation"`
+(family `whale_confirmation`) — see `app/memecoin_sniper.py::
+strategy_accepts_candidate()` for each one's real, distinct
+deterministic decision logic. Pure identity/governance metadata only:
+`id`, `name`, `family`, `version`, `status` (`"enabled"|"disabled"`),
+`provenance` (currently always `"hardcoded"` for both), `createdAt`.
+This is not a performance or validation signal — `enabled` means
+"eligible to originate new discovery/entries," nothing more; neither
+strategy is claimed to be profitable or validated.
+
+### `GET /api/sniper/strategy-performance`
+
+CEO directive "TradeTown — Sniper Per-Strategy Performance
+Observability 1.0" — read-only. Returns `SniperStrategyPerformanceSummary`:
+`reads` (one `SniperStrategyPerformanceRead` per strategy currently
+registered and/or observed in the historical trade journal),
+`tradesExcludedMalformed` (a trade whose persisted `pnlSol` was not a
+finite number — excluded, never coerced to `0.0`), `closedTradesConsidered`
+(how many closed trades this specific report was built from —
+`sniper_trade_history` is itself capped at 500 closed trades, oldest
+evicted first, so this can be less than a strategy's true lifetime
+total), `generatedAt`. Each read: `strategyId` (canonical grouping
+key), `name`/`family`/`provenance`/`status` (read from the current
+registry when `isRegistered` is `true`; `family`/`provenance`/`status`
+are `null` and `name` comes from the trades' own historical record
+when a strategy id is observed but no longer registered),
+`distinctStrategyVersionsObserved` (every historical `strategyVersionId`
+actually seen for this id — never collapsed into the current registry
+version), `closedTradeCount`, `winCount`, `lossCount`, `winRatePct`,
+`totalRealizedPnlSol`, `averageRealizedPnlSol`,
+`averageWinningTradeSol`, `averageLosingTradeSol`,
+`observedExpectancyPerClosedTradeSol`. WIN = `pnlSol > 0`; LOSS =
+`pnlSol <= 0` (break-even counts as a loss — the same convention used
+codebase-wide). Every rate/average field is `null` (never a fabricated
+`0%`/`$0`) when its own denominator is zero — `totalRealizedPnlSol`
+alone is a real `0.0` at zero trades. Pure, deterministic aggregation:
+no mutation, no persistence beyond the existing trade journal, cannot
+influence strategy dispatch, the firewall, risk, or Emergency Stop.
+This is observability only — no ranking, no promotion, no
+recommendation.
+
+### `POST /api/sniper/strategies/{strategy_id}/status`
+
+Body: `{ "status": "enabled" | "disabled" }`. 400 if `strategy_id` is
+not a registered strategy, or if `status` is neither `"enabled"` nor
+`"disabled"`. Disabling one strategy closes ONLY that strategy's own
+ability to originate new entries on the very next tick — the other
+strategy (if enabled) keeps discovering/entering independently, and
+overall discovery only stops once every registered, known-family
+strategy is disabled. Disabling never deletes the strategy, never
+affects already-open positions (they keep marking-to-market and can
+still exit via their own stop/target/trailing-stop), and never alters
+any historical `SniperTrade`/`SniperPosition` record already stamped
+with that strategy's identity. Returns the full updated
+`SniperStrategyDefinition[]`.
 
 ### `POST /api/sniper/engine`
 

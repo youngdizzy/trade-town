@@ -13,7 +13,7 @@ import asyncio
 from app.market_intelligence import default_market_intelligence_state
 from app.nexus import _apply_operating_mode
 from app.paper_trade_journal import build_journal_entry
-from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, PaperTrade, SettingsState, SimulationResult, Strategy, StrategyHealthState, StrategyReport, TierAllocationLimits, TradeProposal
+from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, ModelValidationCheck, ModelValidationReport, PaperTrade, SettingsState, SimulationResult, Strategy, StrategyHealthState, StrategyReport, TierAllocationLimits, TradeProposal
 from app.strategy_lab import MIN_RETIREMENT_TRADE_COUNT
 from app.strategy_registry import _ema_pullback_source_text
 from app.state import MAX_DIALOGUE_HISTORY, GameState
@@ -984,6 +984,76 @@ class TestSubmitCeoDecisionStrategyProvenance:
         assert saved.paper_portfolio.positions[0].strategy_id is None
 
 
+class TestSubmitCeoDecisionModelValidationEnforcement:
+    """CEO directive "Model Validation Enforcement 1.0" — proves the
+    MANUAL CEO-click path (submit_ceo_decision -> resolve_proposal) is
+    covered by the same real Gatekeeper enforcement as auto-resolution,
+    since both call the exact same resolve_proposal() (see
+    app/nexus.py's test_nexus.py counterpart for the auto path)."""
+
+    def _champion_proposal(self, *, source_definition_id: str = "def-1") -> TradeProposal:
+        return _pending_proposal().model_copy(
+            update={
+                "source": "champion",
+                "source_champion_id": "champion-1",
+                "source_strategy_family": "trend",
+                "source_definition_id": source_definition_id,
+                "source_definition_version": 1,
+                "source_signal_bar_timestamp": "2026-01-01T00:00:00+00:00",
+            }
+        )
+
+    def _report(self, *, strategy_id: str, verdict: str) -> ModelValidationReport:
+        return ModelValidationReport(
+            id="mvr-1",
+            strategyId=strategy_id,
+            strategyName="Test Strategy",
+            reviewId="review-1",
+            existingReviewCount=1,
+            verdict=verdict,  # type: ignore[arg-type]
+            checks=[ModelValidationCheck(id="sample_size", label="Sample Size", passed=verdict != "rejected", evidence="test evidence", reasoning="test reasoning", thresholdSource="test source")],
+            evidenceSummary="test evidence summary.",
+            dataSourcesAndAssumptions=["test data source"],
+            simDay=1,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+
+    def _state_with_champion_proposal_and_validation(self, *, verdict: str) -> GameState:
+        state = GameState()
+        strategy = Strategy(
+            id="strategy-mv-1", name="Test Strategy", description="test description", createdBy="scout", focusCategory="stock", createdAt="2026-01-01T00:00:00+00:00", compiledDefinitionId="def-1"
+        )
+        state.data = state.data.model_copy(
+            update={
+                "trade_proposals": [self._champion_proposal()],
+                "strategies": [*state.data.strategies, strategy],
+                "strategy_model_validations": [self._report(strategy_id="strategy-mv-1", verdict=verdict)],
+            }
+        )
+        return state
+
+    def test_a_rejected_validation_blocks_the_manual_ceo_decision(self) -> None:
+        state = self._state_with_champion_proposal_and_validation(verdict="rejected")
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert saved.paper_portfolio.positions == []
+        decision = saved.decisions[-1]
+        assert decision.outcome != "trade"
+        assert decision.gatekeeper_verdict is not None
+        assert decision.gatekeeper_verdict.approved is False
+        model_validation_check = next(c for c in decision.gatekeeper_verdict.checks if c.id == "model_validation")
+        assert model_validation_check.passed is False
+
+    def test_an_approved_validation_does_not_block_the_manual_ceo_decision(self) -> None:
+        state = self._state_with_champion_proposal_and_validation(verdict="approved")
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert len(saved.paper_portfolio.positions) == 1
+        decision = saved.decisions[-1]
+        assert decision.outcome == "trade"
+        assert decision.gatekeeper_verdict is not None and decision.gatekeeper_verdict.approved is True
+
+
 class TestSubmitCeoDecisionRegimeStrategyWarning:
     """CEO directive "TradeTown — 11/10 Market Intelligence + Quant
     Research Engine" — a real, non-blocking regime-gated strategy
@@ -1305,6 +1375,91 @@ class TestCloseSniperPosition:
         saved, _trade, error = asyncio.run(state.close_sniper_position(position.id))
         assert error is None
         assert saved.sniper_risk_state.open_risk_sol == 0.0
+
+
+class TestSetSniperStrategyStatus:
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — the CEO's real enable/disable control surface, mirroring
+    TestCloseSniperPosition's own style above."""
+
+    def test_disabling_the_canonical_strategy_persists(self) -> None:
+        from app.schemas import SNIPER_STRATEGY_ID
+
+        state = GameState()
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        assert error is None
+        resolved = next(s for s in saved.sniper_strategies if s.id == SNIPER_STRATEGY_ID)
+        assert resolved.status == "disabled"
+
+    def test_re_enabling_persists(self) -> None:
+        from app.schemas import SNIPER_STRATEGY_ID
+
+        state = GameState()
+        asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "enabled"))
+        assert error is None
+        resolved = next(s for s in saved.sniper_strategies if s.id == SNIPER_STRATEGY_ID)
+        assert resolved.status == "enabled"
+
+    def test_unknown_strategy_id_returns_a_named_error(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.set_sniper_strategy_status("does-not-exist", "disabled"))
+        assert error is not None
+        assert "no registered sniper strategy" in error.lower()
+        assert saved is state.data
+
+    def test_invalid_status_value_is_rejected(self) -> None:
+        from app.schemas import SNIPER_STRATEGY_ID
+
+        state = GameState()
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "not-a-real-status"))
+        assert error is not None
+        assert saved is state.data
+
+    def test_a_legacy_empty_registry_self_heals_before_toggling(self) -> None:
+        """The exact same self-heal/back-fill read app/nexus.py::tick()
+        uses (CEO directive "TradeTown — Sniper Multi-Strategy
+        Dispatch Proof 1.0" generalized this to both default
+        strategies) — a save predating the registry must not silently
+        no-op the CEO's real toggle."""
+        from app.schemas import SNIPER_STRATEGY_B_ID, SNIPER_STRATEGY_ID
+
+        state = GameState()
+        state.data = state.data.model_copy(update={"sniper_strategies": []})
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        assert error is None
+        assert {s.id for s in saved.sniper_strategies} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+        resolved_a = next(s for s in saved.sniper_strategies if s.id == SNIPER_STRATEGY_ID)
+        assert resolved_a.status == "disabled"
+
+    def test_a_registry_missing_only_the_newer_default_strategy_backfills_it_before_toggling(self) -> None:
+        """CEO directive "TradeTown — Sniper Multi-Strategy Dispatch
+        Proof 1.0" — the real production symptom of a save persisted
+        between the two directives: `sniper_strategies` already has
+        Strategy A registered (a real, non-empty list), so the OLD
+        self-heal (`strategies or default_sniper_strategies()`) would
+        never add Strategy B. Toggling Strategy A's status must still
+        result in Strategy B being present too."""
+        from app.schemas import SNIPER_STRATEGY_B_ID, SNIPER_STRATEGY_ID
+        from app.sniper_strategy_registry import default_sniper_strategies
+
+        state = GameState()
+        state.data = state.data.model_copy(update={"sniper_strategies": [default_sniper_strategies()[0]]})
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        assert error is None
+        assert {s.id for s in saved.sniper_strategies} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+        resolved_b = next(s for s in saved.sniper_strategies if s.id == SNIPER_STRATEGY_B_ID)
+        assert resolved_b.status == "enabled"
+
+    def test_disabling_never_mutates_a_sibling_strategys_status(self) -> None:
+        from app.schemas import SNIPER_STRATEGY_ID, SniperStrategyDefinition
+
+        state = GameState()
+        sibling = SniperStrategyDefinition(id="sibling", name="Sibling", family="test", version="1", status="enabled", provenance="hardcoded", createdAt="2026-01-01T00:00:00+00:00")  # type: ignore[arg-type]
+        state.data = state.data.model_copy(update={"sniper_strategies": [*state.data.sniper_strategies, sibling]})
+        saved, error = asyncio.run(state.set_sniper_strategy_status(SNIPER_STRATEGY_ID, "disabled"))
+        assert error is None
+        assert next(s for s in saved.sniper_strategies if s.id == "sibling").status == "enabled"
 
 
 class TestSniperWallets:

@@ -3,6 +3,7 @@ import { api } from "@/net/api";
 import type { SniperAiReasoningResult, SniperCandidate, SniperClassification, SniperEngineStatusRead, SniperEquitySnapshot, SniperEvent, SniperLead, SniperLesson, SniperPnlHistoryPoint, SniperPosition, SniperSafetyStatus, SniperTrade, SniperWallet } from "@/types";
 import { EquityCurveChart } from "@/ui/components/CommandCenter/panels/EquityCurveChart";
 import { AnimatedGrid, DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
+import { SniperStrategyPerformance } from "./SniperStrategyPerformance";
 import { SniperTerminal } from "./SniperTerminal";
 
 const POLL_MS = 5_000;
@@ -509,6 +510,12 @@ export function SniperApp() {
 
         {/* Professional trading terminal — the directive's own headline correction */}
         <SniperTerminal positions={positions} candidates={candidates} trades={trades} />
+
+        {/* CEO directive "TradeTown — Sniper Per-Strategy Performance
+            Observability UI 1.0" — read-only, fetches its own data from
+            GET /api/sniper/strategy-performance independently of this
+            component's own 5s poll loop above. */}
+        <SniperStrategyPerformance />
 
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
           <Glass className="p-3 lg:col-span-2">

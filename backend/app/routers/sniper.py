@@ -21,9 +21,13 @@ from app.schemas import (
     SniperPnlHistoryPoint,
     SniperPosition,
     SniperRiskState,
+    SniperStrategyDefinition,
+    SniperStrategyPerformanceSummary,
     SniperTrade,
     SniperWallet,
 )
+from app.sniper_strategy_performance import compute_sniper_strategy_performance
+from app.sniper_strategy_registry import ensure_default_sniper_strategies
 from app.state import game_state
 
 router = APIRouter(prefix="/api/sniper", tags=["sniper"])
@@ -178,6 +182,56 @@ async def activate_sniper_wallet(wallet_id: str) -> list[SniperWallet]:
         raise HTTPException(status_code=404, detail=error)
     persist_modules(state)
     return state.sniper_wallets
+
+
+@router.get("/strategies", response_model=list[SniperStrategyDefinition])
+async def sniper_strategies() -> list[SniperStrategyDefinition]:
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0," generalized by "Sniper Multi-Strategy Dispatch Proof 1.0" —
+    the real, persisted strategy registry (see
+    `SniperStrategyDefinition`'s own docstring).
+    `ensure_default_sniper_strategies()` is the same self-heal/back-
+    fill read `app/nexus.py::tick()`/`GameState.set_sniper_strategy_
+    status()` already use, so a save that predates the registry
+    entirely, or that predates just the newer default strategy, never
+    under-reports what's really registered here either."""
+    state = await game_state.snapshot()
+    return ensure_default_sniper_strategies(state.sniper_strategies)
+
+
+@router.get("/strategy-performance", response_model=SniperStrategyPerformanceSummary)
+async def sniper_strategy_performance() -> SniperStrategyPerformanceSummary:
+    """CEO directive "TradeTown — Sniper Per-Strategy Performance
+    Observability 1.0" — read-only. Pure aggregation
+    (`app/sniper_strategy_performance.py::compute_sniper_strategy_
+    performance()`) over the existing, already-persisted `sniper_
+    trade_history` journal, grouped by each trade's own historical
+    `strategy_id` — never a second trade ledger, never a validation or
+    ranking verdict. GET only; this endpoint cannot change strategy
+    selection, enable/disable state, risk, firewall behavior, or
+    Emergency Stop."""
+    state = await game_state.snapshot()
+    return compute_sniper_strategy_performance(state.sniper_trade_history, ensure_default_sniper_strategies(state.sniper_strategies))
+
+
+class SetSniperStrategyStatusRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: str
+
+
+@router.post("/strategies/{strategy_id}/status", response_model=list[SniperStrategyDefinition])
+async def set_sniper_strategy_status(strategy_id: str, payload: SetSniperStrategyStatusRequest) -> list[SniperStrategyDefinition]:
+    """The CEO's real enable/disable control. DISABLED stops new
+    discovery/entries under this strategy exactly like the global
+    Emergency Stop does (see `app/memecoin_sniper.py::
+    tick_sniper_engine()`'s own docstring) — it never deletes the
+    strategy or affects any already-open position."""
+    state, error = await game_state.set_sniper_strategy_status(strategy_id, payload.status)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return ensure_default_sniper_strategies(state.sniper_strategies)
 
 
 class UpdateSniperEngineRequest(BaseModel):

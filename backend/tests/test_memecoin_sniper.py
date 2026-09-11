@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import random
 
+import pytest
+
 from app.memecoin_sniper import (
     DEFAULT_HARD_STOP_PCT,
     DEFAULT_MAX_HOLD_SECONDS,
     DEFAULT_TAKE_PROFIT_PCT,
+    MIN_WHALE_SIGNALS_FOR_STRATEGY_B,
     RawCandidate,
     build_candidate,
     build_sniper_pnl_history,
@@ -26,10 +29,21 @@ from app.memecoin_sniper import (
     run_safety_firewall,
     score_candidate,
     size_paper_position,
+    strategy_accepts_candidate,
     tick_sniper_engine,
     update_risk_state_after_trade,
 )
-from app.schemas import SniperEngineConfig, SniperRiskState, SniperTrade
+from app.schemas import (
+    SNIPER_STRATEGY_B_FAMILY,
+    SNIPER_STRATEGY_B_ID,
+    SNIPER_STRATEGY_FAMILY,
+    SNIPER_STRATEGY_ID,
+    SniperEngineConfig,
+    SniperRiskState,
+    SniperStrategyDefinition,
+    SniperTrade,
+)
+from app.sniper_strategy_registry import default_sniper_strategies, set_sniper_strategy_status
 
 _NOW = "2024-01-01T00:00:00+00:00"
 
@@ -179,6 +193,30 @@ class TestEntryFirewall:
         allowed, reason, block_reason = evaluate_entry_firewall(candidate, config, risk, 0)
         assert allowed is False
         assert "kill_switch" in reason
+        assert block_reason == "kill_switch"
+
+    def test_evaluate_entry_firewall_has_no_strategy_parameter_at_all(self) -> None:
+        """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+        1.0," negative-space test #26/29 — the registry cannot bypass
+        this firewall because this function structurally has no way to
+        receive a strategy/registry argument in the first place; an
+        enabled, resolved strategy can never influence its verdict."""
+        import inspect
+
+        params = list(inspect.signature(evaluate_entry_firewall).parameters)
+        assert params == ["candidate", "config", "risk_state", "open_position_count"]
+
+    def test_kill_switch_blocks_entry_even_for_a_candidate_that_would_otherwise_qualify_for_an_enabled_strategy(self) -> None:
+        """Same real firewall rejection as test_kill_switch_triggered_
+        blocks_entry above — restated explicitly against the directive's
+        own "enabled strategy does not imply authorization" requirement.
+        A resolved, enabled SniperStrategyDefinition existing elsewhere
+        changes nothing here, because this call never receives one."""
+        candidate = self._candidate(safety_status="safe_enough", classification="high_conviction", timing_state="entry_window", opportunity_score=99.0, rug_risk="low", creator_risk="weak_signal")
+        config = SniperEngineConfig()
+        risk = SniperRiskState(killSwitchTriggered=True)
+        allowed, _reason, block_reason = evaluate_entry_firewall(candidate, config, risk, 0)
+        assert allowed is False
         assert block_reason == "kill_switch"
 
     def test_max_positions_blocks_entry(self) -> None:
@@ -331,12 +369,17 @@ class TestPositionRiskSol:
 
 
 class TestStrategyIdentity:
-    """"Terminal 2.1" directive, Phase 1 — no fabricated strategy
-    version. Every position/trade must carry a real, honest identity:
-    a real, stable engine id/name, and `strategyVersionStatus` that can
-    only ever be `"unavailable"` (never a fabricated version number)
-    since no compiled/versioned strategy-definition registry exists for
-    this domain."""
+    """"Terminal 2.1" directive, Phase 1, and CEO directive "TradeTown —
+    Sniper Strategy Engine + Registry 1.0" — no fabricated strategy
+    version. Every position/trade must carry a real, honest identity.
+    Without a resolved registry entry (`strategy=None`, every existing
+    caller/test unaffected by the later directive), `strategyVersionId`
+    stays `None` and `strategyVersionStatus` stays `"unavailable"` —
+    exactly the prior behavior. With a real, resolved
+    `SniperStrategyDefinition` (the registry directive's own real
+    addition), `strategyVersionStatus` honestly becomes `"versioned"`
+    for the first time, since a real, deterministic version now
+    genuinely exists — see TestOpenPositionWithRegistry below."""
 
     def test_open_position_carries_real_honest_identity(self) -> None:
         candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
@@ -357,6 +400,67 @@ class TestStrategyIdentity:
         assert trade.strategy_name == position.strategy_name
         assert trade.strategy_version_id == position.strategy_version_id
         assert trade.strategy_version_status == position.strategy_version_status
+
+
+class TestOpenPositionWithRegistry:
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — `open_position(..., strategy=...)` stamps the real, resolved
+    registry identity, and only that; a `strategy=None` caller (every
+    pre-directive test/caller) is completely unaffected."""
+
+    def test_a_resolved_strategy_stamps_real_identity_and_a_real_version(self) -> None:
+        strategy = default_sniper_strategies()[0]
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.88, 1.55, _NOW, strategy=strategy)
+        assert position.strategy_id == strategy.id
+        assert position.strategy_name == strategy.name
+        assert position.strategy_version_id == strategy.version
+        assert position.strategy_version_status == "versioned"
+
+    def test_no_strategy_argument_preserves_the_exact_prior_default_identity(self) -> None:
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.88, 1.55, _NOW)
+        assert position.strategy_version_id is None
+        assert position.strategy_version_status == "unavailable"
+
+    def test_a_different_registered_strategys_identity_is_stamped_correctly(self) -> None:
+        """Proves this reads the REAL resolved strategy's own fields,
+        never a hardcoded constant — a sibling strategy's identity must
+        appear verbatim, not the canonical memecoin-sniper one."""
+        sibling = SniperStrategyDefinition(id="sibling", name="Sibling Strategy", family="test_family", version="7", status="enabled", provenance="hardcoded", createdAt=_NOW)  # type: ignore[arg-type]
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.88, 1.55, _NOW, strategy=sibling)
+        assert position.strategy_id == "sibling"
+        assert position.strategy_version_id == "7"
+
+    def test_closed_trade_carries_the_registry_stamped_identity_forward(self) -> None:
+        strategy = default_sniper_strategies()[0]
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.88, 1.55, _NOW, strategy=strategy)
+        _closed, trade = close_position(position, 1.0, "manual_exit", _NOW)
+        assert trade.strategy_version_id == strategy.version
+        assert trade.strategy_version_status == "versioned"
+
+    def test_a_later_version_bump_never_mutates_an_already_closed_historical_trade(self) -> None:
+        """Section 7 — "Do not silently rewrite trade.strategy_version
+        when the registry version changes." Simulates a future material
+        implementation change bumping the registry's own version: a
+        trade closed under the OLD version must keep reporting that old
+        version forever, even after the registry moves on."""
+        v1 = default_sniper_strategies()[0]
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        old_position = open_position(candidate, 1.0, 0.88, 1.55, _NOW, strategy=v1)
+        _closed, old_trade = close_position(old_position, 1.0, "manual_exit", _NOW)
+        assert old_trade.strategy_version_id == "1"
+
+        v2 = v1.model_copy(update={"version": "2"})  # simulates a future real version bump
+        new_candidate = build_candidate("c2", _NOW).model_copy(update={"price_usd": 1.0})
+        new_position = open_position(new_candidate, 1.0, 0.88, 1.55, _NOW, strategy=v2)
+
+        # The historical record is untouched — never rewritten in place.
+        assert old_trade.strategy_version_id == "1"
+        # Only the NEW position picks up the new version.
+        assert new_position.strategy_version_id == "2"
 
 
 class TestTrailingActivatedAt:
@@ -553,6 +657,128 @@ class TestTickEngine:
         assert len(result.candidates) == 0
         assert any(p.status == "closed" for p in result.positions) or any(p.hold_time_seconds > 0 for p in result.positions)
 
+    def test_emergency_stop_blocks_new_discovery_even_while_running(self) -> None:
+        """CEO directive "TradeTown Ultimate — Master 11-Pillar
+        Architecture Directive," Governance milestone — the global
+        Emergency Stop must reach Sniper too. seed(7) is a known,
+        verified-reliable roll that discovers a candidate under a plain
+        "running" engine (see the sibling test above) — with
+        emergency_stop_active=True, that same roll must produce nothing."""
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0, emergency_stop_active=True)
+        assert result.candidates == []
+
+    def test_emergency_stop_defaults_to_false_and_does_not_change_existing_behavior(self) -> None:
+        """Every existing caller/test that hasn't been threaded through
+        (the default) must keep discovering exactly as before."""
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0)
+        assert len(result.candidates) == 1
+
+    def test_emergency_stop_does_not_freeze_existing_open_positions(self) -> None:
+        """Mirrors app/emergency_stop.py's own real equities scope:
+        already-open positions keep being managed (marked-to-market,
+        can still exit) even while Emergency Stop is active — only NEW
+        entries are blocked, never a full "stopped"-style freeze."""
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.99, 1.55, _NOW)  # tight stop, guaranteed to trip
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        random.seed(1)
+        result = tick_sniper_engine(config, risk, [], [position], [], [], [], tick_seconds=200.0, emergency_stop_active=True)
+        assert any(p.status == "closed" for p in result.positions)
+        assert result.candidates == []
+
+    def test_no_strategies_argument_preserves_the_exact_prior_default_behavior(self) -> None:
+        """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+        1.0" — `strategies=None` (every existing caller/test) must
+        discover exactly as before this directive."""
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0)
+        assert len(result.candidates) == 1
+
+    def test_an_enabled_registered_strategy_discovers_and_stamps_real_identity(self) -> None:
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        strategies = default_sniper_strategies()
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0, strategies=strategies)
+        assert len(result.candidates) == 1
+        opened = [p for p in result.positions if p.status == "open"]
+        for position in opened:
+            assert position.strategy_id == SNIPER_STRATEGY_ID
+            assert position.strategy_version_status == "versioned"
+
+    def test_a_disabled_strategy_blocks_new_discovery_even_while_running(self) -> None:
+        """Section 6 — DISABLED stops new discovery/entries exactly like
+        the global Emergency Stop does. seed(7) is a known, verified-
+        reliable roll that discovers a candidate when enabled (see the
+        sibling test above) — with the ONLY registered strategy
+        disabled, that same roll must produce nothing. Uses a single-
+        strategy registry (not `default_sniper_strategies()`, which
+        now seeds a second, independently-enabled strategy — see
+        TestMultiStrategyEnableDisable below for that scenario) to
+        isolate exactly the "sole strategy disabled" case this test
+        has always covered."""
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        strategies, error = set_sniper_strategy_status([default_sniper_strategies()[0]], SNIPER_STRATEGY_ID, "disabled")
+        assert error is None
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0, strategies=strategies)
+        assert result.candidates == []
+
+    def test_a_disabled_strategy_does_not_freeze_existing_open_positions(self) -> None:
+        """Section 6's explicit rule — DISABLED STRATEGY != DELETE/FREEZE.
+        An already-open position must keep being managed/able to exit
+        even while its own strategy is disabled. Single-strategy
+        registry — see the sibling test above for why."""
+        candidate = build_candidate("c1", _NOW).model_copy(update={"price_usd": 1.0})
+        position = open_position(candidate, 1.0, 0.99, 1.55, _NOW)  # tight stop, guaranteed to trip
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        strategies, _ = set_sniper_strategy_status([default_sniper_strategies()[0]], SNIPER_STRATEGY_ID, "disabled")
+        random.seed(1)
+        result = tick_sniper_engine(config, risk, [], [position], [], [], [], tick_seconds=200.0, strategies=strategies)
+        assert any(p.status == "closed" for p in result.positions)
+        assert result.candidates == []
+
+    def test_an_unresolvable_registry_fails_closed_never_falls_back_to_bare_constants(self) -> None:
+        """Rule 10 — a real, non-empty registry that simply doesn't
+        contain the canonical strategy id (a genuinely corrupted/
+        mismatched state) must fail closed for new discovery/entries,
+        never silently fall back to the pre-directive bare-constant
+        behavior."""
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        unrelated_strategy = SniperStrategyDefinition(id="unrelated", name="Unrelated", family="test_family", version="1", status="enabled", provenance="hardcoded", createdAt=_NOW)  # type: ignore[arg-type]
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0, strategies=[unrelated_strategy])
+        assert result.candidates == []
+
+    def test_an_empty_registry_list_also_fails_closed(self) -> None:
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0, strategies=[])
+        assert result.candidates == []
+
+    def test_emergency_stop_and_disabled_strategy_are_independent_gates(self) -> None:
+        """Neither gate can substitute for or bypass the other — both
+        must independently block."""
+        random.seed(7)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState()
+        strategies = default_sniper_strategies()  # enabled
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0, emergency_stop_active=True, strategies=strategies)
+        assert result.candidates == []
+
     def test_a_closing_position_produces_a_real_structured_exit_event(self) -> None:
         """Professional Trading Terminal directive, Part VII — the tick
         engine's own events used to be plain formatted strings this pass
@@ -629,6 +855,188 @@ class TestTickEngine:
         assert all(p.data_provenance == "simulated" for p in positions)
         assert all(t.data_provenance == "simulated" for t in trades)
         assert all(lead.data_provenance == "simulated" for lead in leads)
+
+
+class TestStrategyAcceptsCandidate:
+    """CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof
+    1.0", Section 7 — proves the two registered strategies genuinely
+    have DIFFERENT deterministic decision logic, not duplicate labels
+    on the same rule. Never touches safety/risk (this function has no
+    such parameters at all) — only the pure "should this strategy
+    evaluate this candidate" question."""
+
+    def _strategy(self, family: str) -> SniperStrategyDefinition:
+        return SniperStrategyDefinition(id="x", name="X", family=family, version="1", status="enabled", provenance="hardcoded", createdAt=_NOW)  # type: ignore[arg-type]
+
+    def _candidate(self, *, classification: str, whale_signal_count: int) -> object:
+        return build_candidate("c1", _NOW).model_copy(update={"classification": classification, "whale_signal_count": whale_signal_count})
+
+    def test_strategy_a_accepts_a_qualified_candidate_regardless_of_whale_count(self) -> None:
+        strategy_a = self._strategy(SNIPER_STRATEGY_FAMILY)
+        candidate = self._candidate(classification="qualified", whale_signal_count=0)
+        assert strategy_accepts_candidate(strategy_a, candidate) is True
+
+    def test_strategy_a_rejects_a_merely_watch_classified_candidate(self) -> None:
+        strategy_a = self._strategy(SNIPER_STRATEGY_FAMILY)
+        candidate = self._candidate(classification="watch", whale_signal_count=5)
+        assert strategy_accepts_candidate(strategy_a, candidate) is False
+
+    def test_strategy_b_accepts_a_whale_confirmed_candidate_regardless_of_classification(self) -> None:
+        strategy_b = self._strategy(SNIPER_STRATEGY_B_FAMILY)
+        candidate = self._candidate(classification="watch", whale_signal_count=MIN_WHALE_SIGNALS_FOR_STRATEGY_B)
+        assert strategy_accepts_candidate(strategy_b, candidate) is True
+
+    def test_strategy_b_rejects_a_candidate_below_the_whale_threshold(self) -> None:
+        strategy_b = self._strategy(SNIPER_STRATEGY_B_FAMILY)
+        candidate = self._candidate(classification="high_conviction", whale_signal_count=MIN_WHALE_SIGNALS_FOR_STRATEGY_B - 1)
+        assert strategy_accepts_candidate(strategy_b, candidate) is False
+
+    def test_a_accepts_and_b_rejects_the_same_candidate(self) -> None:
+        """Section 7's own required direction #1 — one real candidate,
+        genuinely different verdicts."""
+        candidate = self._candidate(classification="high_conviction", whale_signal_count=0)
+        assert strategy_accepts_candidate(self._strategy(SNIPER_STRATEGY_FAMILY), candidate) is True
+        assert strategy_accepts_candidate(self._strategy(SNIPER_STRATEGY_B_FAMILY), candidate) is False
+
+    def test_b_accepts_and_a_rejects_the_same_candidate(self) -> None:
+        """Section 7's own required direction #2 (vice versa) — proves
+        this is genuine dispatch, not B being a narrower copy of A."""
+        candidate = self._candidate(classification="rejected", whale_signal_count=MIN_WHALE_SIGNALS_FOR_STRATEGY_B)
+        assert strategy_accepts_candidate(self._strategy(SNIPER_STRATEGY_FAMILY), candidate) is False
+        assert strategy_accepts_candidate(self._strategy(SNIPER_STRATEGY_B_FAMILY), candidate) is True
+
+    def test_identical_input_is_deterministic(self) -> None:
+        strategy_b = self._strategy(SNIPER_STRATEGY_B_FAMILY)
+        candidate = self._candidate(classification="watch", whale_signal_count=3)
+        results = {strategy_accepts_candidate(strategy_b, candidate) for _ in range(20)}
+        assert results == {True}
+
+    def test_an_unrecognized_strategy_family_fails_closed(self) -> None:
+        """Rule 10, generalized to the family level — a corrupted or
+        foreign registry entry must never be silently accepted, and
+        must never silently fall back to either known family's rule."""
+        unknown = self._strategy("some_future_family_nobody_implemented_yet")
+        candidate = self._candidate(classification="high_conviction", whale_signal_count=99)
+        assert strategy_accepts_candidate(unknown, candidate) is False
+
+
+class TestMultiStrategyDispatchInTick:
+    """CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof
+    1.0" — proves the real `tick_sniper_engine()` dispatch LOOP (not
+    just the isolated pure function above) routes a controlled
+    candidate to the correct strategy and stamps the resulting
+    position with that strategy's own real identity. Monkeypatches
+    `build_candidate()` at its call site inside app.memecoin_sniper so
+    the discovered candidate is controlled and deterministic — the
+    same style tests/test_nexus.py already uses to prove real wiring —
+    and forces the discovery roll via `random.random` (never touching
+    `generate_leads()`'s own internal draws, which call methods on the
+    module's private `Random` instance directly, not the rebound
+    module-level name)."""
+
+    def _fixed_candidate(self, **overrides: object) -> object:
+        base = build_candidate("cand-fixed", _NOW).model_copy(
+            update={
+                "price_usd": 1.0,
+                "safety_status": "safe_enough",
+                "data_quality": "sufficient",
+                "timing_state": "entry_window",
+                "rug_risk": "low",
+                "creator_risk": "weak_signal",
+                "opportunity_score": 65.0,
+                "classification": "watch",
+                "whale_signal_count": 0,
+            }
+        )
+        return base.model_copy(update=overrides)
+
+    def _tick_with_fixed_candidate(self, monkeypatch, candidate: object, strategies: list) -> object:
+        monkeypatch.setattr("app.memecoin_sniper.build_candidate", lambda *a, **k: candidate)
+        monkeypatch.setattr("random.random", lambda: 0.0)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState(equitySol=1000.0)
+        return tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0, strategies=strategies)
+
+    def test_a_whale_confirmed_non_qualified_candidate_opens_under_strategy_b_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        candidate = self._fixed_candidate(classification="watch", whale_signal_count=MIN_WHALE_SIGNALS_FOR_STRATEGY_B)
+        result = self._tick_with_fixed_candidate(monkeypatch, candidate, default_sniper_strategies())
+        opened = [p for p in result.positions if p.status == "open"]
+        assert len(opened) == 1
+        assert opened[0].strategy_id == SNIPER_STRATEGY_B_ID
+
+    def test_a_qualified_non_whale_confirmed_candidate_opens_under_strategy_a_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        candidate = self._fixed_candidate(classification="high_conviction", whale_signal_count=0)
+        result = self._tick_with_fixed_candidate(monkeypatch, candidate, default_sniper_strategies())
+        opened = [p for p in result.positions if p.status == "open"]
+        assert len(opened) == 1
+        assert opened[0].strategy_id == SNIPER_STRATEGY_ID
+
+    def test_when_both_would_accept_registry_order_gives_strategy_a_priority(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Section 6 — one canonical dispatch boundary, not a random or
+        ambiguous pick: the first enabled, accepting strategy in
+        registry order always wins."""
+        candidate = self._fixed_candidate(classification="high_conviction", whale_signal_count=MIN_WHALE_SIGNALS_FOR_STRATEGY_B)
+        result = self._tick_with_fixed_candidate(monkeypatch, candidate, default_sniper_strategies())
+        opened = [p for p in result.positions if p.status == "open"]
+        assert len(opened) == 1
+        assert opened[0].strategy_id == SNIPER_STRATEGY_ID
+
+    def test_neither_strategy_accepting_produces_no_entry_attempt(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        candidate = self._fixed_candidate(classification="watch", whale_signal_count=0)
+        result = self._tick_with_fixed_candidate(monkeypatch, candidate, default_sniper_strategies())
+        assert not any(p.status == "open" for p in result.positions)
+        assert not any(e.type == "sniped" for e in result.events)
+
+    def test_disabling_strategy_a_lets_strategy_b_alone_produce_the_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SAFETY test matrix #23-26 — B enabled alone must still be
+        able to produce a real, correctly-stamped entry; A being
+        disabled must not block B."""
+        strategies, error = set_sniper_strategy_status(default_sniper_strategies(), SNIPER_STRATEGY_ID, "disabled")
+        assert error is None
+        candidate = self._fixed_candidate(classification="high_conviction", whale_signal_count=MIN_WHALE_SIGNALS_FOR_STRATEGY_B)
+        result = self._tick_with_fixed_candidate(monkeypatch, candidate, strategies)
+        opened = [p for p in result.positions if p.status == "open"]
+        assert len(opened) == 1
+        assert opened[0].strategy_id == SNIPER_STRATEGY_B_ID
+
+    def test_disabling_strategy_b_leaves_strategy_a_unaffected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        strategies, error = set_sniper_strategy_status(default_sniper_strategies(), SNIPER_STRATEGY_B_ID, "disabled")
+        assert error is None
+        candidate = self._fixed_candidate(classification="high_conviction", whale_signal_count=0)
+        result = self._tick_with_fixed_candidate(monkeypatch, candidate, strategies)
+        opened = [p for p in result.positions if p.status == "open"]
+        assert len(opened) == 1
+        assert opened[0].strategy_id == SNIPER_STRATEGY_ID
+
+    def test_both_disabled_blocks_discovery_entirely(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        strategies, _ = set_sniper_strategy_status(default_sniper_strategies(), SNIPER_STRATEGY_ID, "disabled")
+        strategies, error = set_sniper_strategy_status(strategies, SNIPER_STRATEGY_B_ID, "disabled")
+        assert error is None
+        candidate = self._fixed_candidate(classification="high_conviction", whale_signal_count=MIN_WHALE_SIGNALS_FOR_STRATEGY_B)
+        result = self._tick_with_fixed_candidate(monkeypatch, candidate, strategies)
+        assert result.candidates == []
+
+    def test_a_candidate_that_fails_the_shared_firewall_opens_no_position_for_either_strategy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SAFETY test matrix #29-34 — the accepting strategy still has
+        to clear the exact same, unmodified firewall; acceptance alone
+        never authorizes an entry."""
+        candidate = self._fixed_candidate(classification="high_conviction", whale_signal_count=MIN_WHALE_SIGNALS_FOR_STRATEGY_B, rug_risk="high")
+        result = self._tick_with_fixed_candidate(monkeypatch, candidate, default_sniper_strategies())
+        assert not any(p.status == "open" for p in result.positions)
+        no_trade_events = [e for e in result.events if e.type == "no_trade"]
+        assert len(no_trade_events) == 1
+        assert no_trade_events[0].block_reason == "risk_profile"
+
+    def test_emergency_stop_blocks_the_dispatch_loop_even_when_both_would_accept(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SAFETY test matrix #35-36 — Emergency Stop is independent of
+        and takes priority over strategy identity."""
+        candidate = self._fixed_candidate(classification="high_conviction", whale_signal_count=MIN_WHALE_SIGNALS_FOR_STRATEGY_B)
+        monkeypatch.setattr("app.memecoin_sniper.build_candidate", lambda *a, **k: candidate)
+        monkeypatch.setattr("random.random", lambda: 0.0)
+        config = SniperEngineConfig(status="running")
+        risk = SniperRiskState(equitySol=1000.0)
+        result = tick_sniper_engine(config, risk, [], [], [], [], [], tick_seconds=1.0, emergency_stop_active=True, strategies=default_sniper_strategies())
+        assert result.candidates == []
 
 
 class TestUpdateSniperEngineRequestCamelCase:

@@ -219,6 +219,7 @@ import type {
   SniperPnlHistoryPoint,
   SniperPosition,
   SniperRiskState,
+  SniperStrategyPerformanceSummary,
   SniperTrade,
   SniperWallet,
 } from "@/types";
@@ -1398,6 +1399,11 @@ export const api = {
   getSniperCandidates: (limit = 30) => request<SniperCandidate[]>(`/sniper/candidates?limit=${limit}`),
   getSniperPositions: (openOnly = false) => request<SniperPosition[]>(`/sniper/positions${openOnly ? "?openOnly=true" : ""}`),
   getSniperTrades: (limit = 100) => request<SniperTrade[]>(`/sniper/trades?limit=${limit}`),
+  // CEO directive "TradeTown — Sniper Per-Strategy Performance
+  // Observability 1.0" — read-only. See backend/app/sniper_strategy_
+  // performance.py for the full metric definitions; never recomputed
+  // here.
+  getSniperStrategyPerformance: () => request<SniperStrategyPerformanceSummary>("/sniper/strategy-performance"),
   // "Terminal 2.2" directive — the real, oldest-first cumulative
   // realized P&L curve (see app/memecoin_sniper.py::build_sniper_pnl_history's
   // own docstring for why this is realized-only, not equity history).

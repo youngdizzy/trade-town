@@ -49,10 +49,12 @@ from app.schemas import (
     GatekeeperRejection,
     GatekeeperVerdict,
     MarketIntelligenceState,
+    ModelValidationReport,
     PaperPortfolio,
     PaperTrade,
     RiskLimits,
     RiskWarning,
+    Strategy,
     TradeProposal,
     TradingRestriction,
     WatchlistEntry,
@@ -418,6 +420,128 @@ def _max_loss_check(planned_loss_usd: float | None, risk_budget_usd: float | Non
     return GatekeeperCheck(id="max_loss", label="Max Planned Loss", passed=passed, detail=detail, code="gatekeeper_max_loss")
 
 
+# CEO directive "Model Validation Enforcement 1.0" — the sixteenth
+# check. app/model_validation.py's ModelValidationReport.verdict
+# (Meridian/CIO's Company-Review sign-off) was, until this check
+# existed, genuinely computed but purely advisory — nothing in
+# app/sandbox.py's control flow, and nothing in this module, ever read
+# it. This closes that real, previously-disclosed enforcement gap.
+#
+# THE IDENTITY PROBLEM THIS CHECK MUST RESPECT (verified from source,
+# never assumed): ModelValidationReport.strategy_id names a `Strategy`
+# (the Strategy Lab/Company-Review dossier object) — a completely
+# different identity space from `TradeProposal`, which carries no
+# `strategy_id` field at all. The only real, existing bridge between
+# them is two hops: `TradeProposal.source_definition_id` (set only for
+# `source == "champion"` proposals — see app/executive.py's
+# build_champion_trade_proposal()) names a `CompiledStrategyDefinition`;
+# `Strategy.compiled_definition_id` (set only via
+# app/strategy_registry.py's register_researchable_strategy()) links a
+# `Strategy` to that same `CompiledStrategyDefinition` by id. This check
+# walks that real, existing bridge — it does NOT invent a parallel
+# identity system, per this directive's own explicit prohibition.
+#
+# THE HONEST CONSEQUENCE: most proposals (every `source == "heuristic"`
+# proposal — historically the only kind that existed, and still the
+# majority today) carry no strategy identity at all, so there is
+# structurally nothing for this check to validate against. That is not
+# a loophole to close with a broader join; it is the same "cannot
+# evaluate, so does not block" honesty every other check in this module
+# already uses for its own "not evaluated yet" state (see
+# `_valid_stop_check`/`_max_loss_check` above). A champion-sourced
+# proposal only benefits from real enforcement once its own compiled
+# definition has actually been registered as a researchable Strategy
+# AND that Strategy has been through at least one real Company Review.
+#
+# VALIDATION-STATE POLICY (Phase 1's own explicit questions, answered
+# from the real, exhaustive four-value ModelValidationVerdict Literal —
+# "approved"/"rejected"/"needs_more_evidence"/"not_validatable" — never
+# assumed):
+#   A. verdict == "rejected"           -> BLOCK. Meridian found this
+#      strategy invalid; a new entry under it must not open.
+#   B. verdict == "approved"           -> do not block.
+#   C. no ModelValidationReport exists for the linked Strategy at all
+#      (or the proposal/Strategy linkage itself doesn't resolve) -> do
+#      not block. There is no artifact to enforce against — identical
+#      in spirit to `_liquidity_check`/`_regime_breadth_check` inside
+#      app/model_validation.py itself reading `passed=None` rather than
+#      inventing a verdict from missing evidence. Failing closed here
+#      would silently halt every heuristic-sourced trade this codebase
+#      has ever produced, which is not what this milestone authorizes.
+#   D. "needs_more_evidence" / "not_validatable" -> do not block. Both
+#      are real, named states Meridian already uses for "I cannot yet
+#      form a verdict" — treating either as a hard rejection would
+#      punish incomplete evidence exactly like a proven failure, which
+#      is not what either state means. An "unrecognized" verdict string
+#      cannot occur at runtime: `ModelValidationVerdict` is a strict
+#      four-value Literal enforced by pydantic at every load, so no
+#      fifth value can ever reach this function in the first place.
+#   E. Multiple reports on file for the same Strategy (repeated Company
+#      Review cycles) -> the MOST RECENT one governs (last in list
+#      order), the same "list order == chronological order" convention
+#      app/model_validation.py's own docstring already establishes for
+#      SimulationResult. A strategy Meridian re-reviewed and approved
+#      after an earlier rejection is not still blocked by the stale
+#      rejection.
+#   F. A report for a different Strategy must never apply here — the
+#      strict `strategy.compiled_definition_id == source_definition_id`
+#      join makes cross-strategy leakage structurally impossible.
+#      DISCLOSED LIMITATION: `Strategy.compiled_definition_id` names a
+#      `CompiledStrategyDefinition` by id only, with no version field —
+#      this codebase has no existing mechanism to record which specific
+#      compiled version a Strategy's own SimulationResult history (and
+#      therefore its ModelValidationReport) was actually run against.
+#      A proposal's own `source_definition_version` is therefore NOT
+#      compared here; doing so would require adding a new version field
+#      to `Strategy`, which is a schema change this directive's strict
+#      scope rule does not authorize ("the smallest compatibility-safe
+#      mechanism" — reusing the existing id-only link IS that smallest
+#      mechanism). This is recorded here, not silently ignored.
+#   G. A malformed report cannot exist at runtime — every field on
+#      ModelValidationReport is pydantic-validated at load, the same
+#      structural guarantee every other schema in this codebase already
+#      relies on.
+def _model_validation_check(
+    proposal: TradeProposal,
+    strategies: list[Strategy] | None,
+    model_validations: list[ModelValidationReport] | None,
+) -> GatekeeperCheck:
+    if proposal.source != "champion" or proposal.source_definition_id is None:
+        return GatekeeperCheck(
+            id="model_validation",
+            label="Model Validation (CIO Sign-Off)",
+            passed=True,
+            detail="This proposal carries no compiled-strategy identity (only champion-sourced proposals do) — no applicable model validation report exists to check.",
+            code="gatekeeper_model_validation",
+        )
+    strategy = next((s for s in (strategies or []) if s.compiled_definition_id == proposal.source_definition_id), None)
+    if strategy is None:
+        return GatekeeperCheck(
+            id="model_validation",
+            label="Model Validation (CIO Sign-Off)",
+            passed=True,
+            detail="This proposal's compiled strategy definition has not been registered as a reviewed Strategy — no applicable model validation report exists to check.",
+            code="gatekeeper_model_validation",
+        )
+    reports_for_strategy = [r for r in (model_validations or []) if r.strategy_id == strategy.id]
+    if not reports_for_strategy:
+        return GatekeeperCheck(
+            id="model_validation",
+            label="Model Validation (CIO Sign-Off)",
+            passed=True,
+            detail=f"No Meridian model validation report on file yet for strategy {strategy.name!r} — nothing to enforce.",
+            code="gatekeeper_model_validation",
+        )
+    latest = reports_for_strategy[-1]
+    passed = latest.verdict != "rejected"
+    detail = (
+        f"Meridian's most recent model validation for {strategy.name!r} was REJECTED — {latest.evidence_summary} A strategy the CIO found invalid may not open a new entry."
+        if not passed
+        else f"Meridian's most recent model validation verdict for {strategy.name!r} is {latest.verdict!r} — does not block new entries."
+    )
+    return GatekeeperCheck(id="model_validation", label="Model Validation (CIO Sign-Off)", passed=passed, detail=detail, code="gatekeeper_model_validation")
+
+
 def evaluate_gatekeeper(
     proposal: TradeProposal,
     ceo_choice: AnalystChoice,
@@ -439,6 +563,8 @@ def evaluate_gatekeeper(
     stop_evaluated: bool = False,
     planned_loss_usd: float | None = None,
     risk_budget_usd: float | None = None,
+    strategies: list[Strategy] | None = None,
+    model_validations: list[ModelValidationReport] | None = None,
 ) -> "GatekeeperVerdict":
     """`min_confidence_override` (Design Bible Chapter 75) — the real,
     disclosed points app/trading_modes.py's Daily Circuit Breaker adds to
@@ -484,7 +610,15 @@ def evaluate_gatekeeper(
     `planned_loss_usd`/`risk_budget_usd` (same directive, Gate 5) feed
     the Max Planned Loss check — see `_max_loss_check()`'s own
     docstring. Both `None` for any caller that hasn't been threaded
-    through yet, the same honest convention as every pair above."""
+    through yet, the same honest convention as every pair above.
+
+    `strategies`/`model_validations` (CEO directive "Model Validation
+    Enforcement 1.0") feed the sixteenth check, Model Validation — see
+    `_model_validation_check()`'s own extensive docstring for the real
+    identity bridge this walks and the honest policy for every
+    valid/invalid/missing/ambiguous state. `None`/empty for either
+    behaves exactly like "no applicable report" — the same vacuous-pass
+    convention every optional pair above already establishes."""
     from app.schemas import GatekeeperVerdict  # local import avoids a schemas.py forward-reference cycle at module load
 
     checks = [
@@ -509,6 +643,7 @@ def evaluate_gatekeeper(
         _trading_restriction_check(proposal, trading_restrictions or []),
         _valid_stop_check(stop_distance, stop_evaluated),
         _max_loss_check(planned_loss_usd, risk_budget_usd),
+        _model_validation_check(proposal, strategies, model_validations),
     ]
     approved = all(c.passed for c in checks)
     if approved:

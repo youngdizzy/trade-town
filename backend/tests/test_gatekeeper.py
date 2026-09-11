@@ -22,6 +22,7 @@ from app.gatekeeper import (
     _exposure_check,
     _failure_boundary_check,
     _max_loss_check,
+    _model_validation_check,
     _risk_manager_check,
     _risk_warning_check,
     _trading_restriction_check,
@@ -38,10 +39,13 @@ from app.schemas import (
     DebateTurn,
     DecisionConfidence,
     GatekeeperRejection,
+    ModelValidationCheck,
+    ModelValidationReport,
     PaperPosition,
     PaperTrade,
     RiskLimits,
     RiskWarning,
+    Strategy,
     TradeProposal,
     TradingRestriction,
     WatchlistEntry,
@@ -80,6 +84,54 @@ def _proposal(*, symbol: str = "NEXA", confidence_score: float = 80.0, votes: li
         ),
         createdAt=_now_iso(),
         createdSimMinutes=0,
+    )
+
+
+def _champion_proposal(*, symbol: str = "NEXA", source_definition_id: str = "def-1") -> TradeProposal:
+    """A champion-sourced proposal — the only kind that carries the real
+    identity bridge `_model_validation_check` walks (source_definition_id
+    -> Strategy.compiled_definition_id)."""
+    return _proposal(symbol=symbol).model_copy(
+        update={
+            "source": "champion",
+            "source_champion_id": "champion-1",
+            "source_strategy_family": "trend",
+            "source_definition_id": source_definition_id,
+            "source_definition_version": 1,
+            "source_signal_bar_timestamp": _now_iso(),
+        }
+    )
+
+
+def _strategy(*, strategy_id: str = "strategy-1", compiled_definition_id: str | None = "def-1") -> Strategy:
+    return Strategy(
+        id=strategy_id,
+        name="Test Strategy",
+        description="test strategy description",
+        createdBy="scout",
+        focusCategory="stock",
+        createdAt=_now_iso(),
+        compiledDefinitionId=compiled_definition_id,
+    )
+
+
+def _model_validation_report(*, strategy_id: str = "strategy-1", verdict: str = "approved", report_id: str = "mvr-1") -> ModelValidationReport:
+    return ModelValidationReport(
+        id=report_id,
+        strategyId=strategy_id,
+        strategyName="Test Strategy",
+        reviewId="review-1",
+        existingReviewCount=1,
+        verdict=verdict,  # type: ignore[arg-type]
+        checks=[
+            ModelValidationCheck(
+                id="sample_size", label="Sample Size", passed=verdict != "rejected", evidence="test evidence", reasoning="test reasoning", thresholdSource="test source"
+            )
+        ],
+        evidenceSummary="test evidence summary.",
+        dataSourcesAndAssumptions=["test data source"],
+        simDay=1,
+        createdAt=_now_iso(),
     )
 
 
@@ -586,7 +638,12 @@ class TestEvaluateGatekeeper:
         # Planned Loss, vacuously passing here since no planned_loss_usd/
         # risk_budget_usd was supplied (see TestMaxLossCheck below for
         # the real behavior).
-        assert len(verdict.checks) == 15
+        # 16th check: CEO directive "Model Validation Enforcement 1.0" —
+        # Model Validation (CIO Sign-Off), vacuously passing here since
+        # this proposal is heuristic-sourced (no strategies/
+        # model_validations were supplied either) — see
+        # TestModelValidationCheck below for the real behavior.
+        assert len(verdict.checks) == 16
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
         # CEO directive "Professional Quant Firm Phase 41-45," Critical Task #0's No-Trade
@@ -705,6 +762,138 @@ class TestWeightedExecutiveCheck:
         assert verdict.approved is False
         confidence_check = next(c for c in verdict.checks if c.id == "confidence")
         assert confidence_check.passed is False
+
+
+class TestModelValidationCheck:
+    """CEO directive "Model Validation Enforcement 1.0" — the sixteenth
+    Gatekeeper check. Only a champion-sourced proposal whose
+    source_definition_id resolves through a registered Strategy to a
+    real ModelValidationReport can ever be blocked here; every other
+    shape (heuristic proposal, unregistered definition, no report on
+    file) passes vacuously — see _model_validation_check()'s own
+    docstring for the full policy this walks."""
+
+    def test_heuristic_proposal_passes_vacuously_even_with_a_rejected_report_on_file(self) -> None:
+        proposal = _proposal()  # source defaults to "heuristic"
+        strategy = _strategy()
+        report = _model_validation_report(verdict="rejected")
+        check = _model_validation_check(proposal, [strategy], [report])
+        assert check.passed is True
+        assert check.code == "gatekeeper_model_validation"
+        assert "no strategy identity" in check.detail.lower() or "champion-sourced" in check.detail.lower()
+
+    def test_champion_proposal_with_no_matching_strategy_passes_vacuously(self) -> None:
+        proposal = _champion_proposal(source_definition_id="def-unregistered")
+        strategy = _strategy(compiled_definition_id="def-1")  # different definition
+        report = _model_validation_report(verdict="rejected")
+        check = _model_validation_check(proposal, [strategy], [report])
+        assert check.passed is True
+        assert "not been registered" in check.detail
+
+    def test_champion_proposal_with_matching_strategy_but_no_reports_passes_vacuously(self) -> None:
+        proposal = _champion_proposal(source_definition_id="def-1")
+        strategy = _strategy(compiled_definition_id="def-1")
+        check = _model_validation_check(proposal, [strategy], [])
+        assert check.passed is True
+        assert "no meridian model validation report on file" in check.detail.lower()
+
+    def test_champion_proposal_with_an_approved_report_passes(self) -> None:
+        proposal = _champion_proposal(source_definition_id="def-1")
+        strategy = _strategy(strategy_id="strategy-1", compiled_definition_id="def-1")
+        report = _model_validation_report(strategy_id="strategy-1", verdict="approved")
+        check = _model_validation_check(proposal, [strategy], [report])
+        assert check.passed is True
+
+    def test_champion_proposal_with_a_rejected_report_blocks(self) -> None:
+        proposal = _champion_proposal(source_definition_id="def-1")
+        strategy = _strategy(strategy_id="strategy-1", compiled_definition_id="def-1")
+        report = _model_validation_report(strategy_id="strategy-1", verdict="rejected")
+        check = _model_validation_check(proposal, [strategy], [report])
+        assert check.passed is False
+        assert "REJECTED" in check.detail
+
+    def test_needs_more_evidence_does_not_block(self) -> None:
+        proposal = _champion_proposal(source_definition_id="def-1")
+        strategy = _strategy(strategy_id="strategy-1", compiled_definition_id="def-1")
+        report = _model_validation_report(strategy_id="strategy-1", verdict="needs_more_evidence")
+        check = _model_validation_check(proposal, [strategy], [report])
+        assert check.passed is True
+
+    def test_not_validatable_does_not_block(self) -> None:
+        proposal = _champion_proposal(source_definition_id="def-1")
+        strategy = _strategy(strategy_id="strategy-1", compiled_definition_id="def-1")
+        report = _model_validation_report(strategy_id="strategy-1", verdict="not_validatable")
+        check = _model_validation_check(proposal, [strategy], [report])
+        assert check.passed is True
+
+    def test_multiple_reports_the_most_recent_governs(self) -> None:
+        proposal = _champion_proposal(source_definition_id="def-1")
+        strategy = _strategy(strategy_id="strategy-1", compiled_definition_id="def-1")
+        old_report = _model_validation_report(strategy_id="strategy-1", verdict="rejected", report_id="mvr-old")
+        new_report = _model_validation_report(strategy_id="strategy-1", verdict="approved", report_id="mvr-new")
+        check = _model_validation_check(proposal, [strategy], [old_report, new_report])
+        assert check.passed is True
+
+        check_reversed = _model_validation_check(proposal, [strategy], [new_report, old_report])
+        assert check_reversed.passed is False
+
+    def test_a_report_for_a_different_strategy_never_applies(self) -> None:
+        proposal = _champion_proposal(source_definition_id="def-1")
+        strategy = _strategy(strategy_id="strategy-1", compiled_definition_id="def-1")
+        other_strategy_report = _model_validation_report(strategy_id="strategy-OTHER", verdict="rejected")
+        check = _model_validation_check(proposal, [strategy], [other_strategy_report])
+        assert check.passed is True
+        assert "no meridian model validation report on file" in check.detail.lower()
+
+    def test_none_strategies_and_none_model_validations_pass_vacuously(self) -> None:
+        proposal = _champion_proposal(source_definition_id="def-1")
+        check = _model_validation_check(proposal, None, None)
+        assert check.passed is True
+
+    def test_evaluate_gatekeeper_blocks_a_full_verdict_when_a_rejected_validation_applies(self) -> None:
+        """Integration-level proof: a full evaluate_gatekeeper() call —
+        not just the isolated check function — actually rejects when
+        every other check would otherwise pass."""
+        proposal = _champion_proposal(symbol="NEXA", source_definition_id="def-1")
+        strategy = _strategy(strategy_id="strategy-1", compiled_definition_id="def-1")
+        report = _model_validation_report(strategy_id="strategy-1", verdict="rejected")
+        portfolio = default_portfolio()
+        verdict = evaluate_gatekeeper(
+            proposal,
+            "buy",
+            _debate("buy"),
+            portfolio,
+            RiskLimits(),
+            [],
+            default_market_intelligence_state(),
+            now_sim_minutes=0,
+            strategies=[strategy],
+            model_validations=[report],
+        )
+        assert verdict.approved is False
+        model_validation_check = next(c for c in verdict.checks if c.id == "model_validation")
+        assert model_validation_check.passed is False
+        assert "Model Validation" in verdict.summary or "REJECTED" in verdict.summary
+
+    def test_evaluate_gatekeeper_approves_when_validation_does_not_apply(self) -> None:
+        proposal = _champion_proposal(symbol="NEXA", source_definition_id="def-1")
+        proposal = proposal.model_copy(update={"confidence": 90.0})
+        strategy = _strategy(strategy_id="strategy-1", compiled_definition_id="def-1")
+        report = _model_validation_report(strategy_id="strategy-1", verdict="approved")
+        portfolio = default_portfolio()
+        verdict = evaluate_gatekeeper(
+            proposal,
+            "buy",
+            _debate("buy"),
+            portfolio,
+            RiskLimits(),
+            [],
+            default_market_intelligence_state(),
+            now_sim_minutes=0,
+            strategies=[strategy],
+            model_validations=[report],
+        )
+        assert verdict.approved is True
 
 
 class TestGradeGatekeeperRejections:

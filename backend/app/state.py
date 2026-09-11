@@ -232,6 +232,7 @@ from app.foundational_mentors import (
     skip_to_next_mentor,
 )
 from app.simulation import default_strategies, queue_backtest_now
+from app.sniper_strategy_registry import default_sniper_strategies, ensure_default_sniper_strategies as _ensure_default_sniper_strategies, set_sniper_strategy_status as _set_sniper_strategy_status
 from app.strategy_lab import (
     cap_strategy_executive_reviews,
     cap_strategy_failed_archive,
@@ -384,6 +385,13 @@ def default_state() -> GameSaveState:
         dialogueHistory=[],
         paperPortfolio=default_portfolio(),
         strategies=seed_strategies,
+        # CEO directive "TradeTown — Sniper Strategy Engine + Registry
+        # 1.0" — the one real registered Sniper strategy, mirroring the
+        # equities seed_strategies convention immediately above (see
+        # SniperStrategyDefinition's own docstring for why this is a
+        # separate, domain-specific registry rather than a Strategy
+        # Factory entry).
+        sniperStrategies=default_sniper_strategies(),
         compiledStrategyVersions=researchable_strategy_versions,
         backtestSessions=[],
         simulationResults=[],
@@ -1218,6 +1226,30 @@ class GameState:
                 return self.data, None
             new_config = self.data.sniper_engine_config.model_copy(update=updates)
             self.data = self.data.model_copy(update={"sniper_engine_config": new_config})
+            return self.data, None
+
+    async def set_sniper_strategy_status(self, strategy_id: str, status: str) -> tuple[GameSaveState, str | None]:
+        """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+        1.0" — the CEO's real enable/disable control surface, mirroring
+        `update_sniper_engine_config()`'s own shape immediately above.
+        Reuses `ensure_default_sniper_strategies()` (CEO directive
+        "TradeTown — Sniper Multi-Strategy Dispatch Proof 1.0") — the
+        same self-healing/back-fill read `app/nexus.py::tick()` already
+        uses for this same field (see `GameSaveState.sniper_strategies`
+        's own schema docstring) — rather than ever operating on a bare
+        `[]`/a registry still missing a newer default strategy and
+        silently discarding the toggle. Delegates the actual mutation
+        to `app/sniper_strategy_registry.py::set_sniper_strategy_
+        status()`, never a second, inline implementation of the same
+        lookup/update logic."""
+        if status not in ("enabled", "disabled"):
+            return self.data, f"Invalid strategy status {status!r} — must be enabled or disabled."
+        async with self.lock:
+            strategies = _ensure_default_sniper_strategies(self.data.sniper_strategies)
+            updated, error = _set_sniper_strategy_status(strategies, strategy_id, status)  # type: ignore[arg-type]
+            if error is not None:
+                return self.data, error
+            self.data = self.data.model_copy(update={"sniper_strategies": updated})
             return self.data, None
 
     async def close_sniper_position(self, position_id: str, *, reason: str = "manual_exit") -> tuple[GameSaveState, SniperTrade | None, str | None]:
@@ -2613,6 +2645,8 @@ class GameState:
                 behavioral_cooldown_minutes=self.data.trading_modes.behavioral_cooldown_minutes,
                 behavioral_size_increase_threshold_pct=self.data.trading_modes.behavioral_size_increase_threshold_pct,
                 trading_restrictions=self.data.trading_restrictions,
+                strategies=self.data.strategies,
+                model_validations=self.data.strategy_model_validations,
             )
 
             if override_reason and not ceo_record.agreed_with_ai:

@@ -197,6 +197,7 @@ from app.travel_mode import (
     travel_mode_confidence_bonus,
 )
 from app.memecoin_sniper import append_sniper_equity_snapshot, build_sniper_equity_snapshot, tick_sniper_engine
+from app.sniper_strategy_registry import ensure_default_sniper_strategies
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
 from app.treasury import apply_monthly_savings_rules, record_monthly_report
@@ -279,6 +280,7 @@ from app.schemas import (
     MemoryRecord,
     MeetingMinutes,
     MeetingState,
+    ModelValidationReport,
     MultiTimeframeLiquidityCapture,
     NewsItem,
     OpportunityRejection,
@@ -296,6 +298,7 @@ from app.schemas import (
     RiskDecision,
     RiskLimits,
     StrategicReview,
+    Strategy,
     StrategyHealthState,
     RiskWarning,
     ScannerAlert,
@@ -1055,6 +1058,8 @@ def _apply_operating_mode(
     active_risk_contract: RiskContract | None = None,
     risk_contract_scaling: RiskContractScalingRead | None = None,
     risk_decisions: list[RiskDecision] | None = None,
+    strategies: list[Strategy] | None = None,
+    model_validations: list[ModelValidationReport] | None = None,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -1247,6 +1252,8 @@ def _apply_operating_mode(
             behavioral_cooldown_minutes=behavioral_cooldown_minutes,
             behavioral_size_increase_threshold_pct=behavioral_size_increase_threshold_pct,
             trading_restrictions=trading_restrictions,
+            strategies=strategies,
+            model_validations=model_validations,
         )
         record_ceo_decision(memory, decision, max_records=risk_limits.max_memory_records)
         decisions.append(decision)
@@ -1431,6 +1438,20 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     sniper_lessons = list(state.sniper_lessons)
     sniper_risk_state = state.sniper_risk_state
     sniper_engine_config = state.sniper_engine_config
+    # CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    # 1.0," generalized by "Sniper Multi-Strategy Dispatch Proof 1.0"
+    # — the real strategy registry. `ensure_default_sniper_strategies()`
+    # self-heals an outright-empty persisted list (a save predating the
+    # registry entirely — the same "empty means this save predates the
+    # field" case the equities `strategies` list a few lines below
+    # already established) AND back-fills any individual default
+    # strategy id missing from an otherwise real, non-empty registry (a
+    # save persisted between the two directives, which has Strategy A
+    # registered but has never seen Strategy B) — never touching an
+    # already-registered entry's own status/version/identity. See that
+    # function's own docstring for why the plain `or` self-heal this
+    # module used before this directive stopped being sufficient.
+    sniper_strategies = ensure_default_sniper_strategies(list(state.sniper_strategies))
     sniper_events = list(state.sniper_events)
     # "Equity Snapshot Telemetry 1.0" directive — real, capped rolling
     # account-equity history (see MAX_SNIPER_EQUITY_SNAPSHOTS above).
@@ -1816,6 +1837,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # is honestly labeled `dataProvenance: "simulated"`. Only mutates
     # state when the CEO has set the engine to "running"/"paused" via the
     # sniper API — "stopped" (the default) leaves every list untouched.
+    # CEO directive "TradeTown Ultimate — Master 11-Pillar Architecture
+    # Directive," Governance milestone — the CEO's own global Emergency
+    # Stop (already loaded above as `emergency_stop`) now reaches this
+    # domain too: `emergency_stop.active` gates new discovery/entries
+    # here exactly like a "paused" engine (existing positions still get
+    # marked-to-market and can still exit), closing a real, previously-
+    # verified gap where hitting Emergency Stop left Sniper's own
+    # discovery/entry loop running underneath it, unaffected.
     sniper_tick_result = tick_sniper_engine(
         sniper_engine_config,
         sniper_risk_state,
@@ -1831,6 +1860,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # time anchor (this domain's analog of TradeProposal's own
         # created_sim_minutes), never re-derived later from "now."
         discovery_sim_minutes=sim_minutes(new_time),
+        emergency_stop_active=emergency_stop.active,
+        strategies=sniper_strategies,
     )
     sniper_candidates = sniper_tick_result.candidates
     sniper_positions = sniper_tick_result.positions
@@ -2455,6 +2486,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         active_risk_contract=active_risk_contract,
         risk_contract_scaling=risk_contract_scaling,
         risk_decisions=risk_decisions,
+        strategies=strategies,
+        model_validations=state.strategy_model_validations,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)
@@ -3809,6 +3842,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "sniper_risk_state": sniper_risk_state,
             "sniper_events": sniper_events,
             "sniper_equity_history": sniper_equity_history,
+            "sniper_strategies": sniper_strategies,
             "decisions": decisions,
             "trade_proposals": trade_proposals,
             "ceo_decisions": ceo_decisions,

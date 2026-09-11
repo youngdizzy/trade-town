@@ -2082,11 +2082,20 @@ class ModelValidationCheck(CamelModel):
 
 class ModelValidationReport(CamelModel):
     """Meridian/CIO's independent validation sign-off for one Company
-    Review cycle (see app/model_validation.py). Advisory-only: nothing
-    in app/sandbox.py's apply_review_decision()/begin_company_review()
-    control flow reads `verdict` — it is generated and surfaced purely
-    for CEO visibility alongside the matching StrategyReview. This
-    codebase has no strategy version-number concept, so
+    Review cycle (see app/model_validation.py). Nothing in
+    app/sandbox.py's apply_review_decision()/begin_company_review()
+    control flow reads `verdict` — it is generated and surfaced for CEO
+    visibility alongside the matching StrategyReview, the same as
+    before. CEO directive "Model Validation Enforcement 1.0" gave
+    `verdict` one real, narrow enforcement consumer outside that Company
+    Review flow: app/gatekeeper.py's `_model_validation_check()`, the
+    Trade Gatekeeper's sixteenth check, blocks a new entry when the most
+    recent report for the entry's own compiled strategy (identified via
+    Strategy.compiled_definition_id <-> TradeProposal.source_definition_id,
+    champion-sourced proposals only) reads "rejected" — see that
+    function's own docstring for the full identity bridge and the
+    disclosed limitation (no strategy version tracking) this leaves
+    open. This codebase has no strategy version-number concept, so
     `existing_review_count` (the same count that already drives that
     cycle's Devil's Advocate rotation assignment) is the honest
     substitute audit-trail/reproducibility field, not a fabricated
@@ -2792,7 +2801,8 @@ NoTradeReasonCode = Literal[
     # never the crude category-co-occurrence proxy app/gatekeeper.py's
     # own later-stage "gatekeeper_correlation" check still uses.
     "correlated_exposure_too_high",
-    # Gatekeeper: app/gatekeeper.py's real checks (15 as of "Hard Risk
+    # Gatekeeper: app/gatekeeper.py's real checks (16 as of "Model
+    # Validation Enforcement 1.0" — previously 15 as of "Hard Risk
     # Gates 2.0 — Stop-Loss / Position-Risk Enforcement")
     "gatekeeper_confidence",
     "gatekeeper_risk_manager",
@@ -2830,6 +2840,13 @@ NoTradeReasonCode = Literal[
     # gate makes that guarantee explicit and auditable rather than an
     # implicit side effect of the sizing formula.
     "gatekeeper_max_loss",
+    # CEO directive "Model Validation Enforcement 1.0" —
+    # app/gatekeeper.py's _model_validation_check(). Meridian/CIO's
+    # ModelValidationReport.verdict (app/model_validation.py), previously
+    # advisory-only, is now the sixteenth real hard refusal check: a
+    # strategy Meridian's most recent Company Review found "rejected"
+    # may not open a new entry under it.
+    "gatekeeper_model_validation",
     # Risk engine: app/risk_engine.py's evaluate_sentinel_risk()/evaluate_guardian_exposure()
     "risk_equity_exhausted",
     "risk_daily_loss_limit",
@@ -13200,6 +13217,44 @@ SniperStrategyVersionStatus = Literal["versioned", "unavailable"]
 # SniperPosition and SniperTrade below.
 SNIPER_STRATEGY_ID = "memecoin-sniper"
 SNIPER_STRATEGY_NAME = "Memecoin Sniper — Liquidity/Momentum Discovery"
+# CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0" —
+# the real category this domain's one strategy belongs to (see
+# SniperStrategyDefinition below). Named for what the engine actually
+# does (liquidity + momentum discovery, per SNIPER_STRATEGY_NAME above),
+# not a placeholder — a real future sibling (e.g. a sandwich-detection
+# strategy, explicitly NOT built by this directive) would register under
+# a DIFFERENT family, never this one.
+SNIPER_STRATEGY_FAMILY = "liquidity_momentum"
+# The current hardcoded engine's own real, deterministic version — "1"
+# because this is genuinely the first and only implementation that has
+# ever existed. Bumped only on a future pass that deliberately changes
+# this engine's actual entry/exit/scoring logic; never auto-incremented,
+# never guessed.
+SNIPER_STRATEGY_VERSION = "1"
+# The one real, honest provenance value for today's single strategy — a
+# hand-written, deterministic Python pipeline (see
+# app/memecoin_sniper.py's own module docstring). Deliberately a
+# single-value Literal, not a free string: this directive's own rule is
+# "do not label it champion / research-validated / AI-discovered /
+# backtest-validated unless repository evidence actually supports those
+# claims" — none of those are true today, so no such value exists here
+# to be misapplied. A future value (e.g. "compiled_from_research") would
+# only ever be added once a real such pipeline exists.
+SniperStrategyProvenance = Literal["hardcoded"]
+# CEO directive "TradeTown — Sniper Multi-Strategy Dispatch Proof 1.0"
+# — the second, genuinely distinct hardcoded strategy identity, proving
+# the registry is a real dispatch boundary rather than a single-entry
+# formality. See app/memecoin_sniper.py::strategy_accepts_candidate()
+# for its real, distinct deterministic decision logic (smart-money/
+# whale confirmation, never momentum — a different existing field this
+# engine has always computed) and app/sniper_strategy_registry.py's own
+# docstring for why both strategies stay hardcoded, deterministic
+# Python — never AI-generated, never optimized, never claimed
+# profitable, never a plugin/arbitrary-code mechanism.
+SNIPER_STRATEGY_B_ID = "memecoin-sniper-whale-confirmation"
+SNIPER_STRATEGY_B_NAME = "Memecoin Sniper — Whale Confirmation"
+SNIPER_STRATEGY_B_FAMILY = "whale_confirmation"
+SNIPER_STRATEGY_B_VERSION = "1"
 # "Terminal 2.1" directive, Phase 3 — one real category per real gate
 # inside `app/memecoin_sniper.py::evaluate_entry_firewall()`, in the
 # exact order that function checks them. Never a decorative taxonomy:
@@ -13209,6 +13264,141 @@ SNIPER_STRATEGY_NAME = "Memecoin Sniper — Liquidity/Momentum Discovery"
 SniperBlockReason = Literal[
     "safety", "data_quality", "timing", "score", "risk_profile", "kill_switch", "daily_loss", "max_positions", "max_open_risk"
 ]
+# CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0" —
+# real, explicit enable/disable state for one registered Sniper
+# strategy. "disabled" stops new discovery/entries for that strategy
+# exactly like the CEO's own global Emergency Stop does (see
+# app/memecoin_sniper.py::tick_sniper_engine()'s own docstring) — it
+# never deletes the strategy or its historical positions/trades, and it
+# never stops already-open positions from being managed/exited.
+SniperStrategyStatus = Literal["enabled", "disabled"]
+
+
+class SniperStrategyDefinition(CamelModel):
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — the real, first-class registry entry replacing this domain's
+    previous bare module-level constants (`SNIPER_STRATEGY_ID`/
+    `SNIPER_STRATEGY_NAME` above). `id` is the one stable, deterministic
+    identity every `SniperPosition`/`SniperTrade` stamps at creation
+    time (see `app/memecoin_sniper.py::open_position()`); `version` is
+    real and explicit (never auto-incremented — see
+    `SNIPER_STRATEGY_VERSION`'s own comment); `status` is the CEO's own
+    real enable/disable control (`app/sniper_strategy_registry.py::
+    set_sniper_strategy_status()`) — DISABLED stops new discovery/
+    entries under this strategy exactly like the global Emergency Stop
+    does, but it never deletes this record or affects any historical
+    position/trade already stamped with it, and it never stops an
+    already-open position from being managed or exiting.
+
+    Deliberately NOT the same object as the equities side's `Strategy`/
+    `CompiledStrategyDefinition` (see app/strategy_registry.py): those
+    represent a strategy COMPILED FROM AUTHORED TEXT through
+    app/strategy_compiler.py's real trigger/requirement/entry/stop/
+    target DSL, backed by a stage-gated Research Sandbox lifecycle
+    (`Strategy.stage`) — none of which exists or applies here. This
+    domain's one strategy is a hand-written, deterministic Python
+    pipeline with no source text to compile and no research-sandbox
+    stage; forcing it into `Strategy`'s shape would mean either
+    fabricating a fake `source_text`/`focus_category` (equities-only
+    categories that don't describe a memecoin/liquidity domain at all)
+    or leaving most of that object's real fields permanently null — a
+    worse fit than this small, honest, domain-specific registry."""
+
+    id: str
+    name: str
+    family: str
+    version: str
+    status: SniperStrategyStatus = "enabled"
+    provenance: SniperStrategyProvenance
+    created_at: str = Field(alias="createdAt")
+
+
+class SniperStrategyPerformanceRead(CamelModel):
+    """CEO directive "TradeTown — Sniper Per-Strategy Performance
+    Observability 1.0" — one strategy's row in the read-only
+    performance report. Pure observation over already-persisted
+    `SniperTrade` records grouped by their own historical `strategy_id`
+    — never a promotion/ranking/validation verdict (see this schema's
+    own field docstrings for why several fields are nullable rather
+    than a fabricated number).
+
+    `strategy_id` is the canonical grouping key (never `name`, which
+    can theoretically collide or change, and never the CURRENT registry
+    `family`/`version`, which would misrepresent history — see
+    `distinct_strategy_versions_observed` below). `is_registered`
+    distinguishes a strategy the CURRENT registry still knows about
+    from one only OBSERVED in historical trades (e.g. a since-removed
+    or foreign id) — `name`/`family`/`provenance`/`status` are `None`
+    when `is_registered` is `False`, since no current registry entry
+    exists to read them from; `name` in that case is instead read
+    directly off the historical trades themselves (see
+    `app/sniper_strategy_performance.py::compute_sniper_strategy_
+    performance()`'s own docstring)."""
+
+    strategy_id: str = Field(alias="strategyId")
+    name: str
+    family: str | None = None
+    provenance: SniperStrategyProvenance | None = None
+    is_registered: bool = Field(alias="isRegistered")
+    status: SniperStrategyStatus | None = None
+    # Distinct `strategy_version_id` values actually observed among this
+    # id's own historical trades, sorted — NEVER collapsed into "the
+    # current registry version." A strategy that has run under two
+    # different versions historically shows both here rather than
+    # silently attributing every trade to whichever version happens to
+    # be registered today.
+    distinct_strategy_versions_observed: list[str] = Field(default_factory=list, alias="distinctStrategyVersionsObserved")
+    closed_trade_count: int = Field(alias="closedTradeCount")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    # `None` (never a fabricated 0%) when `closed_trade_count == 0` —
+    # win rate is genuinely undefined with no closed trades, not zero.
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    # A real, valid `0.0` at zero trades (the sum of an empty set is
+    # honestly zero) — unlike the rate/average fields below, this one
+    # is never undefined.
+    total_realized_pnl_sol: float = Field(alias="totalRealizedPnlSol")
+    average_realized_pnl_sol: float | None = Field(default=None, alias="averageRealizedPnlSol")
+    # `None` when there are zero winning (respectively losing) trades —
+    # not `0.0` — an average over an empty set is undefined, not zero.
+    average_winning_trade_sol: float | None = Field(default=None, alias="averageWinningTradeSol")
+    average_losing_trade_sol: float | None = Field(default=None, alias="averageLosingTradeSol")
+    # Named "observed" deliberately (per this directive's own explicit
+    # rule): a historical realized average, never a claim about future
+    # expected return. Algebraically identical to
+    # `average_realized_pnl_sol` under this simple win/loss partition
+    # (see this module's own docstring) — exposed as its own named
+    # field anyway because the win/loss decomposition it is built from
+    # is itself informative, mirroring `app/performance_attribution.py`
+    # 's own established `avg_pnl_pct`/`expectancy_pct` pair.
+    observed_expectancy_per_closed_trade_sol: float | None = Field(default=None, alias="observedExpectancyPerClosedTradeSol")
+
+
+class SniperStrategyPerformanceSummary(CamelModel):
+    """The full report — one `SniperStrategyPerformanceRead` per
+    strategy the system currently knows about, whether from the live
+    registry, historical trades, or both. Sorted by `strategy_id` for a
+    stable, deterministic ordering (never by any performance metric —
+    this report does not rank strategies)."""
+
+    reads: list[SniperStrategyPerformanceRead]
+    # A trade excluded from every row because its own persisted
+    # `pnl_sol` was not a finite number (NaN/inf — a real, if
+    # theoretical, data-integrity guard; never silently coerced to
+    # 0.0 and never silently included as if it were a real outcome).
+    trades_excluded_malformed: int = Field(alias="tradesExcludedMalformed")
+    # How many closed trades this report was actually built from
+    # (after de-duplicating by trade id and excluding malformed
+    # entries) — NOT necessarily this strategy's true lifetime trade
+    # count: `GameSaveState.sniper_trade_history` is itself capped at
+    # `MAX_TRADE_HISTORY` (500) closed trades, oldest evicted first
+    # (see `app/memecoin_sniper.py::tick_sniper_engine()`), so a
+    # strategy with a longer real history than this number has already
+    # had its oldest closed trades silently age out of the persisted
+    # journal this report reads from — a real, disclosed limitation of
+    # the underlying journal, not of this report's own arithmetic.
+    closed_trades_considered: int = Field(alias="closedTradesConsidered")
+    generated_at: str = Field(alias="generatedAt")
 
 
 class SniperSafetyCheck(CamelModel):
@@ -14046,7 +14236,29 @@ class GameSaveState(CamelModel):
     # (never a secret). Small, user-curated list — no cap needed, unlike
     # the tick-mutated sniper_* lists above.
     sniper_wallets: list[SniperWallet] = Field(default_factory=list, alias="sniperWallets")
-    # CEO directive "TradeTown — Persisted Risk Contract + Dynamic Risk
+    # CEO directive "TradeTown — Sniper Strategy Engine + Registry 1.0"
+    # — the real, first-class strategy registry (see
+    # SniperStrategyDefinition's own docstring). Defaults to `[]` here,
+    # matching this codebase's own established convention (see
+    # `strategies: list[Strategy]` below, also `default_factory=list`)
+    # of never seeding meaningful default CONTENT at the schema layer —
+    # a fresh game's real seed list is assigned once by
+    # `app/state.py::default_state()`
+    # (`app.sniper_strategy_registry.default_sniper_strategies()`), and
+    # a save that predates this field (or any save reaching
+    # `app/nexus.py::tick()` before its first post-load tick) reads
+    # `[]` here and self-heals via that exact same real fallback at
+    # read time — the identical `state.X or default_X()` pattern
+    # `app/nexus.py`'s own `strategies = state.strategies or
+    # default_strategies()` already established for the equities
+    # Strategy list, never a bespoke migration function. `[]` can only
+    # ever mean "this save predates the registry": disabling a strategy
+    # sets `status="disabled"`, it never removes the entry (see
+    # SniperStrategyDefinition's own docstring), so an empty list is
+    # never a legitimate "zero strategies" state once the registry
+    # exists.
+    sniper_strategies: list[SniperStrategyDefinition] = Field(default_factory=list, alias="sniperStrategies")
+    # CEO directive "TradeTown — Persisted Risk Contract and Dynamic Risk
     # Scaling" — the real, permanent, append-only audit trail naming
     # exactly which `RiskContract` version governed each real sizing/
     # gatekeeper decision (Phase 4/5). Lives alongside `decisions`/

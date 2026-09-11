@@ -73,6 +73,7 @@ from app.schemas import (
     GatekeeperVerdict,
     LiveSetupSignal,
     MarketIntelligenceState,
+    ModelValidationReport,
     NewsItem,
     OrderSide,
     PaperPortfolio,
@@ -81,6 +82,7 @@ from app.schemas import (
     RiskWarning,
     ResearchItem,
     ScannerAlert,
+    Strategy,
     TradeDecision,
     TradeProposal,
     TradingRestriction,
@@ -566,6 +568,8 @@ def resolve_proposal(
     behavioral_size_increase_threshold_pct: float | None = None,
     trading_restrictions: list[TradingRestriction] | None = None,
     provider: MarketDataProvider = market_data_provider,
+    strategies: list[Strategy] | None = None,
+    model_validations: list[ModelValidationReport] | None = None,
 ) -> tuple[PaperPortfolio, TradeDecision, CeoDecisionRecord]:
     """Applies the CEO's real decision: buy opens a real long, sell opens
     a real short, wait does nothing — subject to the Trade Gatekeeper's
@@ -614,7 +618,17 @@ def resolve_proposal(
     global market_data_provider singleton — the same default every
     other real production call site already resolves to (app/nexus.py,
     app/state.py) — so no existing caller needs to change unless it
-    wants to inject a fake provider for a test."""
+    wants to inject a fake provider for a test.
+
+    `strategies`/`model_validations` (CEO directive "Model Validation
+    Enforcement 1.0") — the caller's real, already-in-scope
+    `GameSaveState.strategies`/`.strategy_model_validations` lists,
+    passed straight through to evaluate_gatekeeper()'s sixteenth check.
+    Both default to `None`/empty for any caller that hasn't threaded
+    them through, behaving exactly as if no applicable model validation
+    report exists (never a fabricated block) — see
+    app/gatekeeper.py::_model_validation_check()'s own docstring for the
+    full real identity bridge and policy this closes."""
     decision_id = f"decision-{proposal.id}"
     order_id: str | None = None
     price = current_price if current_price and current_price > 0 else proposal.price
@@ -684,6 +698,8 @@ def resolve_proposal(
                 stop_evaluated=True,
                 planned_loss_usd=planned_loss_usd,
                 risk_budget_usd=risk_budget_usd,
+                strategies=strategies,
+                model_validations=model_validations,
             )
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"

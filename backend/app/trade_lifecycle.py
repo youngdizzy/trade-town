@@ -199,10 +199,13 @@ def _build_stages(
     gatekeeper = decision.gatekeeper_verdict if decision is not None else None
     risk_note = (
         "Enforced pre-order: app/gatekeeper.py's evaluate_gatekeeper() and app/position_sizing.py's "
-        "build_position_sizing() both ran before this trade could open. Advisory/post-hoc only: "
-        "RiskContract dynamic scaling (app/risk_contract.py) is computed and recorded on the linked "
-        "RiskDecision AFTER the order already executed — it names which contract 'governed' the trade, "
-        "it does not gate it."
+        "build_position_sizing() both ran before this trade could open. RiskContract dynamic scaling "
+        "(app/risk_contract.py::apply_active_risk_contract()) is also pre-order, not advisory/post-hoc: "
+        "the CEO's real drawdown/losing-streak-scaled risk_limits are composed BEFORE either of those "
+        "ran, so a freshly-triggered kill switch collapses the sizing ceiling to zero exactly like a "
+        "proposal generated after the kill switch already would have. The linked RiskDecision is the "
+        "audit trail naming which contract version governed this decision's sizing — a record of what "
+        "already happened, not a separate gate of its own."
     )
     stages.append(
         TradeLifecycleStage(

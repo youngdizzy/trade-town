@@ -191,6 +191,13 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # metadata, real mutated state (not recomputed), same category
         # as sniper_engine_config above.
         "sniper_wallets",
+        # CEO directive "TradeTown — Sniper Strategy Engine + Registry
+        # 1.0" — the real strategy registry (see
+        # SniperStrategyDefinition's own docstring). Real, CEO-mutated
+        # state (status toggled via app/sniper_strategy_registry.py's
+        # set_sniper_strategy_status()), same category as sniper_wallets
+        # above — never recomputed from scratch.
+        "sniper_strategies",
     ),
     "research": ("research", "watchlist", "black_box"),
     # foundational_mentor_state lives here (not in `derived`) because,

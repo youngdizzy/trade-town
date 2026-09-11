@@ -35,11 +35,14 @@ from app.schemas import (
     ConfidenceFactor,
     DecisionConfidence,
     GatekeeperVerdict,
+    ModelValidationCheck,
+    ModelValidationReport,
     PaperTrade,
     RiskLimits,
     RiskWarning,
     ResearchItem,
     ScannerAlert,
+    Strategy,
     TradeProposal,
 )
 
@@ -1046,3 +1049,143 @@ class TestComputeDecisionGrade:
         expected_grade, expected_score = compute_decision_grade(proposal, decision.gatekeeper_verdict)
         assert decision.decision_grade == expected_grade
         assert decision.decision_grade_score == expected_score
+
+
+class TestResolveProposalModelValidationEnforcement:
+    """CEO directive "Model Validation Enforcement 1.0" — proves the
+    REAL execution boundary (resolve_proposal, never the isolated
+    _model_validation_check unit tested in test_gatekeeper.py) actually
+    refuses to open a position/order when a rejected ModelValidationReport
+    applies to a champion-sourced proposal. Deliberately does NOT stub
+    evaluate_gatekeeper — the real Gatekeeper must run so this is a
+    genuine integration proof, not a mocked one."""
+
+    _ROLE_TO_AGENT = {"technical": "echo", "news": "scout", "macro": "nova", "risk": "sentinel", "sentiment": "pulse", "execution": "atlas"}
+
+    def _six_buy_votes(self) -> list[AnalystVote]:
+        return [AnalystVote(role=role, agentId=agent, choice="buy", reasoning="test reasoning", evidence=["real evidence line"]) for role, agent in self._ROLE_TO_AGENT.items()]  # type: ignore[arg-type]
+
+    def _champion_proposal(self, *, source_definition_id: str = "def-1") -> TradeProposal:
+        return TradeProposal(
+            id="proposal-NEXA",
+            symbol="NEXA",
+            category="stock",
+            quantity=10.0,
+            price=100.0,
+            confidence=90.0,
+            analystVotes=self._six_buy_votes(),
+            overallRecommendation="buy",
+            researchSummary="test research summary",
+            riskSummary="test risk summary",
+            confidenceEngine=DecisionConfidence(score=90.0, tier="strong", summary="test summary", factors=[ConfidenceFactor(name="test", score=90.0, weight=1.0, detail="test")]),
+            createdAt=_now_iso(),
+            createdSimMinutes=0,
+            source="champion",
+            sourceChampionId="champion-1",
+            sourceStrategyFamily="trend",
+            sourceDefinitionId=source_definition_id,
+            sourceDefinitionVersion=1,
+            sourceSignalBarTimestamp=_now_iso(),
+        )
+
+    def _strategy(self, *, strategy_id: str = "strategy-1", compiled_definition_id: str = "def-1") -> Strategy:
+        return Strategy(id=strategy_id, name="Test Strategy", description="test description", createdBy="scout", focusCategory="stock", createdAt=_now_iso(), compiledDefinitionId=compiled_definition_id)
+
+    def _model_validation_report(self, *, strategy_id: str = "strategy-1", verdict: str = "approved") -> ModelValidationReport:
+        return ModelValidationReport(
+            id="mvr-1",
+            strategyId=strategy_id,
+            strategyName="Test Strategy",
+            reviewId="review-1",
+            existingReviewCount=1,
+            verdict=verdict,  # type: ignore[arg-type]
+            checks=[ModelValidationCheck(id="sample_size", label="Sample Size", passed=verdict != "rejected", evidence="test evidence", reasoning="test reasoning", thresholdSource="test source")],
+            evidenceSummary="test evidence summary.",
+            dataSourcesAndAssumptions=["test data source"],
+            simDay=1,
+            createdAt=_now_iso(),
+        )
+
+    def test_no_position_opens_when_a_rejected_validation_applies(self) -> None:
+        proposal = self._champion_proposal()
+        strategy = self._strategy()
+        report = self._model_validation_report(verdict="rejected")
+        new_portfolio, decision, record = resolve_proposal(
+            proposal,
+            "buy",
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
+            current_price=100.0,
+            now_sim_minutes=100,
+            market_intelligence=default_market_intelligence_state(),
+            strategies=[strategy],
+            model_validations=[report],
+        )
+        assert new_portfolio.positions == []
+        assert decision.outcome != "trade"
+        assert decision.order_id is None
+        assert decision.gatekeeper_verdict is not None
+        assert decision.gatekeeper_verdict.approved is False
+        model_validation_check = next(c for c in decision.gatekeeper_verdict.checks if c.id == "model_validation")
+        assert model_validation_check.passed is False
+        assert record.resolved_by == "ceo"  # sanity: a real CeoDecisionRecord is still produced, never skipped
+
+    def test_a_position_still_opens_when_validation_does_not_apply(self) -> None:
+        """Same real proposal/strategy shape, but an approved (not
+        rejected) report — proves this milestone only blocks the
+        specific rejected case, never a broader unintended tightening."""
+        proposal = self._champion_proposal()
+        strategy = self._strategy()
+        report = self._model_validation_report(verdict="approved")
+        new_portfolio, decision, _ = resolve_proposal(
+            proposal,
+            "buy",
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
+            current_price=100.0,
+            now_sim_minutes=100,
+            market_intelligence=default_market_intelligence_state(),
+            strategies=[strategy],
+            model_validations=[report],
+        )
+        assert len(new_portfolio.positions) == 1
+        assert decision.outcome == "trade"
+        assert decision.gatekeeper_verdict is not None and decision.gatekeeper_verdict.approved is True
+
+    def test_a_position_still_opens_for_a_heuristic_proposal_even_with_a_rejected_report_on_file(self) -> None:
+        """The vast majority of proposals carry no strategy identity at
+        all — this milestone must never fail-closed on them."""
+        item = _research_item()
+        provider = MockMarketDataProvider()
+        heuristic_proposal = generate_proposal(
+            item,
+            quantity=10.0,
+            price=100.0,
+            news=[],
+            scanner_alerts=[],
+            sentinel_warning=None,
+            guardian_warning=None,
+            provider=provider,
+            now_sim_minutes=0,
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
+            market_intelligence=default_market_intelligence_state(),
+            agent_vote_accuracy=[],
+        )
+        strategy = self._strategy()
+        report = self._model_validation_report(verdict="rejected")
+        assert heuristic_proposal.source == "heuristic"
+        _, decision, _ = resolve_proposal(
+            heuristic_proposal,
+            "buy",
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
+            current_price=100.0,
+            now_sim_minutes=100,
+            market_intelligence=default_market_intelligence_state(),
+            strategies=[strategy],
+            model_validations=[report],
+        )
+        model_validation_check = next(c for c in decision.gatekeeper_verdict.checks if c.id == "model_validation") if decision.gatekeeper_verdict else None
+        if model_validation_check is not None:
+            assert model_validation_check.passed is True

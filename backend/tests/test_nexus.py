@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from app.market_intelligence import default_market_intelligence_state
 from app.nexus import MAX_DECISIONS, MAX_RISK_DECISIONS, _apply_operating_mode, _generate_trade_proposals, _trim_decisions
 from app.nexus import tick as nexus_tick
 from app.portfolio import default_portfolio, open_position
 from app.risk_contract import activate_risk_contract, apply_active_risk_contract, create_draft_risk_contract, mark_validated
-from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, ResearchItem, RiskContract, RiskLimits, TimeState, TradeDecision, TradeProposal
+from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, ModelValidationCheck, ModelValidationReport, ResearchItem, RiskContract, RiskLimits, Strategy, TimeState, TradeDecision, TradeProposal
 from app.state import default_state
 from app.trading_restrictions import activate_trading_restriction
 
@@ -167,6 +169,118 @@ class TestApplyOperatingModePauseTrading:
         assert remaining == []
 
 
+class TestApplyOperatingModeModelValidationEnforcement:
+    """CEO directive "Model Validation Enforcement 1.0" — proves the
+    AUTO-RESOLUTION path (_apply_operating_mode -> resolve_proposal) is
+    covered by the same real Gatekeeper enforcement as the manual CEO
+    decision path (see test_state.py's TestSubmitCeoDecisionModel
+    ValidationEnforcement for the manual-path counterpart)."""
+
+    def _champion_proposal(self) -> TradeProposal:
+        return _proposal().model_copy(
+            update={
+                "source": "champion",
+                "source_champion_id": "champion-1",
+                "source_strategy_family": "trend",
+                "source_definition_id": "def-1",
+                "source_definition_version": 1,
+                "source_signal_bar_timestamp": _now_iso(),
+            }
+        )
+
+    def _strategy(self) -> Strategy:
+        return Strategy(id="strategy-mv-1", name="Test Strategy", description="test description", createdBy="scout", focusCategory="stock", createdAt=_now_iso(), compiledDefinitionId="def-1")
+
+    def _report(self, *, verdict: str) -> ModelValidationReport:
+        return ModelValidationReport(
+            id="mvr-1",
+            strategyId="strategy-mv-1",
+            strategyName="Test Strategy",
+            reviewId="review-1",
+            existingReviewCount=1,
+            verdict=verdict,  # type: ignore[arg-type]
+            checks=[ModelValidationCheck(id="sample_size", label="Sample Size", passed=verdict != "rejected", evidence="test evidence", reasoning="test reasoning", thresholdSource="test source")],
+            evidenceSummary="test evidence summary.",
+            dataSourcesAndAssumptions=["test data source"],
+            simDay=1,
+            createdAt=_now_iso(),
+        )
+
+    def _call(self, *, verdict: str):  # type: ignore[no-untyped-def]
+        return _apply_operating_mode(
+            "executive",
+            [self._champion_proposal()],
+            [],  # debates
+            default_portfolio(),
+            RiskLimits(),
+            [],  # risk_warnings
+            {"NEXA": 100.0},  # prices
+            0,  # now_sim_minutes
+            [],  # memory
+            [],  # decisions
+            [],  # ceo_decisions
+            [],  # prediction_records
+            [],  # gatekeeper_rejections
+            [],  # news
+            [],  # challenge_reports
+            [],  # coach_reports
+            [],  # meeting_log
+            [],  # decision_vault
+            1,  # sim_day
+            default_market_intelligence_state(),
+            [],  # war_room_sessions
+            "sideways",  # market_environment_regime
+            "balanced_institutional",  # active_weight_profile
+            {},  # custom_department_weights
+            strategies=[self._strategy()],
+            model_validations=[self._report(verdict=verdict)],
+        )
+
+    def test_a_rejected_validation_blocks_auto_resolution(self) -> None:
+        remaining, portfolio, _meeting_log = self._call(verdict="rejected")
+        assert remaining == []  # resolved (rejected), not left pending
+        assert portfolio.positions == []
+
+    def test_an_approved_validation_does_not_block_auto_resolution(self) -> None:
+        remaining, portfolio, _meeting_log = self._call(verdict="approved")
+        assert remaining == []
+        assert len(portfolio.positions) == 1
+
+    def test_omitting_the_new_params_behaves_exactly_as_before(self) -> None:
+        """Every other test in this file calls without strategies/
+        model_validations — confirms the real production default (None
+        for both) still auto-resolves normally, matching this session's
+        own established optional-parameter convention."""
+        remaining, portfolio, _meeting_log = _apply_operating_mode(
+            "executive",
+            [self._champion_proposal()],
+            [],
+            default_portfolio(),
+            RiskLimits(),
+            [],
+            {"NEXA": 100.0},
+            0,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            1,
+            default_market_intelligence_state(),
+            [],
+            "sideways",
+            "balanced_institutional",
+            {},
+        )
+        assert remaining == []
+        assert len(portfolio.positions) == 1
+
+
 class TestApplyOperatingModeEmergencyStop:
     """Design Bible Chapter 67 (TTOS) Part 3 — a CEO-triggered Emergency
     Stop keeps every pending proposal pending, in both Assisted and
@@ -214,6 +328,135 @@ class TestApplyOperatingModeEmergencyStop:
         # Control: confirms the new gate only fires when actually active.
         remaining, _, _ = self._call(operating_mode="executive", emergency_stop_active=False)
         assert remaining == []
+
+
+class TestTickWiresEmergencyStopIntoSniperEngine:
+    """CEO directive "TradeTown Ultimate — Master 11-Pillar Architecture
+    Directive," Governance milestone — the real, full nexus.tick() must
+    thread the CEO's own global Emergency Stop into
+    tick_sniper_engine(), not just _apply_operating_mode() above.
+    Monkeypatches tick_sniper_engine itself (rather than relying on its
+    own internal random discovery roll) so this test is a deterministic
+    proof of the WIRING — the isolated mechanism itself is already
+    proven by tests/test_memecoin_sniper.py's own
+    TestTickEngine::test_emergency_stop_blocks_new_discovery_even_while_running."""
+
+    def test_real_tick_passes_the_real_emergency_stop_state_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.memecoin_sniper import SniperTickResult
+        from app.schemas import EmergencyStopState, SniperEngineConfig
+
+        captured: dict[str, object] = {}
+
+        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False, strategies=None):  # type: ignore[no-untyped-def]
+            captured["emergency_stop_active"] = emergency_stop_active
+            return SniperTickResult(candidates, positions, trade_history, leads, lessons, risk_state, [], [])
+
+        monkeypatch.setattr("app.nexus.tick_sniper_engine", _fake_tick_sniper_engine)
+
+        state = default_state()
+        state = state.model_copy(
+            update={
+                "sniper_engine_config": SniperEngineConfig(status="running"),
+                "emergency_stop": EmergencyStopState(active=True, activatedAt="2026-01-01T00:00:00+00:00"),
+            }
+        )
+        nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        assert captured["emergency_stop_active"] is True
+
+    def test_real_tick_passes_false_when_emergency_stop_is_inactive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.memecoin_sniper import SniperTickResult
+        from app.schemas import SniperEngineConfig
+
+        captured: dict[str, object] = {}
+
+        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False, strategies=None):  # type: ignore[no-untyped-def]
+            captured["emergency_stop_active"] = emergency_stop_active
+            return SniperTickResult(candidates, positions, trade_history, leads, lessons, risk_state, [], [])
+
+        monkeypatch.setattr("app.nexus.tick_sniper_engine", _fake_tick_sniper_engine)
+
+        state = default_state()
+        state = state.model_copy(update={"sniper_engine_config": SniperEngineConfig(status="running")})
+        assert state.emergency_stop.active is False
+        nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        assert captured["emergency_stop_active"] is False
+
+
+class TestTickWiresStrategyRegistryIntoSniperEngine:
+    """CEO directive "TradeTown — Sniper Strategy Engine + Registry
+    1.0" — the real, full nexus.tick() must thread the real
+    GameSaveState.sniper_strategies registry into tick_sniper_engine(),
+    including the self-healing "empty persisted list -> real defaults"
+    fallback. Monkeypatches tick_sniper_engine itself (deterministic
+    proof of the WIRING) — the isolated selection/gating mechanism
+    itself is already proven by tests/test_memecoin_sniper.py."""
+
+    def _patch(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+        from app.memecoin_sniper import SniperTickResult
+
+        captured: dict[str, object] = {}
+
+        def _fake_tick_sniper_engine(config, risk_state, candidates, positions, trade_history, leads, lessons, *, tick_seconds, discovery_sim_minutes=None, emergency_stop_active=False, strategies=None):  # type: ignore[no-untyped-def]
+            captured["strategies"] = strategies
+            return SniperTickResult(candidates, positions, trade_history, leads, lessons, risk_state, [], [])
+
+        monkeypatch.setattr("app.nexus.tick_sniper_engine", _fake_tick_sniper_engine)
+        return captured
+
+    def test_real_tick_passes_the_real_persisted_registry_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from app.schemas import SniperEngineConfig
+        from app.sniper_strategy_registry import set_sniper_strategy_status
+
+        captured = self._patch(monkeypatch)
+        state = default_state()
+        disabled_strategies, error = set_sniper_strategy_status(state.sniper_strategies, "memecoin-sniper", "disabled")
+        assert error is None
+        state = state.model_copy(update={"sniper_engine_config": SniperEngineConfig(status="running"), "sniper_strategies": disabled_strategies})
+        nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        assert captured["strategies"] == disabled_strategies
+
+    def test_a_legacy_empty_registry_self_heals_to_real_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A save that predates this field has `sniper_strategies == []`
+        — the real production symptom of loading an old save (see
+        GameSaveState.sniper_strategies's own schema docstring). The
+        real tick must never pass that empty list through untouched;
+        it must self-heal to the real, now-two-strategy default (CEO
+        directive "TradeTown — Sniper Multi-Strategy Dispatch Proof
+        1.0")."""
+        from app.schemas import SNIPER_STRATEGY_B_ID, SNIPER_STRATEGY_ID, SniperEngineConfig
+
+        captured = self._patch(monkeypatch)
+        state = default_state()
+        state = state.model_copy(update={"sniper_engine_config": SniperEngineConfig(status="running"), "sniper_strategies": []})
+        result = nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        healed = captured["strategies"]
+        assert isinstance(healed, list)
+        healed_ids = {s.id for s in healed}
+        assert healed_ids == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+        assert all(s.status == "enabled" for s in healed)
+        # And the healed value is actually persisted back, not just used
+        # in-memory for this one tick.
+        assert {s.id for s in result.sniper_strategies} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+
+    def test_a_registry_missing_only_strategy_b_backfills_it(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """CEO directive "TradeTown — Sniper Multi-Strategy Dispatch
+        Proof 1.0" — the real production symptom of a save persisted
+        between the two directives: a real, non-empty registry that
+        only has Strategy A registered. The old `or default_sniper_
+        strategies()` self-heal would never add Strategy B to a
+        non-empty list; `ensure_default_sniper_strategies()` must."""
+        from app.schemas import SNIPER_STRATEGY_B_ID, SNIPER_STRATEGY_ID, SniperEngineConfig
+        from app.sniper_strategy_registry import default_sniper_strategies
+
+        captured = self._patch(monkeypatch)
+        state = default_state()
+        only_a = [default_sniper_strategies()[0]]
+        state = state.model_copy(update={"sniper_engine_config": SniperEngineConfig(status="running"), "sniper_strategies": only_a})
+        result = nexus_tick(state, TimeState(day=1, hour=0, minute=1), 1)
+        healed = captured["strategies"]
+        assert isinstance(healed, list)
+        assert {s.id for s in healed} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
+        assert {s.id for s in result.sniper_strategies} == {SNIPER_STRATEGY_ID, SNIPER_STRATEGY_B_ID}
 
 
 class TestApplyOperatingModeRiskContractFailClosed:
