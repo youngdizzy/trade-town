@@ -24014,3 +24014,150 @@ over time (still request-scoped, still no pagination, still one symbol)
 to accumulate more real trade evidence before any validation claim
 becomes meaningful — never tuning the strategy or thresholds to reach
 a target sample size faster. Not implemented in this turn.
+
+## CEO directive "TradeTown — Deterministic Trading Intelligence Forensic Audit 1.0"
+
+Audit-only, no LLM/AI dependency, no new code. Zero production changes
+— `git diff --stat` empty throughout. Mapped the real production
+trading path end to end (research → `opportunity_gatekeeper.py`'s early
+gate → CEO decision → `gatekeeper.py`'s late 16-check gate → Risk
+Contract scaling → sizing → order → fill → position → exit → P&L →
+`paper_trade_journal.py`) and ran the existing, unmodified
+`opportunity_gate_calibration_experiment.py` against the real, persisted
+burn-in save on disk (`backend/data/tradetown.db`, 100 real opportunity
+rejections with full shadow sub-score captures — not a synthetic
+fixture). Finding: the liquidity sub-score's dominant-drag effect on
+composite decision scores is real (a shadow model excluding it would
+rescue 31-36 of the 100 real rejections, with rescued candidates showing
+a higher counterfactual win proportion, 70-76% bootstrap probability of
+improvement) but not statistically conclusive — the 95% CI crosses zero.
+Classified Plausible, not Proven, per the directive's own evidence
+taxonomy; no Gatekeeper/threshold change made. Also confirmed the
+directive's named `backend/app/real_data_accumulator.py` does not exist
+anywhere in this repository — disclosed rather than silently mapped onto
+a different file. Recommended next milestone: let the real save
+accumulate genuine closed trades before re-running the same,
+unmodified calibration experiment.
+
+## CEO directive "TradeTown — Strategy Factory 1.0" (Phase 0 audit)
+
+Audit-only. Found the entire requested "Strategy Factory" concept
+already exists, comprehensively, tested, and UI-wired, under different
+names: `app/research_factory.py::run_research_factory_cycle()`'s real
+OBSERVE→GENERATE→MUTATE→COMPILE→BACKTEST→ADVERSARIAL-ATTACK→VALIDATE→
+STRESS→COMPARE→ACCEPT-OR-BIN→LEARN loop, `app/research_loop.py`,
+`app/research_pareto.py`, `app/champion_challenger.py` (a real, gated
+comparison — `promote_challenger()` raises unless
+`verdict == "challenger_recommended"`), `app/holdout.py`,
+`app/walk_forward.py`, `app/model_validation.py`, and a full existing
+frontend (`ResearchFactoryView.tsx`, sections literally named "Candidate
+Lineage," "Failure Diagnosis," "Proposed Mutation," "Research Budget").
+Building a new one would have violated the directive's own ABSOLUTE
+RULE against duplicating existing functionality. Zero code changed. The
+one genuine, disclosed gap found: no automated mechanism generates a
+strategy family's first evidence-grounded hypothesis —
+`find_research_seed()` always requires one to already exist. Recommended
+as the one next milestone; implemented next (see below).
+
+## CEO directive "TradeTown — Autonomous Seed Hypothesis Generation 1.0"
+
+Closes the one confirmed gap from the Strategy Factory 1.0 audit above,
+narrowly. **New module**, `app/seed_hypothesis_generator.py` —
+`generate_seed_hypothesis(state, *, strategy_family, market_data_provider=None)`
+— implements Choice A of the two architectures the directive offered
+(propose only a `StrategyHypothesis` against a family's EXISTING
+compiled definition, never construct a new one through the compiler,
+which would re-implement `app/strategy_families.py`'s own job).
+
+**Gate sequence** (each with a real, honest, non-error `not_generated`
+outcome, never a fabricated hypothesis):
+1. `family_has_research_lineage()` — any existing `factory_runs`/
+   `research_iterations` entry for this exact family → `existing_lineage_found`
+   (reuses existing lineage stores directly; no second dedup database).
+2. `_latest_compiled_definition()` (imported directly from
+   `app/research_orchestrator.py` — the same real lookup, not
+   re-derived) — no compiled definition yet → `no_compiled_definition`.
+3. A fresh, read-only re-run of the existing, unmodified
+   `run_compiled_strategy_backtest()` — trade count below this
+   codebase's own existing `MIN_TRADES_FOR_BOOTSTRAP` floor (20,
+   `app/statistical_comparison.py`) → `insufficient_evidence`. An
+   explicitly-injected real provider that cannot serve the required
+   symbols also fails closed into this same reason (`NO SEED GENERATED
+   — INSUFFICIENT REAL EVIDENCE`), never propagating an uncaught
+   `ExternalMarketDataProviderUnavailable`.
+
+When all three gates clear, the returned `StrategyHypothesis` populates
+every field from real, already-computed data only: `market_mechanism`/
+`entry_conditions` reuse the compiled definition's own real `source_text`
+verbatim; `stop_loss_logic`/`take_profit_logic` describe its real
+`stop`/`target` spec; `expected_edge`/`research_rationale` state the
+real observed trade count/win rate/expectancy as a signal-activity
+observation only ("No edge is claimed"); `invalidation_conditions`
+names the existing walk-forward/holdout/robustness gates that would
+falsify it; `reproducibility_seed` is a SHA-256 fingerprint of the
+real evidence, not a random value. `position_sizing_logic`/
+`risk_constraints` are explicitly disclosed as untouched — "governed
+unchanged by the existing Risk Contract / position sizing pipeline."
+
+`unsupported_vocabulary`/`no_compatible_strategy_family` (from the
+directive's own honest-outcome vocabulary) are real, disclosed,
+structurally UNREACHABLE under Choice A — every definition this module
+reasons about already compiled successfully, by construction — and are
+documented as such rather than implemented as a check that could never
+meaningfully fire.
+
+**Determinism**: verified directly — two independent `default_state()`
+calls (never sharing a Python object) produce byte-identical
+fingerprints and hypothesis text, because the only nondeterminism in the
+call chain (`run_compiled_strategy_backtest()`'s own) is already fully
+seeded via `app/market_data.py`'s `MockMarketDataProvider`.
+
+**No automatic promotion, zero new persistence**: returns a plain,
+non-persisted `SeedHypothesisProposal` dataclass (same CAGS convention
+as `ResearchOrchestratorDecision`) — never calls
+`submit_research_factory_run()`, never writes to
+`state.factory_runs`/`state.research_iterations`, and never imports
+`app/risk_contract.py`, `app/gatekeeper.py`, `app/broker.py`,
+`app/emergency_stop.py`, or `app/champion_challenger.py`. A human/API
+caller must separately submit the proposal's own `hypothesis`/
+`definition` to the existing, unmodified `POST /research-factory/run`.
+
+**New API**: `GET /api/sandbox/research-factory/seed-proposal/{strategy_family}`
+(`app/routers/sandbox.py`), backed by `GameState.describe_seed_hypothesis_proposal()`
+(`app/state.py`) and a new `SeedHypothesisProposalRead` schema
+(`app/schemas.py`) — the same compute-fresh-then-wrap pattern
+`ResearchOrchestratorStatus` already established.
+
+**Live-verified** twice: against the real, unmodified `default_state()`
+(already carrying a compiled "50 EMA Breakout Pullback (Long)"
+definition with zero research lineage — the real bootstrap gap, not a
+synthetic fixture) the generator produced a real `status="generated"`
+proposal from 25 real preliminary trades; with `KrakenMarketDataProvider()`
+explicitly injected, the same call correctly reported
+`status="not_generated"`/`reason="insufficient_evidence"` because that
+strategy's default symbol universe has no Kraken pair mapping — this
+exact live-verification pass caught and fixed a real bug (the
+real-provider path initially let the provider's own "unavailable"
+exception propagate uncaught instead of failing closed).
+
+### Explicitly not built this pass
+
+No new strategy registry, no new backtest engine, no new persistence
+schema, no LLM, no randomness beyond the existing engine's own seeded
+determinism, no automatic factory submission, no Champion/Challenger or
+Gatekeeper/Risk Contract change of any kind. Choice B (constructing new
+candidate definitions through the compiler for families with no
+compiled definition at all) was explicitly not attempted — that already
+belongs to `app/strategy_families.py`'s own generation mechanism.
+
+### ONE Next Milestone (not implemented this pass)
+
+**SEED HYPOTHESIS MEMORY INTEGRATION 1.0** — this milestone deliberately
+left `lessons_used`/`regime_assumptions` empty rather than form an
+under-justified institutional-memory query (`retrieve_relevant_memory()`
+needs a `domain`/`market_regime`/`symbol` filter this narrow bootstrap
+case has no confident way to construct). The smallest next step is
+determining, from real usage, what query shape a family-general seed
+proposal can honestly form against existing memory/regime evidence —
+never inventing a filter just to populate an empty field. Not
+implemented in this turn.

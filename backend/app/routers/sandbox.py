@@ -68,6 +68,7 @@ from app.schemas import (
     ResearchLessonRecord,
     ResearchLoopIterationRecord,
     ResearchOrchestratorStatus,
+    SeedHypothesisProposalRead,
     RiskProfileTemplate,
     RiskSurvivalScorecard,
     StrategyFamily,
@@ -1134,6 +1135,22 @@ async def research_orchestrator_status() -> ResearchOrchestratorStatus:
     persisted state vs. reflect the live process's own in-memory
     runtime status. Read-only — never triggers a factory cycle itself."""
     return await game_state.describe_research_orchestrator_status()
+
+
+@router.get("/research-factory/seed-proposal/{strategy_family}", response_model=SeedHypothesisProposalRead)
+async def seed_hypothesis_proposal(strategy_family: str) -> SeedHypothesisProposalRead:
+    """CEO directive "TradeTown — Autonomous Seed Hypothesis Generation
+    1.0" — proposes an evidence-grounded `StrategyHypothesis` for a
+    strategy family that already has a real compiled definition but no
+    recorded research lineage yet (see
+    app/seed_hypothesis_generator.py's own module docstring for the
+    exact, narrow gap this closes and why `status="not_generated"` is a
+    real, expected, honest outcome, not an error). Read-only and
+    side-effect-free: this endpoint never calls
+    `POST /research-factory/run` itself — a human/API caller must
+    separately submit the returned `hypothesis`/`definition` pair to
+    that existing, unmodified endpoint to actually start research."""
+    return await game_state.describe_seed_hypothesis_proposal(strategy_family)
 
 
 @router.get("/research-factory/lineage/{strategy_family}", response_model=list[ResearchLoopIterationRecord])
