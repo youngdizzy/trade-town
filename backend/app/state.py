@@ -137,6 +137,7 @@ from app.schemas import (
     ResearchDiscoveryCycleRecord,
     ResearchLoopIterationRecord,
     ResearchOrchestratorStatus,
+    SeedHypothesisProposalRead,
     StrategyHypothesis,
     ClientSaveRequest,
     CompiledStrategyDefinition,
@@ -198,6 +199,7 @@ from app.research_factory import (
 )
 from app.research_discovery import run_research_discovery_cycle
 from app.research_orchestrator import ResearchOrchestratorDecision, ResearchOrchestratorOutcome, ResearchOrchestratorSeed, decide_research_orchestration
+from app.seed_hypothesis_generator import generate_seed_hypothesis
 from app.strategy_families import SUPPORTED_FAMILIES
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 from app.strategy_compiler import strategy_definition_slug
@@ -3909,6 +3911,29 @@ class GameState:
             lastOutcomeSucceeded=outcome.succeeded if outcome is not None else None,
             lastOutcomeFactoryRunId=outcome.factory_run_id if outcome is not None else None,
             lastOutcomeDetail=outcome.detail if outcome is not None else None,
+        )
+
+    async def describe_seed_hypothesis_proposal(self, strategy_family: str) -> SeedHypothesisProposalRead:
+        """CEO directive "TradeTown — Autonomous Seed Hypothesis
+        Generation 1.0" — read-only. Computes
+        `app/seed_hypothesis_generator.py::generate_seed_hypothesis()`
+        fresh against the current snapshot; never mutates state, never
+        submits anything to the research factory. See that module's own
+        docstring for the full real methodology and disclosed scope."""
+        async with self.lock:
+            state_snapshot = self.data
+        proposal = generate_seed_hypothesis(state_snapshot, strategy_family=strategy_family)
+        return SeedHypothesisProposalRead(
+            status=proposal.status,
+            strategyFamily=proposal.strategy_family,
+            reason=proposal.reason,
+            detail=proposal.detail,
+            hypothesis=proposal.hypothesis,
+            definition=proposal.definition,
+            evidenceTradeCount=proposal.evidence_trade_count,
+            evidenceWinRatePct=proposal.evidence_win_rate_pct,
+            evidenceExpectancyR=proposal.evidence_expectancy_r,
+            fingerprint=proposal.fingerprint,
         )
 
     async def advance_time(self, target: TimeAdvanceTarget, hours: int | None) -> tuple[GameSaveState, str | None]:

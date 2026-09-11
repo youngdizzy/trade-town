@@ -7,6 +7,89 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "TradeTown — Autonomous Seed Hypothesis Generation
+  1.0."** Two prior audit-only milestones ("Deterministic Trading
+  Intelligence Forensic Audit 1.0," "Strategy Factory 1.0" Phase 0)
+  found the only genuine, disclosed gap in this codebase's already
+  extensive research-factory stack (`app/research_factory.py`,
+  `app/research_loop.py`, `app/research_orchestrator.py`,
+  `app/champion_challenger.py`, `app/strategy_families.py`, and their
+  full existing UI in `ResearchFactoryView.tsx`): nothing generates a
+  strategy family's very FIRST `StrategyHypothesis` from real evidence —
+  `app/research_orchestrator.py::find_research_seed()` requires one to
+  already exist, and `app/strategy_families.py::generate_candidate_population()`
+  (Phase 8, real and useful for population breadth) is explicit that its
+  own `research_reason` is a seeded-random exploration choice, never a
+  claim that any real observation motivated it.
+  - **New, minimal `app/seed_hypothesis_generator.py`** closes exactly
+    that narrower gap — Choice A of two architectures the directive
+    offered (propose only a `StrategyHypothesis` against the family's
+    EXISTING compiled definition, never construct a new one through the
+    compiler — the smaller, safer option). For a family with a real
+    compiled `CompiledStrategyDefinition` but zero recorded research
+    lineage (`state.factory_runs`/`state.research_iterations`), it
+    proposes exactly one `StrategyHypothesis` whose every claim traces to
+    real, already-computed evidence: the definition's own real, already-
+    compiled `source_text`/`stop`/`target`, and a fresh, read-only re-run
+    of the existing, unmodified `run_compiled_strategy_backtest()`. The
+    evidence-sufficiency gate reuses this codebase's own existing
+    `MIN_TRADES_FOR_BOOTSTRAP` floor (`app/statistical_comparison.py`)
+    rather than inventing a new threshold; a family that already has
+    lineage, has no compiled definition, or clears neither floor gets an
+    honest `not_generated` result (`existing_lineage_found` /
+    `no_compiled_definition` / `insufficient_evidence`) — never a
+    fabricated hypothesis. `unsupported_vocabulary`/
+    `no_compatible_strategy_family` are real, disclosed, structurally
+    UNREACHABLE outcomes under Choice A (every definition this module
+    reasons about already compiled successfully, by construction) —
+    documented as such rather than faked as a live check.
+  - **No LLM, no new randomness.** The only nondeterminism anywhere in
+    the call chain is `run_compiled_strategy_backtest()`'s own, already
+    fully seeded/deterministic (`app/market_data.py`'s
+    `MockMarketDataProvider`) — same state in, same fingerprint and
+    hypothesis text out, verified directly (two independent
+    `default_state()` calls agree byte-for-byte).
+  - **No automatic promotion, zero new persistence.** Returns a plain,
+    ephemeral `SeedHypothesisProposal` (same computed-fresh convention as
+    `app/research_orchestrator.py`'s own `ResearchOrchestratorDecision`)
+    — never calls `submit_research_factory_run()`, never writes to
+    `state.factory_runs`/`state.research_iterations`, never imports
+    anything from `app/risk_contract.py`, `app/gatekeeper.py`,
+    `app/broker.py`, `app/emergency_stop.py`, or
+    `app/champion_challenger.py` (verified by both a source-text
+    assertion in tests and a structural field check). A human/API caller
+    must separately call the existing, unmodified `POST
+    /research-factory/run` with the proposal's own `hypothesis`/
+    `definition` pair to actually start research on it.
+  - **New read-only endpoint**: `GET
+    /api/sandbox/research-factory/seed-proposal/{strategy_family}`
+    (`app/routers/sandbox.py`), backed by a new
+    `GameState.describe_seed_hypothesis_proposal()` and a new
+    `SeedHypothesisProposalRead` schema — the same
+    compute-fresh-then-wrap pattern `ResearchOrchestratorStatus` already
+    established. `status="not_generated"` is a real, expected, non-error
+    response.
+  - **Live-verified**: against the real, unmodified `default_state()`
+    fixture (which already has a compiled "50 EMA Breakout Pullback
+    (Long)" definition with zero research lineage — the exact real
+    bootstrap gap, not a synthetic fixture), the generator produced a
+    real `status="generated"` proposal from 25 real preliminary trades.
+    Separately, with the real `KrakenMarketDataProvider()` explicitly
+    injected, the same call correctly failed closed
+    (`status="not_generated"`, `reason="insufficient_evidence"`) because
+    that strategy's default symbol universe (`AAPL`, etc.) has no Kraken
+    pair mapping — an honest "NO SEED GENERATED — INSUFFICIENT REAL
+    EVIDENCE" outcome the module didn't have until a bug caught during
+    this exact live-verification pass was fixed (the real-provider path
+    initially let `ExternalMarketDataProviderUnavailable` propagate
+    uncaught instead of failing closed with a structured result).
+  - **18 new tests** in `tests/test_seed_hypothesis_generator.py`
+    covering determinism, insufficient-evidence, no-fabrication,
+    dedup-via-existing-lineage, no-automatic-promotion, real/mock
+    provider separation, and failure-safety, plus a real-Kraken
+    live-verification test using this codebase's established
+    skip-on-network-failure pattern.
+
 - **CEO directive "TradeTown — Real-Data Research Validation 1.0."**
   Zero production code changes — the prior "Research Provider
   Injection 1.0" milestone's architecture already supported everything

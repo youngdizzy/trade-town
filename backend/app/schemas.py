@@ -15563,6 +15563,31 @@ class ResearchOrchestratorStatus(CamelModel):
     last_outcome_detail: str | None = Field(default=None, alias="lastOutcomeDetail")
 
 
+class SeedHypothesisProposalRead(CamelModel):
+    """CEO directive "TradeTown — Autonomous Seed Hypothesis Generation
+    1.0" — read-only API exposure of
+    `app/seed_hypothesis_generator.py::SeedHypothesisProposal` (same
+    computed-fresh, never-persisted convention as
+    `ResearchOrchestratorStatus` above). `status="not_generated"` is a
+    real, honest, expected outcome — never treated as an error by any
+    caller; `reason` is `None` only when `status="generated"`. Never
+    auto-submitted to the research factory: a human/API caller must
+    separately call the existing, unmodified `POST
+    /research-factory/run` with this proposal's own `hypothesis`/
+    `definition` to actually start research on it."""
+
+    status: Literal["generated", "not_generated"]
+    strategy_family: str = Field(alias="strategyFamily")
+    reason: str | None = None
+    detail: str
+    hypothesis: StrategyHypothesis | None = None
+    definition: CompiledStrategyDefinition | None = None
+    evidence_trade_count: int | None = Field(default=None, alias="evidenceTradeCount")
+    evidence_win_rate_pct: float | None = Field(default=None, alias="evidenceWinRatePct")
+    evidence_expectancy_r: float | None = Field(default=None, alias="evidenceExpectancyR")
+    fingerprint: str | None = None
+
+
 class LessonEvidenceSummary(CamelModel):
     """Section 12 — "memory is evidence, not truth." Computed FRESH per
     request (CAGS, matching `ResearchExperimentRecord`'s own convention),
