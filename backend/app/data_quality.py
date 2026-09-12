@@ -24,6 +24,7 @@ honestly via `DataQualityReport.data_valid` being true today for mock
 data, not hidden by skipping the checks."""
 from __future__ import annotations
 
+import math
 import uuid
 from datetime import datetime, timezone
 
@@ -105,6 +106,21 @@ def validate_candle_series(
             parsed = None
         parsed_timestamps.append(parsed)
 
+        nonfinite_fields = [name for name, value in (("open", candle.open), ("high", candle.high), ("low", candle.low), ("close", candle.close), ("volume", candle.volume)) if not math.isfinite(value)]
+        if nonfinite_fields:
+            # Every other numeric check below (<=0, <, >) is silently
+            # FALSE for NaN and never triggers for +/-Infinity in a way
+            # that names the real defect — this is the one check that
+            # actually catches it. Skip the redundant checks for this
+            # candle's nonfinite fields; a NaN/Inf value is already the
+            # most specific, honest defect to report.
+            issues.append(
+                CandleDataQualityIssue(
+                    code="nonfinite_value",
+                    evidence=f"Candle at index {index} has a non-finite value in {nonfinite_fields} (o={candle.open}, h={candle.high}, l={candle.low}, c={candle.close}, v={candle.volume}).",
+                )
+            )
+            continue
         if candle.open <= 0 or candle.high <= 0 or candle.low <= 0 or candle.close <= 0:
             issues.append(CandleDataQualityIssue(code="non_positive_price", evidence=f"Candle at index {index} has a non-positive OHLC value (o={candle.open}, h={candle.high}, l={candle.low}, c={candle.close})."))
         if candle.volume < 0:

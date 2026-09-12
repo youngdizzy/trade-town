@@ -1,6 +1,17 @@
 """Covers app/data_quality.py — CEO directive "Phase 9 / Real Market
-Data + Evidence Integrity Foundation," Data Quality Gate section."""
+Data + Evidence Integrity Foundation," Data Quality Gate section.
+
+CEO directive "TradeTown — Real-Data Evidence Accumulation & Validation
+Readiness 2.0" added the `nonfinite_value` check below: every other
+numeric check here (`<= 0`, `<`, `>`) is silently `False` for NaN and
+never fires for +/-Infinity in a way that names the real defect, so
+those checks alone would let a NaN/Infinity OHLC or volume value pass
+completely undetected — a genuinely reachable shape, since Python's own
+`json` module accepts the non-standard `NaN`/`Infinity` literals by
+default."""
 from __future__ import annotations
+
+import math
 
 from app.data_quality import validate_candle_series
 from app.market_data import Candle
@@ -91,6 +102,36 @@ class TestValidateCandleSeries:
         candles[1] = _candle(ts="not-a-timestamp")
         report = validate_candle_series(candles, symbol="AAPL", timeframe="1h")
         assert any(i.code == "timezone_invalid" for i in report.issues)
+
+    def test_nan_close_detected_as_nonfinite_value(self) -> None:
+        candles = _clean_series()
+        candles[1] = Candle(symbol="AAPL", timeframe="1h", timestamp=candles[1].timestamp, open=100.0, high=101.0, low=99.0, close=math.nan, volume=1000.0, data_status="simulated")
+        report = validate_candle_series(candles, symbol="AAPL", timeframe="1h")
+        assert any(i.code == "nonfinite_value" for i in report.issues)
+
+    def test_infinite_high_detected_as_nonfinite_value(self) -> None:
+        candles = _clean_series()
+        candles[1] = Candle(symbol="AAPL", timeframe="1h", timestamp=candles[1].timestamp, open=100.0, high=math.inf, low=99.0, close=100.0, volume=1000.0, data_status="simulated")
+        report = validate_candle_series(candles, symbol="AAPL", timeframe="1h")
+        assert any(i.code == "nonfinite_value" for i in report.issues)
+
+    def test_negative_infinite_volume_detected_as_nonfinite_value(self) -> None:
+        candles = _clean_series()
+        candles[1] = _candle(ts=candles[1].timestamp, volume=-math.inf)
+        report = validate_candle_series(candles, symbol="AAPL", timeframe="1h")
+        assert any(i.code == "nonfinite_value" for i in report.issues)
+
+    def test_nonfinite_value_does_not_ALSO_report_a_redundant_ineffective_ohlc_or_volume_issue(self) -> None:
+        """A NaN close is silently `False` for every `<= 0`/`<`/`>`
+        comparison — it must never ALSO produce a misleading
+        `impossible_ohlc`/`non_positive_price`/`negative_volume` entry
+        for the same candle, which would understate how the value is
+        actually broken."""
+        candles = _clean_series()
+        candles[1] = Candle(symbol="AAPL", timeframe="1h", timestamp=candles[1].timestamp, open=100.0, high=101.0, low=99.0, close=math.nan, volume=1000.0, data_status="simulated")
+        report = validate_candle_series(candles, symbol="AAPL", timeframe="1h")
+        codes_for_that_candle = [i.code for i in report.issues if f"index {1}" in i.evidence]
+        assert codes_for_that_candle == ["nonfinite_value"]
 
     def test_empty_series_is_invalid_via_insufficient_history_only(self) -> None:
         report = validate_candle_series([], symbol="AAPL", timeframe="1h")

@@ -1764,8 +1764,9 @@ symbol/timeframe's actual retrieved candle series (see
 `app/data_quality.py`'s own module docstring for the exact checks:
 timestamp ordering, duplicate timestamps, missing-bar gaps against the
 timeframe's expected spacing, impossible OHLC relationships,
-non-positive prices, negative volume, timeframe/symbol mismatches,
-insufficient history, and timezone-naive/unparseable timestamps).
+non-positive prices, negative volume, nonfinite (NaN/Infinity) OHLC or
+volume values, timeframe/symbol mismatches, insufficient history, and
+timezone-naive/unparseable timestamps).
 Never an ML/statistical "quality score." Returns a `DataQualityReport`
 (`dataValid`, `candleCount`, `issues: CandleDataQualityIssue[]` each
 with a real `code`/`evidence` string). Read-only, computed fresh every
@@ -1773,6 +1774,17 @@ call, nothing persisted. `app/market_data.py`'s mock provider never
 produces most of these defects by construction (no concept of a
 missing bar) — `dataValid` reads `true` for mock data today, disclosed
 honestly rather than hidden by skipping the checks.
+
+CEO directive "TradeTown — Real-Data Evidence Accumulation &
+Validation Readiness 2.0" wired this SAME function into
+`app/real_data_accumulator.py::run_accumulation_cycle()` as well — every
+real Kraken candle now passes this exact check (with `min_candles=1`,
+never the stricter default, so the accumulation floor itself never
+silently changes) before it can ever be persisted, closing the one
+genuine gap found: NaN/Infinity values silently defeat every `<=`/`<`/
+`>` numeric check here, and Python's own `json` module accepts the
+non-standard `NaN`/`Infinity` literals by default, making this a
+reachable malformed-provider-response shape, not a hypothetical.
 
 ### `POST /api/sandbox/research-experiment?candlesPerSymbol=6000`
 

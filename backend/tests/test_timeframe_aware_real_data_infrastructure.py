@@ -91,7 +91,13 @@ def _retagging_provider(btc: list[Candle], eth: list[Candle] | None = None) -> M
         def get_candles(self, symbol: str, timeframe: str, limit: int, *, end_time=None, anchor_price=None) -> list[Candle]:
             candles = by_symbol[symbol]
             windowed = candles[-limit:] if limit > 0 else list(candles)
-            return [dataclasses.replace(c, timeframe=timeframe) for c in windowed]
+            # Retag both timeframe AND symbol to what was actually
+            # requested — `_retagging_provider(btc)` (no explicit
+            # `eth`) reuses the SAME BTC-tagged Candle objects for the
+            # "ETH-USD" key, which a real `symbol_mismatch` check now
+            # fails closed on (CEO directive "Real-Data Evidence
+            # Accumulation & Validation Readiness 2.0").
+            return [dataclasses.replace(c, timeframe=timeframe, symbol=symbol) for c in windowed]
 
     return _Retagging()
 
@@ -345,7 +351,11 @@ class TestH_CrossTimeframeHoldoutIsolation:
             def get_candles(self, symbol: str, timeframe: str, limit: int, *, end_time=None, anchor_price=None) -> list[Candle]:
                 series = base if timeframe == "1h" else longer
                 windowed = series[-limit:] if limit > 0 else list(series)
-                return [dataclasses.replace(c, timeframe=timeframe) for c in windowed]
+                # Retag symbol too: `base`/`longer` are both built from
+                # `_base_series("BTC-USD", ...)`, so an ETH-USD request
+                # would otherwise return BTC-tagged candles, which a
+                # real `symbol_mismatch` check now fails closed on.
+                return [dataclasses.replace(c, timeframe=timeframe, symbol=symbol) for c in windowed]
 
         result = rda.run_accumulation_cycle(provider=_DifferentLengthProvider())
         assert result["status"] == "success"

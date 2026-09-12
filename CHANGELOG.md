@@ -7,6 +7,96 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Real-Data Evidence Accumulation & Validation Readiness
+  2.0."** An evidence-integrity and validation-readiness audit, not a
+  new trading system. A forensic Phase 0 audit of the real-data
+  pipeline built across the two prior milestones found the vast
+  majority of this directive's required invariants already
+  structurally guaranteed and already tested — the audit correctly
+  found little to build, closing exactly the genuine gaps it
+  identified rather than inventing new architecture:
+  - **Nonfinite (NaN/Infinity) candle values were never rejected
+    anywhere.** Every numeric check in `app/data_quality.py::validate_candle_series()`
+    (`<= 0`, `<`, `>`) is silently `False` for NaN and never names the
+    real defect for +/-Infinity — and Python's own `json` module
+    accepts the non-standard `NaN`/`Infinity` literals by default, so a
+    malformed provider response containing one was a genuinely
+    reachable, previously undetected shape. Added one new
+    `math.isfinite()` check (new `"nonfinite_value"` `DataQualityCode`)
+    ahead of the existing checks it would otherwise silently defeat.
+  - **`validate_candle_series()` itself was wired only into the mock
+    research path**, never into `app/real_data_accumulator.py::run_accumulation_cycle()`
+    — the real Kraken path had no defense-in-depth against malformed
+    data beyond the provider's own parser. Wired the existing,
+    unmodified function in as an additional fail-closed gate before any
+    real candle can persist, with `min_candles=1` passed explicitly so
+    the function's own stricter default (30) can never leak in and
+    silently raise the accumulation evidence floor — the directive's
+    explicit "do not change the existing evidence threshold" rule,
+    honored by construction rather than by convention.
+  - **Evidence Progression**: `get_accumulation_status()`'s
+    `per_dataset` entries gained `first_accumulated_at`/
+    `latest_accumulated_at`, derived read-only from the already-
+    persisted `fetch_timestamp` column — no new persistence.
+  - **Six new regression tests** close the remaining genuine test-
+    matrix gaps the audit found: symbol-level partial-failure isolation
+    (previously only proven at the timeframe level), a total provider
+    outage on a later run leaving every previously-persisted row byte-
+    identical, the development dataset's fresh content hash legitimately
+    changing on growth while the frozen holdout boundary does not,
+    Factory reproducibility (identical inputs against an unchanged
+    dataset produce identical results, end to end), and historical
+    `FactoryRunRecord`/provenance immutability when the dataset GROWS
+    between two Factory runs (the existing `test_H_provenance_survives_subsequent_runs`
+    only re-ran against an unchanged dataset). New file
+    `tests/test_evidence_accumulation_validation_readiness_2_0.py`
+    (7 tests) plus 4 new unit tests in `tests/test_data_quality.py` for
+    the nonfinite-value check directly.
+  - **Fixed a latent test-fixture inaccuracy** the new accumulation-
+    layer quality gate surfaced: five real-data test files' shared
+    `_FixedProvider`/`_retagging_provider` fixtures relabeled only
+    `timeframe` when serving a symbol's candles, not `symbol` itself —
+    harmless while nothing checked symbol identity in the accumulator,
+    but now correctly caught as a `symbol_mismatch` by the new gate.
+    Fixed by retagging both fields, mirroring the existing timeframe
+    convention. One test (`test_conflicting_duplicate_candle_hard_fails`)
+    was tampering `close` by a large delta to prove conflicting-
+    duplicate detection, which could coincidentally also produce an
+    unrelated, correctly-caught `impossible_ohlc` defect; changed to
+    tamper `volume` instead, which carries no OHLC-bound constraint.
+  - **Live-verified**: real Kraken connectivity confirmed reachable;
+    `TestLiveKrakenVerification` (all four symbol/timeframe dimensions,
+    two-run idempotency) re-run live and passed with the new quality
+    gate active, proving real Kraken data passes cleanly. The
+    persistent evidence database (from the prior milestone's live run)
+    was read directly (read-only) and confirmed consistent: 720 candles
+    per dimension, 4 independent frozen holdout boundaries, 1-3
+    development trades per dimension — honestly `insufficient_evidence`
+    everywhere, exactly as it should be below the 20-trade floor.
+  - **Explicitly scoped out** (documented, not built): a new "Evidence
+    Readiness Report" / "Validation-Readiness Report" schema and
+    endpoint. The information this would expose already exists via
+    `RealDataReadinessRead`, `FactoryRunRecord`, and the now-extended
+    `get_accumulation_status()` — a new artifact duplicating it would
+    have violated this directive's own "reuse existing architecture,
+    do not duplicate" rule for no genuine gain, since nothing currently
+    calls or surfaces it. No frontend change: no new information
+    reached an API response, so the directive's own UI Discipline rule
+    ("only change if required to expose new info") correctly stops
+    here.
+  - No changes anywhere to Nexus, Gatekeeper, RiskContract, RiskEngine,
+    Emergency Stop, broker/order/position code, paper trading, live
+    trading, strategy parameters, thresholds, or `app/ai_provider.py`
+    (present, unmodified, confirmed unreferenced by this pipeline).
+    Diff-scanned for every forbidden keyword; zero matches. Full backend
+    suite: 4,618 passed; `mypy app/`/`ruff check app/ tests/` clean.
+    Frontend `tsc`/`eslint`/`vite build` clean (no frontend files
+    changed). One `.gitignore` hygiene fix: `data/*.db-wal`,
+    `data/*.db-shm`, and `data/*.db.lock` were not covered alongside
+    the existing `data/*.db`/`data/*.db-journal` entries, so the
+    accumulator's own WAL-mode sidecar/lock files could have been
+    accidentally committed.
+
 - **"TradeTown — Timeframe-Aware Real-Data Research Infrastructure
   1.0."** Closes the exact architectural gap the prior "Real-Data
   Research Universe Expansion 2.0" audit identified: `holdout_boundary`

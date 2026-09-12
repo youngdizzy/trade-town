@@ -155,6 +155,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime, timezone
 
+from app.data_quality import validate_candle_series
 from app.holdout import freeze_strategy, partition_candles_chronologically, validate_holdout
 from app.market_data import Candle, ExternalMarketDataProviderUnavailable, KrakenMarketDataProvider, MarketDataProvider
 from app.schemas import CompiledStrategyDefinition
@@ -666,6 +667,31 @@ def run_accumulation_cycle(*, provider: MarketDataProvider | None = None) -> dic
                             raise AccumulationFailure(
                                 f"Timestamps not strictly increasing/unique for {symbol} at {timeframe} — refusing to persist out-of-order or duplicate real data."
                             )
+                        # CEO directive "TradeTown — Real-Data Evidence
+                        # Accumulation & Validation Readiness 2.0," Phase
+                        # 3/6 — reuses the EXISTING, unmodified
+                        # `app/data_quality.py::validate_candle_series()`
+                        # (previously wired only into the mock research
+                        # path — see that router's own callers) as an
+                        # additional fail-closed gate before persisting
+                        # ANY real candle. Catches malformed-OHLC/negative-
+                        # volume/gap defects a future provider might not
+                        # already reject at the transport layer, and — the
+                        # one genuine, previously-undetected gap this
+                        # audit found — NaN/Infinity values, which every
+                        # `<= 0`/`<`/`>` comparison in this module's own
+                        # checks above silently treats as `False` and
+                        # would otherwise never catch. `min_candles=1`
+                        # deliberately preserves this module's own existing
+                        # "at least one real candle" floor — this call
+                        # must never become a second, stricter evidence
+                        # threshold.
+                        quality_report = validate_candle_series(candles, symbol=symbol, timeframe=timeframe, min_candles=1)
+                        if not quality_report.data_valid:
+                            issue_summary = "; ".join(f"{issue.code}: {issue.evidence}" for issue in quality_report.issues[:5])
+                            raise AccumulationFailure(
+                                f"Data quality check failed for {symbol} at {timeframe} ({len(quality_report.issues)} issue(s)): {issue_summary}"
+                            )
 
                         # One transaction per (symbol, timeframe): candles
                         # and the trades discovered from them commit
@@ -720,6 +746,15 @@ def get_accumulation_status() -> dict:
                 latest_candle = conn.execute(
                     "SELECT MAX(candle_timestamp) FROM candles WHERE symbol = ? AND timeframe = ? AND provider = ?", (symbol, timeframe, PROVIDER_NAME)
                 ).fetchone()[0]
+                # CEO directive "TradeTown — Real-Data Evidence
+                # Accumulation & Validation Readiness 2.0," Evidence
+                # Progression section — derived read-only from the
+                # already-persisted `fetch_timestamp` column (no new
+                # persistence): when accumulation for this dataset
+                # first began, and when it was last extended.
+                accumulated_at_range = conn.execute(
+                    "SELECT MIN(fetch_timestamp), MAX(fetch_timestamp) FROM candles WHERE symbol = ? AND timeframe = ? AND provider = ?", (symbol, timeframe, PROVIDER_NAME)
+                ).fetchone()
                 candle_count = conn.execute(
                     "SELECT COUNT(*) FROM candles WHERE symbol = ? AND timeframe = ? AND provider = ?", (symbol, timeframe, PROVIDER_NAME)
                 ).fetchone()[0]
@@ -734,6 +769,8 @@ def get_accumulation_status() -> dict:
                         "symbol": symbol,
                         "timeframe": timeframe,
                         "latest_real_candle_timestamp": latest_candle,
+                        "first_accumulated_at": accumulated_at_range[0],
+                        "latest_accumulated_at": accumulated_at_range[1],
                         "cumulative_unique_real_candles": candle_count,
                         "cumulative_unique_development_trades": dev_trade_count,
                         "cumulative_unique_holdout_trades": holdout_trade_count,

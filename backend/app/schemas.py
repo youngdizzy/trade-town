@@ -5797,6 +5797,16 @@ DataQualityCode = Literal[
     "symbol_mismatch",
     "insufficient_history",
     "timezone_invalid",
+    # CEO directive "TradeTown — Real-Data Evidence Accumulation &
+    # Validation Readiness 2.0" — a real, previously-undetected gap:
+    # `high < low`-style OHLC checks and `<= 0` price checks are both
+    # silently false for NaN (every NaN comparison is False), so a
+    # NaN/Infinity OHLC or volume value would pass every other check
+    # here undetected. Python's own `json` module accepts the
+    # non-standard `NaN`/`Infinity`/`-Infinity` literals by default, so
+    # this is a genuinely reachable malformed-provider-response shape,
+    # not a hypothetical.
+    "nonfinite_value",
 ]
 
 

@@ -5,6 +5,9 @@ venv/
 .env
 data/*.db
 data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/*.db.lock
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

@@ -24662,3 +24662,153 @@ produced — the live 4h Factory run above stopped at "completed,"
 observed, never auto-submitted to champion/challenger. No change to
 paper trading, Gatekeeper, RiskContract, Emergency Stop, or position
 sizing.
+
+## Real-Data Evidence Accumulation & Validation Readiness 2.0
+
+CEO directive "TradeTown — Real-Data Evidence Accumulation &
+Validation Readiness 2.0" — an evidence-integrity and validation-
+readiness audit, explicitly not a new trading system and not a new
+research engine. A forensic Phase 0 audit of the real-data pipeline
+built across the two prior milestones (Real-Data Research Universe
+Expansion 2.0 and Timeframe-Aware Real-Data Research Infrastructure
+1.0) reconstructed the actual call graph (Kraken →
+`run_accumulation_cycle()` → `candles`/`trades`/`holdout_boundary` →
+`preflight_real_data_dataset()` → `DevelopmentOnlyRealDataProvider` →
+`run_real_data_factory_cycle()` → `FactoryRunRecord`/provenance) and
+found the large majority of the directive's named invariants already
+structurally guaranteed and already tested. Per the directive's own
+Change Classification discipline, only genuine gaps were closed — no
+refactoring, no new architecture, no speculative future-proofing.
+
+**REQUIRED gap 1 — nonfinite values were never rejected.** Every
+numeric check in `app/data_quality.py::validate_candle_series()`
+(`<= 0`, `<`, `>`) is silently `False` for a NaN operand, and none of
+them name the real defect for +/-Infinity either. Python's own `json`
+module accepts the non-standard `NaN`/`Infinity` literals by default,
+so a malformed provider response containing one is a genuinely
+reachable shape, not hypothetical. Added one `math.isfinite()` check
+(new `"nonfinite_value"` `DataQualityCode`) ahead of the existing
+per-candle checks it would otherwise silently defeat, with a `continue`
+so the now-meaningless redundant checks are skipped for that candle's
+already-most-specifically-diagnosed defect.
+
+**REQUIRED gap 2 — the real accumulation path had no data-quality
+gate at all.** `validate_candle_series()` already existed and already
+covered duplicates/gaps/malformed-OHLC/negative-volume/mismatch
+checks, but a grep of every call site confirmed it was wired ONLY into
+`app/routers/sandbox.py`'s mock-data endpoint — never into
+`app/real_data_accumulator.py`. The real Kraken path's only defense
+against malformed data was whatever the provider's own parser already
+rejected. Wired the same, unmodified function into
+`run_accumulation_cycle()`'s per-(symbol, timeframe) loop, positioned
+after the existing timestamp-ordering check and before the
+per-(symbol, timeframe) transaction — raising the module's own
+existing `AccumulationFailure` on any issue. `min_candles=1` is passed
+explicitly (not the function's own default of 30) specifically so its
+`insufficient_history` check can never leak in and silently raise the
+accumulator's real evidence floor — the directive's absolute rule
+against changing the existing evidence threshold, honored by
+construction.
+
+**REQUIRED gap 3 — Evidence Progression had no "when did this
+dataset first appear" signal.** `get_accumulation_status()`'s
+`per_dataset` entries gained `first_accumulated_at`/
+`latest_accumulated_at`, derived read-only via `MIN`/`MAX` over the
+already-persisted `fetch_timestamp` column — zero new persistence,
+zero new tables, exactly the directive's own "prefer existing
+persistence and read-only derived computation" instruction.
+
+**Test-fixture correctness (not a production defect).** Wiring the
+new accumulation-layer gate surfaced a latent inaccuracy in five
+existing real-data test files' shared `_FixedProvider`/
+`_retagging_provider` fixtures: they retagged only `timeframe` when
+serving a symbol's candles (an established convention from the prior
+milestone), never `symbol` itself — so a fixture built as
+`_provider(btc)` with no explicit `eth` argument served BTC-tagged
+`Candle` objects under the "ETH-USD" key. This was harmless while
+nothing in the accumulator checked symbol identity; the new quality
+gate correctly (and for the first time) caught it as `symbol_mismatch`.
+Fixed by retagging both `symbol` and `timeframe`, mirroring the
+existing convention exactly — a test-fixture fix, not a scope change,
+since the fixtures' own intent was always to represent same-provider
+data for the symbol being requested. One further fixture-only fix:
+`test_conflicting_duplicate_candle_hard_fails` tampered a candle's
+`close` by `+999.0` to prove conflicting-duplicate detection, which
+for this particular fixture candle also coincidentally produced a
+genuine (and now correctly caught) `impossible_ohlc` defect, masking
+the test's actual target. Changed to tamper `volume` instead, which
+carries no OHLC-bound constraint and isolates the intended "same
+timestamp, different value" conflict.
+
+**Explicitly scoped out.** A new "Evidence Readiness Report" /
+"Validation-Readiness Report" schema and API endpoint were considered
+and not built: the per-dimension dataset/holdout/validation-state
+information such an artifact would expose is already available via
+`RealDataReadinessRead`, `FactoryRunRecord`, and the now-extended
+`get_accumulation_status()`. Building a new artifact to re-derive the
+same information would have duplicated existing surfaces for no
+caller that needs it yet — a direct violation of the directive's own
+"reuse existing architecture, do not duplicate" rule. Since nothing
+new reached an API response, no frontend change was made either,
+correctly stopping at the directive's own UI Discipline boundary
+("only change if required to expose new info").
+
+**New tests.** `tests/test_evidence_accumulation_validation_readiness_2_0.py`
+(7 tests) covers the remaining genuine test-matrix gaps: symbol-level
+partial-failure isolation (one symbol's total provider outage leaves
+another symbol's already-committed data untouched — previously only
+proven at the timeframe level), a later run's total provider outage
+leaving every previously-persisted `candles`/`holdout_boundary`/
+`trades` row byte-identical, the development dataset's FRESH content
+hash (`RealDataResearchProvenance.dataset_content_hash`, recomputed
+every preflight call) legitimately changing as real candles accumulate
+while the FROZEN holdout boundary's own stored hash/timestamps do not,
+Factory reproducibility (identical inputs against an unchanged real
+dataset produce byte-identical `RealDataResearchProvenance` and an
+identical discovered-trade sequence), and historical
+`FactoryRunRecord`/provenance immutability when the accumulator
+dataset GROWS between two Factory runs (the existing
+`test_H_provenance_survives_subsequent_runs` in
+`tests/test_factory_run_provenance.py` only re-ran against an
+unchanged dataset). `tests/test_data_quality.py` gained 4 direct unit
+tests for the new nonfinite-value check. `tests/test_real_data_accumulator.py`
+gained 2 tests for the new `first_accumulated_at`/`latest_accumulated_at`
+fields.
+
+**Live-verified.** Real Kraken connectivity confirmed reachable from
+this environment. `TestLiveKrakenVerification` (all four symbol/
+timeframe dimensions, two-run idempotency) re-run live against an
+isolated database with the new quality gate active — real Kraken
+candles pass cleanly. The persistent evidence database from the prior
+milestone's own live accumulation was read directly, read-only:
+720 candles per dimension (BTC-USD/ETH-USD × 1h/4h), 4 independent
+frozen holdout boundaries, 1-3 development trades per dimension —
+correctly `insufficient_evidence` everywhere, honestly below the
+20-trade floor.
+
+**Verified.** Full backend suite: 4,618 passed. `mypy app/`/
+`ruff check app/ tests/` clean. Frontend `tsc`/`eslint`/`vite build`
+clean (no frontend files changed — no new information reached an API
+response). Trading-isolation diff scan: zero references anywhere in
+the diff to Nexus/Gatekeeper/RiskContract/RiskEngine/Emergency Stop/
+broker/order/position/paper-trading/live-trading/`app/ai_provider.py`/
+Anthropic/OpenClaw. `app/ai_provider.py` exists (a residual
+abstraction for an unrelated in-game "AI Agent Reasoning" feature) and
+was confirmed, not modified, per the directive's own instruction to
+document rather than touch it absent a hard requirement. One
+`.gitignore` hygiene fix: `data/*.db-wal`, `data/*.db-shm`, and
+`data/*.db.lock` were added alongside the pre-existing `data/*.db`/
+`data/*.db-journal` entries — the accumulator's own WAL-mode
+sidecar/advisory-lock files were not covered and could have been
+accidentally committed.
+
+### Explicitly not built this pass
+
+No new market-data provider, accumulator, holdout system, or backtest
+engine. No new "Evidence Readiness Report"/"Validation-Readiness
+Report" artifact (see above — the information it would expose already
+exists). No symbol or timeframe expansion beyond the existing four
+dimensions. No change to strategy parameters, thresholds, capital
+allocation, or the 20-trade evidence floor. No change to trading,
+paper trading, Gatekeeper, RiskContract, RiskEngine, Emergency Stop, or
+any broker/order/position code.

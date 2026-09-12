@@ -54,7 +54,12 @@ class _FixedProvider:
     def get_candles(self, symbol: str, timeframe: str, limit: int, *, end_time=None, anchor_price=None) -> list[Candle]:
         candles = self._candles_by_symbol[symbol]
         windowed = candles[-limit:] if limit > 0 else list(candles)
-        return [dataclasses.replace(c, timeframe=timeframe) for c in windowed]
+        # Retag both timeframe AND symbol to what was actually
+        # requested — see test_real_data_accumulator.py's identical
+        # fixture for why: `_provider(btc)` reuses BTC-tagged Candle
+        # objects for the "ETH-USD" key too, which a real
+        # `symbol_mismatch` check now fails closed on.
+        return [dataclasses.replace(c, timeframe=timeframe, symbol=symbol) for c in windowed]
 
 
 def _provider(btc: list[Candle], eth: list[Candle] | None = None) -> _FixedProvider:

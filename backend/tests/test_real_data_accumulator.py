@@ -103,7 +103,16 @@ class _FixedProvider(MarketDataProvider):
     def get_candles(self, symbol: str, timeframe: str, limit: int, *, end_time=None, anchor_price=None) -> list[Candle]:
         candles = self._candles_by_symbol[symbol]
         windowed = candles[-limit:] if limit > 0 else list(candles)
-        return [dataclasses.replace(c, timeframe=timeframe) for c in windowed]
+        # Retag BOTH timeframe and symbol to what was actually
+        # requested: `_provider(btc)` (no explicit `eth`) reuses the
+        # SAME underlying Candle objects — whose own `.symbol` field is
+        # still literally "BTC-USD" — for the "ETH-USD" dict key. That
+        # was harmless before `validate_candle_series()` was wired into
+        # `run_accumulation_cycle()` (CEO directive "Real-Data Evidence
+        # Accumulation & Validation Readiness 2.0"); now a real
+        # `symbol_mismatch` check would fail-closed on it, so this
+        # fixture must honestly reflect what it claims to serve.
+        return [dataclasses.replace(c, timeframe=timeframe, symbol=symbol) for c in windowed]
 
 
 def _provider(btc: list[Candle], eth: list[Candle] | None = None) -> _FixedProvider:
@@ -201,7 +210,15 @@ class TestDeduplicationAndIdempotency:
         rda.run_accumulation_cycle(provider=_provider(base))
 
         tampered = list(base)
-        tampered[-1] = dataclasses.replace(tampered[-1], close=tampered[-1].close + 999.0)
+        # Tamper `volume`, not `close`: this candle's own OHLC values
+        # leave little headroom, and shifting `close` by a large delta
+        # can push it outside [low, high] — a genuine, separately
+        # meaningful `impossible_ohlc` data-quality defect that would
+        # (correctly) fail closed for a different, more specific reason
+        # than the "conflicting duplicate" mechanic this test targets.
+        # `volume` carries no OHLC-bound constraint, so it isolates the
+        # "same timestamp, different value" conflict this test proves.
+        tampered[-1] = dataclasses.replace(tampered[-1], volume=tampered[-1].volume + 999.0)
         with pytest.raises(rda.AccumulationFailure, match="Conflicting duplicate candle"):
             rda.run_accumulation_cycle(provider=_provider(tampered))
 
@@ -391,10 +408,32 @@ class TestObservability:
         assert seen == {("BTC-USD", "1h"), ("BTC-USD", "4h"), ("ETH-USD", "1h"), ("ETH-USD", "4h")}
         for dataset_status in status["per_dataset"]:
             assert dataset_status["latest_real_candle_timestamp"] is not None
+            # CEO directive "TradeTown — Real-Data Evidence Accumulation
+            # & Validation Readiness 2.0" — Evidence Progression: when
+            # this dataset was first, and most recently, accumulated,
+            # derived read-only from the already-persisted
+            # `fetch_timestamp` column (no new persistence).
+            assert dataset_status["first_accumulated_at"] is not None
+            assert dataset_status["latest_accumulated_at"] is not None
+            assert dataset_status["first_accumulated_at"] <= dataset_status["latest_accumulated_at"]
             assert dataset_status["cumulative_unique_real_candles"] == len(base)
             assert dataset_status["certification_min_trade_count"] == 20
             assert dataset_status["remaining_trades_to_floor"] == max(0, 20 - dataset_status["cumulative_unique_development_trades"])
             assert dataset_status["validation_state"] in ("insufficient_evidence", "sample_size_floor_cleared_reexamine_full_model_validation")
+
+    def test_first_accumulated_at_is_stable_while_latest_advances_on_growth(self) -> None:
+        base = _base_series("BTC-USD")
+        rda.run_accumulation_cycle(provider=_provider(base))
+        status1 = rda.get_accumulation_status()
+        entry1 = next(d for d in status1["per_dataset"] if d["symbol"] == "BTC-USD" and d["timeframe"] == "1h")
+
+        grown = _extend(base, 100)
+        rda.run_accumulation_cycle(provider=_provider(grown))
+        status2 = rda.get_accumulation_status()
+        entry2 = next(d for d in status2["per_dataset"] if d["symbol"] == "BTC-USD" and d["timeframe"] == "1h")
+
+        assert entry2["first_accumulated_at"] == entry1["first_accumulated_at"], "when accumulation first began must never change on later growth"
+        assert entry2["latest_accumulated_at"] >= entry1["latest_accumulated_at"]
 
     def test_status_reports_last_failed_run(self) -> None:
         with pytest.raises(rda.AccumulationFailure):
