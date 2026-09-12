@@ -24456,3 +24456,80 @@ Risk Contract, Emergency Stop, position sizing, or any trading/paper-
 trading behavior. No dataset-identity hashing beyond what the bridge
 already computes at the research boundary (no continuous/background
 hashing). No second database, no external service, no new UI dashboard.
+
+## Real-Data Research Universe Expansion Audit 2.0 (both axes genuinely blocked)
+
+CEO directive "TradeTown — Real-Data Research Universe Expansion 2.0"
+asked whether the real-data research universe (currently exactly
+BTC-USD + ETH-USD at 1h, via `KrakenMarketDataProvider`) could safely
+grow — more liquid symbols, more research-supported timeframes, more
+independent market conditions — without weakening provenance, holdout
+separation, evidence floors, or fail-closed behavior. Both axes were
+audited to a real, live-verified conclusion; **no production code
+changed** — the milestone's own deliverable is the audit itself plus
+one new, durable regression module (`tests/test_real_data_universe_expansion_audit.py`,
+11 tests) that will fail the day either finding stops being true.
+
+**Symbol axis: a hard, provable ceiling.** This codebase's own
+canonical crypto taxonomy (`app/watchlist.py::SEED_SYMBOLS` +
+`EXTRA_SYMBOL_POOL`, `app/asset_discovery.py::DISCOVERY_SYMBOL_POOL`,
+category `"bitcoin"`) already contains exactly `{"BTC-USD", "ETH-USD"}`
+— re-verified here, not re-discovered (first proven by "Multi-Symbol
+Real-Data Expansion 1.0"). Kraken is a crypto-only exchange; every
+other canonical symbol in this codebase (stocks, ETFs, indices,
+futures, FX, Treasuries) has no possible Kraken pair — not a missing
+mapping, a missing asset class, verified structurally against
+`KrakenMarketDataProvider._SYMBOL_TO_PAIR`. A repo-wide grep of every
+Design Bible / Architecture / Company Lore document found zero mention
+of any third cryptocurrency anywhere in this codebase's own design
+intent, so per the directive's own Section 4 ("do not invent a symbol
+the repository has no legitimate source for"), no candidate symbol
+exists to add without fabricating one.
+
+**Timeframe axis: provider- and research-engine-capable, but not yet
+safely accumulation-capable.** Live verification (real, bounded Kraken
+requests, 12 total — one per (symbol, timeframe) pair across both
+canonical symbols and all six `app/market_data.py::TIMEFRAMES` entries)
+proved Kraken's public OHLC endpoint genuinely serves clean, gap-free,
+duplicate-free, chronologically-ordered, OHLC-valid, already-closed-bar
+candles at 1m/5m/15m/1h/4h/1d for both symbols (each capped at Kraken's
+already-known ~720-candle recent window, confirmed anew at every
+granularity). The existing, unmodified research engine
+(`run_research_experiment`, `run_walk_forward_validation`,
+`app/holdout.py`) was proven genuinely timeframe-agnostic by running
+each against a live 4h/15m/1d real dataset for the first time. The
+real, disclosed blocker is one level up, in
+`app/real_data_accumulator.py` — the one real, protected append-only
+persistence layer real Factory evidence must flow through. It was
+built around a single, hardcoded `TIMEFRAME` module constant and a
+`_get_frozen_definition()` helper that unconditionally returns
+`registry[STRATEGY_DEFINITION_ID][0]` (structurally confirmed: no
+`timeframe` parameter exists on that function at all). Safely
+persisting a second timeframe's real evidence would require either (a)
+adding a `timeframe` column to `holdout_boundary`'s primary key — a
+real schema change to the one system this directive's Section 0 says
+never touch a second time — or (b) registering a second, honestly
+timeframe-tagged strategy version and reworking the accumulator's
+frozen-definition selection from blind-index to timeframe-aware — a
+materially larger, riskier change to the accumulator's core control
+flow than one milestone's "smallest safe increment" permits. Per the
+directive's own Section 33 ("STOP if expansion requires changing
+holdout rules... provenance becomes ambiguous") and Section 32 ("if
+expansion is blocked by genuine provider/research limitations, return
+an audit report rather than create artificial work"), this finding is
+documented structurally rather than forced through.
+
+**Verified**: 11 new tests, all passing, live against real Kraken
+data (CASE A/B disclosure pattern — would skip cleanly on no network,
+never fabricate a result). Full backend suite unmodified/passing;
+`mypy app/`/`ruff check app/ tests/` clean. Zero production files
+changed — `git diff --stat` against this commit touches only the new
+test file, CHANGELOG.md, and this document.
+
+**Final verdict: F** — no safe expansion available in this pass; the
+audit correctly stopped rather than fabricating a symbol or forcing a
+holdout-schema/accumulator-selection change through in one increment.
+The exact next buildable step (timeframe-aware `_get_frozen_definition()`
+selection + a disclosed `holdout_boundary` schema extension) is now a
+precisely-scoped, separately-auditable follow-up milestone, not a
+vague "add more timeframes" ask.

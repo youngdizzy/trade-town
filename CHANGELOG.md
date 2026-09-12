@@ -7,6 +7,32 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Real-Data Research Universe Expansion 2.0" (audit —
+  no safe expansion found, correctly stopped).** Asked whether the
+  real-data research universe (BTC-USD + ETH-USD at 1h via Kraken)
+  could safely grow. Both axes hit a genuine, live-verified ceiling:
+  (1) **symbols** — this codebase's own canonical crypto taxonomy
+  already contains exactly `{"BTC-USD", "ETH-USD"}`, and Kraken (a
+  crypto-only exchange) has no pair for any other canonical symbol
+  (stocks/ETFs/futures/FX/Treasuries) — not a missing mapping, a
+  missing asset class; no third cryptocurrency exists anywhere in this
+  codebase's own design intent to add without fabricating one; (2)
+  **timeframes** — live verification proved Kraken + the existing
+  research engine genuinely support all six `TIMEFRAMES` entries
+  (1m/5m/15m/1h/4h/1d) for both symbols, but `app/real_data_accumulator.py`
+  was built around a single hardcoded `TIMEFRAME` constant and a
+  frozen-definition selector with no timeframe awareness at all —
+  safely fixing that requires either a `holdout_boundary` schema change
+  or a rework of the accumulator's core selection logic, both larger
+  and riskier than one milestone's "smallest safe increment." No
+  production code changed. Added `tests/test_real_data_universe_expansion_audit.py`
+  (11 tests, live against real Kraken data, CASE A/B skip-on-no-network)
+  — durable proof of both findings that will fail the day either one
+  changes. Verdict: **F — no safe expansion available; audit correctly
+  stopped.** See `docs/Architecture.md`'s "Real-Data Research Universe
+  Expansion Audit 2.0" section for the full analysis and the precisely-
+  scoped next buildable step this audit identified.
+
 - **"TradeTown — Real-Data Research Evidence Ledger & Provenance 1.0."**
   Closes a real gap the prior audit's own Phase 2 confirmed:
   `FactoryRunRecord` carried NO run-level provenance field at all — a
