@@ -135,6 +135,7 @@ from app.schemas import (
     ChampionRecord,
     FactoryRunRecord,
     ResearchDiscoveryCycleRecord,
+    ResearchLessonRecord,
     ResearchLoopIterationRecord,
     ResearchOrchestratorStatus,
     SeedHypothesisProposalRead,
@@ -197,6 +198,7 @@ from app.research_factory import (
     MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN,
     run_research_factory_cycle,
 )
+from app.real_data_research_bridge import RealDataFactoryRunOutcome, run_real_data_factory_cycle
 from app.research_discovery import run_research_discovery_cycle
 from app.research_orchestrator import ResearchOrchestratorDecision, ResearchOrchestratorOutcome, ResearchOrchestratorSeed, decide_research_orchestration
 from app.seed_hypothesis_generator import generate_seed_hypothesis
@@ -3462,6 +3464,29 @@ class GameState:
         new_iterations = all_iterations[len(research_iterations_snapshot):]
         new_lessons = all_lessons[len(research_lessons_snapshot):]
         family_slug = strategy_definition_slug(definition.name)
+        return await self._merge_factory_run_result(
+            run_record=run_record,
+            updated_registry=updated_registry,
+            new_iterations=new_iterations,
+            new_lessons=new_lessons,
+            family_slug=family_slug,
+        )
+
+    async def _merge_factory_run_result(
+        self,
+        *,
+        run_record: FactoryRunRecord,
+        updated_registry: dict[str, list[CompiledStrategyDefinition]],
+        new_iterations: list[ResearchLoopIterationRecord],
+        new_lessons: list[ResearchLessonRecord],
+        family_slug: str,
+    ) -> tuple[GameSaveState, FactoryRunRecord]:
+        """CEO directive "TradeTown — Real-Data Strategy Factory
+        Integration & Holdout Enforcement 1.0" — the exact real
+        concurrency-safe merge `submit_research_factory_run()` already
+        established, extracted so `submit_real_data_research_factory_run()`
+        below reuses it verbatim rather than duplicating it. Never
+        touches Gatekeeper/RiskContract/Emergency Stop/broker state."""
         async with self.lock:
             updated_iterations = [*self.data.research_iterations, *new_iterations]
             updated_lessons = [*self.data.research_lessons, *new_lessons]
@@ -3488,6 +3513,85 @@ class GameState:
                 }
             )
             return self.data, run_record
+
+    async def submit_real_data_research_factory_run(
+        self,
+        hypothesis: StrategyHypothesis,
+        definition: CompiledStrategyDefinition,
+        *,
+        symbol: str,
+        max_generations: int | None = None,
+        max_total_backtests: int | None = None,
+        max_children_per_parent: int | None = None,
+        max_runtime_seconds: int | None = None,
+    ) -> tuple[GameSaveState, RealDataFactoryRunOutcome]:
+        """CEO directive "TradeTown — Real-Data Strategy Factory
+        Integration & Holdout Enforcement 1.0" — the one real entry
+        point that runs a Factory research cycle against accumulated
+        real Kraken candles instead of the mock provider, via
+        app/real_data_research_bridge.py's structural holdout guarantee.
+        A preflight failure (accumulator empty, no frozen holdout
+        boundary for this exact strategy version, mixed provenance,
+        etc.) is a real, honest, expected outcome: it makes ZERO calls
+        into the Factory and mutates NOTHING — `self.data` is returned
+        unchanged, exactly like a `preflight_failed` outcome from the
+        bridge module itself. Never touches Gatekeeper/RiskContract/
+        Emergency Stop/broker state, and never falls back to mock data."""
+        run_id = f"real-data-factory-run-{definition.id}-{definition.version}-{uuid.uuid4().hex[:12]}"
+        async with self.lock:
+            quant_research_experiments = self.data.quant_research_experiments
+            research_iterations_snapshot = self.data.research_iterations
+            research_lessons_snapshot = self.data.research_lessons
+            failed_archive = self.data.strategy_failed_archive
+            champion_history = self.data.champion_history
+            risk_per_trade_pct = self.data.risk_limits.risk_per_trade_pct
+            registry_snapshot = self.data.compiled_strategy_versions
+            started_sim_day = self.data.time.day
+            current_state = self.data
+        outcome = run_real_data_factory_cycle(
+            hypothesis,
+            definition,
+            symbol=symbol,
+            compiled_strategy_registry=registry_snapshot,
+            quant_research_experiments=quant_research_experiments,
+            research_iterations=research_iterations_snapshot,
+            research_lessons=research_lessons_snapshot,
+            failed_archive=failed_archive,
+            champion_history=champion_history,
+            risk_per_trade_pct=risk_per_trade_pct,
+            run_id=run_id,
+            created_at=_now_iso(),
+            max_generations=max_generations,
+            max_total_backtests=max_total_backtests,
+            max_children_per_parent=max_children_per_parent,
+            max_runtime_seconds=max_runtime_seconds,
+        )
+        if outcome.status == "preflight_failed":
+            return current_state, outcome
+        assert outcome.run is not None
+        assert outcome.updated_registry is not None
+        assert outcome.new_iterations is not None
+        assert outcome.new_lessons is not None
+        run_record = outcome.run.model_copy(update={"sim_day": started_sim_day})
+        family_slug = strategy_definition_slug(definition.name)
+        merged_state, merged_run = await self._merge_factory_run_result(
+            run_record=run_record,
+            updated_registry=outcome.updated_registry,
+            new_iterations=outcome.new_iterations,
+            new_lessons=outcome.new_lessons,
+            family_slug=family_slug,
+        )
+        return merged_state, RealDataFactoryRunOutcome(
+            status="completed",
+            symbol=symbol,
+            reason=None,
+            detail=outcome.detail,
+            run=merged_run,
+            updated_registry=outcome.updated_registry,
+            new_iterations=outcome.new_iterations,
+            new_lessons=outcome.new_lessons,
+            provenance=outcome.provenance,
+        )
 
     async def submit_ai_reasoning_request(self, proposal_id: str, *, role: AIReasoningRole) -> tuple[GameSaveState, AIReasoningResult]:
         """CEO directive "TradeTown — True AI Agent Reasoning Foundation

@@ -68,6 +68,8 @@ from app.schemas import (
     ResearchLessonRecord,
     ResearchLoopIterationRecord,
     ResearchOrchestratorStatus,
+    RealDataFactoryRunRead,
+    RealDataResearchProvenanceRead,
     SeedHypothesisProposalRead,
     RiskProfileTemplate,
     RiskSurvivalScorecard,
@@ -262,6 +264,18 @@ class SubmitResearchFactoryRunRequest(BaseModel):
     # submit_research_factory_run() apply its own real, richer defaults
     # (app/research_factory.py's MAX_CHILDREN_PER_PARENT/
     # MAX_RUNTIME_SECONDS) for every NEW live run.
+    max_children_per_parent: int | None = Field(default=None, alias="maxChildrenPerParent")
+    max_runtime_seconds: int | None = Field(default=None, alias="maxRuntimeSeconds")
+
+
+class SubmitRealDataResearchFactoryRunRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    hypothesis: StrategyHypothesis
+    definition: CompiledStrategyDefinition
+    symbol: str
+    max_generations: int | None = Field(default=None, alias="maxGenerations")
+    max_total_backtests: int | None = Field(default=None, alias="maxTotalBacktests")
     max_children_per_parent: int | None = Field(default=None, alias="maxChildrenPerParent")
     max_runtime_seconds: int | None = Field(default=None, alias="maxRuntimeSeconds")
 
@@ -1101,6 +1115,65 @@ async def run_research_factory_run_endpoint(payload: SubmitResearchFactoryRunReq
     )
     persist_modules(state)
     return run
+
+
+@router.post("/research-factory/run-real-data", response_model=RealDataFactoryRunRead)
+async def run_real_data_research_factory_run_endpoint(payload: SubmitRealDataResearchFactoryRunRequest) -> RealDataFactoryRunRead:
+    """CEO directive "TradeTown — Real-Data Strategy Factory Integration
+    & Holdout Enforcement 1.0" — the one real entry point for running
+    the EXISTING, UNMODIFIED `POST /research-factory/run` loop against
+    accumulated real Kraken candles (see
+    app/real_data_research_bridge.py's own module docstring for the
+    complete real architecture) instead of the mock provider every other
+    Factory/discovery endpoint on this router still defaults to. This is
+    an integration + enforcement milestone, not a new research engine or
+    a second Factory.
+
+    `status="preflight_failed"` (accumulator empty for this symbol, no
+    frozen holdout boundary for this exact strategy id/version, mixed
+    real/mock provenance, etc.) is a real, honest, expected outcome —
+    never an error to work around, and it makes ZERO calls into the
+    Factory and mutates NOTHING. Holdout candles are structurally never
+    reachable from this endpoint: `DevelopmentOnlyRealDataProvider`'s
+    own state physically cannot contain them, so no mutation this run
+    generates could ever be evaluated against holdout data. Never falls
+    back to mock data on any failure, never mixes real and mock candles,
+    and never touches Gatekeeper/RiskContract/Emergency Stop/broker
+    state."""
+    state, outcome = await game_state.submit_real_data_research_factory_run(
+        payload.hypothesis,
+        payload.definition,
+        symbol=payload.symbol,
+        max_generations=payload.max_generations,
+        max_total_backtests=payload.max_total_backtests,
+        max_children_per_parent=payload.max_children_per_parent,
+        max_runtime_seconds=payload.max_runtime_seconds,
+    )
+    persist_modules(state)
+    return RealDataFactoryRunRead(
+        status=outcome.status,
+        symbol=outcome.symbol,
+        reason=outcome.reason,
+        detail=outcome.detail,
+        run=outcome.run,
+        provenance=(
+            RealDataResearchProvenanceRead(
+                provider=outcome.provenance.provider,
+                dataStatus=outcome.provenance.data_status,
+                symbol=outcome.provenance.symbol,
+                timeframe=outcome.provenance.timeframe,
+                developmentCandleCount=outcome.provenance.development_candle_count,
+                holdoutCandleCount=outcome.provenance.holdout_candle_count,
+                datasetStartTimestamp=outcome.provenance.dataset_start_timestamp,
+                datasetEndTimestamp=outcome.provenance.dataset_end_timestamp,
+                datasetContentHash=outcome.provenance.dataset_content_hash,
+                strategyFingerprint=outcome.provenance.strategy_fingerprint,
+                holdoutBoundaryFrozenAt=outcome.provenance.holdout_boundary_frozen_at,
+            )
+            if outcome.provenance is not None
+            else None
+        ),
+    )
 
 
 @router.get("/research-factory/runs", response_model=list[FactoryRunRecord])

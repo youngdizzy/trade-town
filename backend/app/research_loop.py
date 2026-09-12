@@ -123,6 +123,7 @@ from app.schemas import (
     StrategyHypothesis,
     StrategyScorecard,
 )
+from app.market_data import MarketDataProvider
 from app.statistical_comparison import MIN_TRADES_FOR_BOOTSTRAP
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 
@@ -557,6 +558,13 @@ def run_research_loop_iteration(
     symbols: list[str] | None = None,
     timeframe: str = DEFAULT_TIMEFRAME,
     candles_per_symbol: int = DEFAULT_CANDLES_PER_SYMBOL,
+    # CEO directive "TradeTown — Real-Data Strategy Factory Integration &
+    # Holdout Enforcement 1.0" — additive, opt-in, defaults to `None`
+    # (the existing mock singleton `run_research_experiment()` already
+    # falls back to) so every existing caller/test is unaffected unless
+    # it explicitly injects a provider (e.g. a development-only
+    # real-data provider — see app/real_data_research_bridge.py).
+    market_data_provider: MarketDataProvider | None = None,
 ) -> ResearchLoopIterationRecord:
     """The one real entry point — Sections 1/4's full funnel in one
     call: HISTORICAL_BACKTEST/COST_TEST/WALK_FORWARD (all via the
@@ -568,7 +576,9 @@ def run_research_loop_iteration(
     convention (pure functions in app/*.py, persistence only in
     app/state.py under its lock); never mutates `champion_history` or
     any existing gate's own state."""
-    record = run_research_experiment(definition, symbols=symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
+    record = run_research_experiment(
+        definition, symbols=symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol, market_data_provider=market_data_provider
+    )
     bucket = record.backtest.overall
 
     similar_experiments = find_similar_experiments(quant_research_experiments, hypothesis=hypothesis.hypothesis, definition_id=definition.id, timeframe=timeframe)

@@ -15618,6 +15618,47 @@ class SeedHypothesisProposalRead(CamelModel):
     fingerprint: str | None = None
 
 
+class RealDataResearchProvenanceRead(CamelModel):
+    """CEO directive "TradeTown — Real-Data Strategy Factory Integration
+    & Holdout Enforcement 1.0" — read-only API exposure of
+    `app/real_data_research_bridge.py::RealDataResearchProvenance` (same
+    computed-fresh, never-persisted convention as
+    `SeedHypothesisProposalRead` above). Every field here was genuinely
+    read from `app/real_data_accumulator.py`'s own SQLite tables at
+    preflight time — never fabricated or estimated."""
+
+    provider: Literal["kraken"]
+    data_status: Literal["real"] = Field(alias="dataStatus")
+    symbol: str
+    timeframe: str
+    development_candle_count: int = Field(alias="developmentCandleCount")
+    holdout_candle_count: int = Field(alias="holdoutCandleCount")
+    dataset_start_timestamp: str = Field(alias="datasetStartTimestamp")
+    dataset_end_timestamp: str = Field(alias="datasetEndTimestamp")
+    dataset_content_hash: str = Field(alias="datasetContentHash")
+    strategy_fingerprint: str = Field(alias="strategyFingerprint")
+    holdout_boundary_frozen_at: str = Field(alias="holdoutBoundaryFrozenAt")
+
+
+class RealDataFactoryRunRead(CamelModel):
+    """Same directive — read-only API exposure of
+    `app/real_data_research_bridge.py::RealDataFactoryRunOutcome`.
+    `status="preflight_failed"` is a real, honest, expected outcome
+    (accumulator empty, no frozen holdout boundary for this exact
+    strategy version, mixed provenance, etc.) — never treated as an
+    error by any caller; `run`/`provenance` are `None` only in that
+    case, and `reason` is `None` only when `status="completed"`. A
+    `preflight_failed` outcome made zero calls into the Factory and
+    mutated nothing."""
+
+    status: Literal["completed", "preflight_failed"]
+    symbol: str
+    reason: str | None = None
+    detail: str
+    run: FactoryRunRecord | None = None
+    provenance: RealDataResearchProvenanceRead | None = None
+
+
 class LessonEvidenceSummary(CamelModel):
     """Section 12 — "memory is evidence, not truth." Computed FRESH per
     request (CAGS, matching `ResearchExperimentRecord`'s own convention),

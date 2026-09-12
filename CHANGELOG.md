@@ -7,6 +7,59 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Real-Data Strategy Factory Integration & Holdout
+  Enforcement 1.0."** An audit ("Real-Data Research Factory Integration
+  & Evidence Progression Forensic Audit 1.0") found `app/real_data_accumulator.py`
+  (real Kraken candle accumulation with a permanently frozen holdout
+  boundary) and the Strategy Factory (`app/research_factory.py`/
+  `app/research_loop.py`) completely disconnected — zero imports, zero
+  calls, zero shared data — despite both being real and independently
+  tested. This closes that exact gap. Integration + enforcement only:
+  no new backtest engine, no second Strategy Factory, no duplicate
+  accumulator/provider/holdout logic.
+  - Threaded the existing optional `market_data_provider` injection
+    point one layer deeper through `run_research_loop_iteration()` and
+    `run_research_factory_cycle()` down to `run_research_experiment()` —
+    every existing caller that omits it is unaffected.
+  - **New module**, `app/real_data_research_bridge.py` — the one
+    explicit, read-only boundary between the accumulator and the
+    Factory. `preflight_real_data_dataset()` fails closed on every named
+    condition (accumulator empty, mixed real/mock provenance, no frozen
+    holdout boundary for this exact strategy id/version, insufficient
+    development candles) before any Factory call is made.
+    `DevelopmentOnlyRealDataProvider` gives a **structural**, not
+    procedural, holdout guarantee: its entire internal state is a
+    candle list already sliced to the development window at
+    construction time, so no code path through it can ever serve a
+    holdout candle. `read_holdout_candles_for_final_evaluation()` is a
+    deliberately separate function no Factory/mutation path calls.
+  - **Wired into `GameState`**: `submit_research_factory_run()`'s
+    concurrency-safe merge tail was extracted (behavior-preserving)
+    into `_merge_factory_run_result()`, reused by the new
+    `submit_real_data_research_factory_run()` rather than duplicated. A
+    preflight failure returns `self.data` completely unchanged. New
+    `POST /api/sandbox/research-factory/run-real-data` endpoint
+    (`RealDataFactoryRunRead`/`RealDataResearchProvenanceRead` schemas).
+  - A double-counting bug (the first draft would have re-appended every
+    pre-existing iteration/lesson on each real-data run) was caught and
+    fixed during implementation review, before any test ran, by
+    re-reading `submit_research_factory_run()`'s own existing slicing
+    convention.
+  - 14 new tests across `tests/test_real_data_research_bridge.py` and
+    `tests/test_state_real_data_research_factory.py` — including a spy
+    proving an unavailable accumulator makes *zero* calls into the
+    Factory (never a silent mock fallback), a direct proof the
+    development provider never serves a holdout-window candle at any
+    requested limit, and confirmation the resulting
+    `ResearchExperimentRecord` is tagged
+    `dataset_metadata.source == "external_real_provider"` so real
+    provenance survives all the way to what a validator would see.
+  - Not built this pass: no automatic connection from the seed
+    hypothesis generator to the accumulator, no autonomous-orchestrator
+    real-data cadence, no UI surface, no "consumed" flag preventing a
+    holdout read from being repeated — each explicitly deferred rather
+    than silently solved.
+
 - **"TradeTown — Read-Only MCP Boundary 1.0."** A security/boundary
   milestone, not a trading or AI-intelligence upgrade: an isolated,
   observation-only MCP server that lets a future external agent

@@ -2211,6 +2211,42 @@ overwritten. Optional `?strategyFamily=...` filter. Returns
 Same directive, Section 18 — one real factory run's full detail. `404`
 when no run with this id exists. Returns `FactoryRunRecord`.
 
+### `POST /api/sandbox/research-factory/run-real-data`
+
+CEO directive "TradeTown — Real-Data Strategy Factory Integration &
+Holdout Enforcement 1.0" — runs the exact same existing, unmodified
+Factory loop `POST /research-factory/run` uses, but against accumulated
+real Kraken candles (`app/real_data_accumulator.py`) instead of the mock
+provider, via `app/real_data_research_bridge.py`. Body:
+`{ "hypothesis": StrategyHypothesis, "definition": CompiledStrategyDefinition,
+"symbol": "BTC-USD", "maxGenerations": 5, "maxTotalBacktests": 10,
+"maxChildrenPerParent": 3, "maxRuntimeSeconds": 300 }` (`symbol` must be
+one of the canonical `REAL_DATA_SYMBOLS` — `"BTC-USD"`/`"ETH-USD"` today;
+`definition` must be the EXACT `(strategyId, version)` the accumulator
+has already frozen a holdout boundary for — never invented on the fly).
+Returns `RealDataFactoryRunRead`: `status` (`"completed"` |
+`"preflight_failed"`), `symbol`, `reason` (one of
+`REAL_DATA_UNAVAILABLE`/`INSUFFICIENT_REAL_CANDLES`/
+`REAL_DATA_PROVENANCE_INVALID`/`HOLDOUT_BOUNDARY_INVALID`/
+`REAL_DATASET_MIXED_PROVENANCE`, `null` on success), `detail`, `run`
+(the full `FactoryRunRecord`, `null` on `preflight_failed`), and
+`provenance` (`RealDataResearchProvenanceRead` — provider, real
+development/holdout candle counts, dataset start/end timestamps, a
+SHA-256 dataset content hash, the strategy fingerprint, and the holdout
+freeze timestamp; `null` on `preflight_failed`). A `preflight_failed`
+response makes zero calls into the Factory and mutates nothing — it is
+a real, honest, expected outcome (most commonly `REAL_DATA_UNAVAILABLE`
+until a real accumulation cycle has actually run against this
+deployment's `data/real_data_accumulation.db`), never an error to work
+around. Holdout candles are structurally never reachable through this
+endpoint (see `DevelopmentOnlyRealDataProvider`'s own module docstring).
+Never falls back to mock data on any failure, never mixes real and mock
+candles within one run, never auto-promotes a survivor, and never
+touches Gatekeeper/Risk Contract/Emergency Stop/broker state. This
+endpoint is not wired into the Autonomous Research Orchestrator and is
+never called automatically — a human/API caller must explicitly submit
+each run.
+
 ### `GET /api/sandbox/research-factory/lineage/{strategy_family}`
 
 Same directive, Section 18 — "inspect strategy lineage." Reuses the

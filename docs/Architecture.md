@@ -24161,3 +24161,165 @@ determining, from real usage, what query shape a family-general seed
 proposal can honestly form against existing memory/regime evidence —
 never inventing a filter just to populate an empty field. Not
 implemented in this turn.
+
+## CEO directive "TradeTown — Real-Data Research Factory Integration & Evidence Progression Forensic Audit 1.0"
+
+Audit-only. Confirmed `app/real_data_accumulator.py` (real-time Kraken
+candle/trade accumulation with a permanently frozen holdout boundary)
+and `app/research_factory.py`/`app/research_loop.py` (the Strategy
+Factory's real mutation/backtest loop) were, despite both being real
+and independently tested, **completely disconnected**: zero imports,
+zero calls, zero shared data between them, and the accumulator had no
+router/API exposure at all. The Factory's own `market_data_provider`
+injection point (from "Research Provider Injection 1.0") stopped one
+layer short — `run_research_loop_iteration()`/`run_research_factory_cycle()`
+never forwarded it further down their own call chain in a way the
+accumulator's real data could reach. Classified verdict **D**: real
+infrastructure exists on both sides of a real gap, but the gap itself
+was real, not superficial. Recommended a targeted integration + holdout
+enforcement fix, never a new research engine; implemented next (see
+below).
+
+## CEO directive "TradeTown — Real-Data Strategy Factory Integration & Holdout Enforcement 1.0"
+
+Closes the exact gap the audit above found — an integration +
+enforcement milestone, not a new research engine, not a second Strategy
+Factory.
+
+**Threading the injection point the rest of the way** (`app/research_loop.py`,
+`app/research_factory.py`): both `run_research_loop_iteration()` and
+`run_research_factory_cycle()` gained an additional
+`market_data_provider: MarketDataProvider | None = None` parameter,
+forwarded one level deeper to the existing `run_research_experiment()`
+call each already makes — the same optional dependency-injection
+pattern "Research Provider Injection 1.0" established, extended rather
+than duplicated. Every existing caller that omits the parameter is
+completely unaffected (verified by the full existing `tests/test_research_factory.py`
+suite passing unmodified).
+
+**New module**, `app/real_data_research_bridge.py` — the one explicit,
+auditable boundary between the accumulator and the Factory. Read-only
+from the research side: it only ever `SELECT`s the accumulator's own
+`candles`/`holdout_boundary` tables (whose own SQL triggers already
+abort any `UPDATE`/`DELETE` — see `real_data_accumulator.py`), never
+calls `run_accumulation_cycle()`, and never re-freezes a holdout
+boundary itself.
+
+- `preflight_real_data_dataset(symbol, definition)` — a read-only
+  preflight covering every named failure mode: `REAL_DATA_UNAVAILABLE`
+  (accumulator empty for this symbol), `REAL_DATASET_MIXED_PROVENANCE`
+  (any accumulated candle whose `data_status` isn't `"historical"`),
+  `HOLDOUT_BOUNDARY_INVALID` (no frozen boundary exists for this EXACT
+  `(symbol, strategy_id, strategy_version)` — this module never freezes
+  one itself, only `real_data_accumulator.py::freeze_holdout_baseline()`
+  may), and `INSUFFICIENT_REAL_CANDLES` (a real, non-arbitrary floor of
+  1 development candle — deliberately not the Factory's own
+  `DEFAULT_CANDLES_PER_SYMBOL=6000`, which would take the accumulator
+  ~250 days of real hourly fetches to reach; real evidence-sufficiency
+  gating stays exactly where it already lived, in the existing
+  `MIN_TRADES_FOR_BOOTSTRAP=20`/`CERTIFICATION_MIN_TRADE_COUNT=20`
+  trade-count floors downstream in model validation).
+- `DevelopmentOnlyRealDataProvider` — the **structural** (not
+  procedural) holdout guarantee this milestone required: a
+  `MarketDataProvider` whose entire internal state is a candle list
+  already sliced to the development window at construction time. No
+  method, parameter, or code path on this class can ever serve a
+  holdout candle, regardless of how many mutations the Factory
+  generates or how many times a run repeats, because it was never given
+  one to hold.
+- `read_holdout_candles_for_final_evaluation(symbol, definition)` —
+  deliberately a separate, differently-named function no Factory/
+  mutation code path calls, for an explicit, final evaluation a caller
+  performs outside the mutation loop.
+- `run_real_data_factory_cycle(...)` — the one real entry point: runs
+  the preflight, and on success calls the **existing, unmodified**
+  `run_research_factory_cycle()` with the `DevelopmentOnlyRealDataProvider`
+  injected. A preflight failure makes zero calls into the Factory and
+  mutates nothing — `status="preflight_failed"` is a real, honest,
+  expected outcome, never an error to work around.
+
+**Wired into `GameState`** (`app/state.py`): `submit_research_factory_run()`'s
+concurrency-safe merge tail (snapshot-under-lock → slow work outside the
+lock → merge-under-lock) was extracted, behavior-preserving, into
+`_merge_factory_run_result()` so the new
+`submit_real_data_research_factory_run()` reuses it verbatim rather than
+duplicating it. A preflight failure returns `self.data` completely
+unchanged (verified by identity, not just equality, in
+`tests/test_state_real_data_research_factory.py`). **New API**:
+`POST /api/sandbox/research-factory/run-real-data`
+(`SubmitRealDataResearchFactoryRunRequest` /
+`RealDataFactoryRunRead`/`RealDataResearchProvenanceRead` in
+`app/schemas.py`) — the same compute-fresh-then-wrap pattern
+`SeedHypothesisProposalRead` already established for `provenance`; never
+auto-triggered, never wired into the Autonomous Research Orchestrator.
+
+**Verified**: 10 focused tests in `tests/test_real_data_research_bridge.py`
+(accumulated real candles reach the Factory with the exact count
+independently recomputed from the accumulator's own rows; every
+provenance field is internally consistent; a single non-`"historical"`
+row blocks the whole dataset closed; an empty accumulator makes
+*zero* calls into `run_research_factory_cycle()`, proven via a spy, not
+just asserted; the `DevelopmentOnlyRealDataProvider` never serves a
+candle inside the frozen holdout window, for any requested limit; the
+holdout read is disjoint from the development set and matches the
+provenance count exactly; the resulting `ResearchExperimentRecord` is
+tagged `dataset_metadata.source == "external_real_provider"`, proving
+real provenance survives all the way through to what a validator would
+see; an empty-accumulator outcome is `None`-shaped everywhere a
+completed one wouldn't be, not merely a failure flag; the pre-existing
+mock Factory path is unaffected by omitting the new parameter; and the
+bridge module's own source contains no reference to `nexus`,
+`RiskContract`, `Gatekeeper`, `EmergencyStop`, or any broker/order
+concept) plus 4 tests in `tests/test_state_real_data_research_factory.py`
+covering the `GameState` wiring specifically (preflight failure leaves
+state byte-identical; a completed run merges exactly once with no
+double-counting; two sequential runs never duplicate a prior run's
+iterations; a mixed-provenance preflight failure also leaves state
+untouched). Full existing backend suite verified unaffected; `mypy app/`
+and `ruff check app/ tests/` both clean.
+
+### A bug this milestone's own review caught before any test ran
+
+`run_real_data_factory_cycle()`'s first draft passed
+`run_research_factory_cycle()`'s **full** (snapshot + newly produced)
+`research_iterations`/`research_lessons` return lists straight through
+as `new_iterations`/`new_lessons` — which would have caused
+`GameState`'s merge step to re-append every pre-existing iteration/
+lesson a second time on every real-data run. Caught by re-reading
+`submit_research_factory_run()`'s own existing slicing convention
+before writing a single test, and fixed by slicing against the length
+of the snapshot lists the function itself received as input.
+
+### Explicitly not built this pass
+
+No new backtest engine, no second Strategy Factory, no duplicate
+accumulator, market-data provider, holdout logic, or model validation.
+No automatic promotion or deployment of any real-data survivor. No
+change to Gatekeeper, Risk Contract, Emergency Stop, position sizing, or
+any trading decision — verified structurally (a source-text scan of
+`real_data_research_bridge.py` finds no reference to any of them) as
+well as by the full existing trading-path test suite passing unmodified.
+The seed generator was **not** automatically connected to the
+accumulator, and the Autonomous Research Orchestrator was **not** made
+autonomous over real data — both explicitly deferred, per the directive's
+own instruction, as separately scoped future decisions. Institutional
+memory's shape was not touched. Nothing here currently prevents calling
+`read_holdout_candles_for_final_evaluation()` more than once against the
+same frozen boundary (no "consumed" flag) — a real, disclosed
+limitation, not solved here per the directive's own escape hatch for
+limitations that would otherwise require inventing a new holdout
+framework.
+
+### ONE Next Milestone (not implemented this pass)
+
+**REAL-DATA FACTORY RUN UI SURFACE 1.0** — this milestone deliberately
+stopped at the API boundary (`POST /research-factory/run-real-data`);
+no frontend panel lets a human actually trigger a real-data run or see
+its `RealDataResearchProvenanceRead` payload (development/holdout candle
+counts, dataset hash, frozen-at timestamp) rendered anywhere. The
+smallest next step is a narrow, explicit UI affordance — almost
+certainly inside the existing `ResearchFactoryView.tsx` — that lets the
+CEO choose a symbol from the real, canonical `REAL_DATA_SYMBOLS`
+universe and see the real preflight outcome (including an honest
+`"preflight_failed"` state) before deciding whether to submit. Not
+implemented in this turn.

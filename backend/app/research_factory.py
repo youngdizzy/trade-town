@@ -245,6 +245,7 @@ from app.strategy_compiler import (
     _TREND_SCORE_THRESHOLD_PATTERN,
     _number_from_word,
 )
+from app.market_data import MarketDataProvider
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
 from app.strategy_registry import register_strategy_version
 
@@ -652,6 +653,14 @@ def run_research_factory_cycle(
     # updated docstring below for what changes when it does.
     max_children_per_parent: int = 1,
     max_runtime_seconds: int = 0,
+    # CEO directive "TradeTown — Real-Data Strategy Factory Integration &
+    # Holdout Enforcement 1.0" — additive, opt-in, defaults to `None`
+    # (every generation's own `run_research_loop_iteration()` call
+    # already falls back to the existing mock singleton) so every
+    # existing caller/test is unaffected. See
+    # app/real_data_research_bridge.py for the one real caller that
+    # injects a development-only real-data provider here.
+    market_data_provider: MarketDataProvider | None = None,
 ) -> tuple[FactoryRunRecord, dict[str, list[CompiledStrategyDefinition]], list[ResearchLoopIterationRecord], list[ResearchLessonRecord]]:
     """Section 26's one real entry point — the complete, bounded,
     deterministic, multi-generation OBSERVE->GENERATE->MUTATE->COMPILE->
@@ -766,6 +775,7 @@ def run_research_factory_cycle(
             symbols=symbols,
             timeframe=resolved_timeframe,
             candles_per_symbol=resolved_candles,
+            market_data_provider=market_data_provider,
         )
         backtests_run += 1
         all_iterations.append(iteration)
