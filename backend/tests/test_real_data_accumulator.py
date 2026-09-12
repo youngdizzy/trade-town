@@ -75,7 +75,24 @@ def _extend(base: list[Candle], extra_bars: int) -> list[Candle]:
 
 class _FixedProvider(MarketDataProvider):
     """Serves a pre-set candle list per symbol — a network-free test
-    double for KrakenMarketDataProvider."""
+    double for KrakenMarketDataProvider.
+
+    CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+    Infrastructure 1.0" — `run_accumulation_cycle()` now requests BOTH
+    "1h" and "4h" for every symbol (see `app/real_data_accumulator.py::
+    TIMEFRAMES`). Every test in this file predates timeframe-awareness
+    and is exercising SYMBOL/holdout/dedup/fail-closed mechanics that
+    apply identically regardless of which timeframe's data flows
+    through, so this fixture serves the SAME underlying deterministic
+    series for whichever timeframe is requested, re-tagged with that
+    timeframe (`dataclasses.replace(c, timeframe=timeframe)`) — this
+    satisfies the real, structural "dataset.timeframe == requested.
+    timeframe" invariant `run_accumulation_cycle()` itself now enforces
+    (Section 8) without requiring every existing test to hand-author a
+    second, distinct synthetic series it doesn't actually care about.
+    `tests/test_timeframe_aware_real_data_infrastructure.py` constructs
+    a deliberately MISMATCHED fixture to prove that exact invariant
+    actually fires."""
 
     def __init__(self, candles_by_symbol: dict[str, list[Candle]]) -> None:
         self._candles_by_symbol = candles_by_symbol
@@ -85,7 +102,8 @@ class _FixedProvider(MarketDataProvider):
 
     def get_candles(self, symbol: str, timeframe: str, limit: int, *, end_time=None, anchor_price=None) -> list[Candle]:
         candles = self._candles_by_symbol[symbol]
-        return candles[-limit:] if limit > 0 else list(candles)
+        windowed = candles[-limit:] if limit > 0 else list(candles)
+        return [dataclasses.replace(c, timeframe=timeframe) for c in windowed]
 
 
 def _provider(btc: list[Candle], eth: list[Candle] | None = None) -> _FixedProvider:
@@ -115,7 +133,7 @@ class TestHoldoutBoundaryPermanence:
         assert result["status"] == "success"
         with _conn() as conn:
             row = conn.execute(
-                "SELECT holdout_start_timestamp, holdout_end_timestamp FROM holdout_boundary WHERE symbol = 'BTC-USD'"
+                "SELECT holdout_start_timestamp, holdout_end_timestamp FROM holdout_boundary WHERE symbol = 'BTC-USD' AND timeframe = '1h'"
             ).fetchone()
             assert row is not None
             assert row[0] < row[1]
@@ -124,12 +142,16 @@ class TestHoldoutBoundaryPermanence:
         base = _base_series("BTC-USD")
         rda.run_accumulation_cycle(provider=_provider(base))
         with _conn() as conn:
-            before = conn.execute("SELECT holdout_start_timestamp, holdout_end_timestamp, dataset_content_hash FROM holdout_boundary WHERE symbol = 'BTC-USD'").fetchone()
+            before = conn.execute(
+                "SELECT holdout_start_timestamp, holdout_end_timestamp, dataset_content_hash FROM holdout_boundary WHERE symbol = 'BTC-USD' AND timeframe = '1h'"
+            ).fetchone()
 
         grown = _extend(base, 200)
         rda.run_accumulation_cycle(provider=_provider(grown))
         with _conn() as conn:
-            after = conn.execute("SELECT holdout_start_timestamp, holdout_end_timestamp, dataset_content_hash FROM holdout_boundary WHERE symbol = 'BTC-USD'").fetchone()
+            after = conn.execute(
+                "SELECT holdout_start_timestamp, holdout_end_timestamp, dataset_content_hash FROM holdout_boundary WHERE symbol = 'BTC-USD' AND timeframe = '1h'"
+            ).fetchone()
 
         assert before == after, "the holdout boundary must never be recomputed once frozen"
 
@@ -145,7 +167,7 @@ class TestHoldoutBoundaryPermanence:
         rda.run_accumulation_cycle(provider=_provider(base))
         with _conn() as conn:
             is_holdout_before = {
-                row[0]: row[1] for row in conn.execute("SELECT entry_timestamp, is_holdout FROM trades WHERE symbol = 'BTC-USD'")
+                row[0]: row[1] for row in conn.execute("SELECT entry_timestamp, is_holdout FROM trades WHERE symbol = 'BTC-USD' AND timeframe = '1h'")
             }
         for ts in holdout_entries:
             assert is_holdout_before[ts] == 1
@@ -153,7 +175,7 @@ class TestHoldoutBoundaryPermanence:
         grown = _extend(base, 300)
         rda.run_accumulation_cycle(provider=_provider(grown))
         with _conn() as conn:
-            is_holdout_after = {row[0]: row[1] for row in conn.execute("SELECT entry_timestamp, is_holdout FROM trades WHERE symbol = 'BTC-USD'")}
+            is_holdout_after = {row[0]: row[1] for row in conn.execute("SELECT entry_timestamp, is_holdout FROM trades WHERE symbol = 'BTC-USD' AND timeframe = '1h'")}
         for ts in holdout_entries:
             assert is_holdout_after[ts] == 1, f"trade at {ts} was reclassified out of holdout after new data arrived"
         # And every trade discovered BEFORE growth keeps the identical is_holdout value.
@@ -168,11 +190,11 @@ class TestDeduplicationAndIdempotency:
     def test_overlapping_fetch_deduplicates_candles(self) -> None:
         base = _base_series("BTC-USD")
         result1 = rda.run_accumulation_cycle(provider=_provider(base))
-        assert result1["new_candles_appended"]["BTC-USD"] == len(base)
+        assert result1["new_candles_appended"]["BTC-USD"]["1h"] == len(base)
 
         grown = _extend(base, 50)
         result2 = rda.run_accumulation_cycle(provider=_provider(grown))
-        assert result2["new_candles_appended"]["BTC-USD"] == 50, "only the genuinely new tail should count as new"
+        assert result2["new_candles_appended"]["BTC-USD"]["1h"] == 50, "only the genuinely new tail should count as new"
 
     def test_conflicting_duplicate_candle_hard_fails(self) -> None:
         base = _base_series("BTC-USD")
@@ -187,7 +209,7 @@ class TestDeduplicationAndIdempotency:
         base = _base_series("BTC-USD")
         rda.run_accumulation_cycle(provider=_provider(base))
         result = rda.run_accumulation_cycle(provider=_provider(base))
-        assert result["new_candles_appended"]["BTC-USD"] == 0
+        assert result["new_candles_appended"]["BTC-USD"]["1h"] == 0
 
     def test_repeated_identical_cycle_appends_zero_new_candles(self) -> None:
         base = _base_series("BTC-USD")
@@ -195,18 +217,18 @@ class TestDeduplicationAndIdempotency:
         rda.run_accumulation_cycle(provider=_provider(base))
         rda.run_accumulation_cycle(provider=_provider(base))
         with _conn() as conn:
-            count = conn.execute("SELECT COUNT(*) FROM candles WHERE symbol = 'BTC-USD'").fetchone()[0]
+            count = conn.execute("SELECT COUNT(*) FROM candles WHERE symbol = 'BTC-USD' AND timeframe = '1h'").fetchone()[0]
         assert count == len(base)
 
     def test_repeated_identical_cycle_produces_zero_duplicate_trades(self) -> None:
         base = _base_series("BTC-USD")
         rda.run_accumulation_cycle(provider=_provider(base))
         with _conn() as conn:
-            first_count = conn.execute("SELECT COUNT(*) FROM trades WHERE symbol = 'BTC-USD'").fetchone()[0]
+            first_count = conn.execute("SELECT COUNT(*) FROM trades WHERE symbol = 'BTC-USD' AND timeframe = '1h'").fetchone()[0]
         rda.run_accumulation_cycle(provider=_provider(base))
         rda.run_accumulation_cycle(provider=_provider(base))
         with _conn() as conn:
-            second_count = conn.execute("SELECT COUNT(*) FROM trades WHERE symbol = 'BTC-USD'").fetchone()[0]
+            second_count = conn.execute("SELECT COUNT(*) FROM trades WHERE symbol = 'BTC-USD' AND timeframe = '1h'").fetchone()[0]
         assert first_count == second_count > 0
 
     def test_trade_natural_key_idempotency(self) -> None:
@@ -217,12 +239,14 @@ class TestDeduplicationAndIdempotency:
         base = _base_series("BTC-USD")
         rda.run_accumulation_cycle(provider=_provider(base))
         with _conn() as conn:
-            row = conn.execute("SELECT symbol, strategy_id, strategy_version, entry_timestamp FROM trades WHERE symbol = 'BTC-USD' LIMIT 1").fetchone()
+            row = conn.execute(
+                "SELECT symbol, timeframe, strategy_id, strategy_version, entry_timestamp FROM trades WHERE symbol = 'BTC-USD' AND timeframe = '1h' LIMIT 1"
+            ).fetchone()
         assert row is not None
         with _conn() as conn, pytest.raises(sqlite3.IntegrityError):
             conn.execute(
-                "INSERT INTO trades (symbol, strategy_id, strategy_version, entry_timestamp, bars_held, entry_price, exit_price, direction, outcome, r_multiple_realized, is_holdout, discovered_in_run_id, discovered_at) "
-                "VALUES (?, ?, ?, ?, 1, 1.0, 1.0, 'long', 'win', 1.0, 0, 'x', 'x')",
+                "INSERT INTO trades (symbol, timeframe, strategy_id, strategy_version, entry_timestamp, bars_held, entry_price, exit_price, direction, outcome, r_multiple_realized, is_holdout, discovered_in_run_id, discovered_at) "
+                "VALUES (?, ?, ?, ?, ?, 1, 1.0, 1.0, 'long', 'win', 1.0, 0, 'x', 'x')",
                 row,
             )
 
@@ -352,18 +376,25 @@ class TestAppendOnlyEnforcement:
 
 class TestObservability:
     def test_status_reports_expected_fields(self) -> None:
+        """CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+        Infrastructure 1.0," Section 21 — `get_accumulation_status()`'s
+        `per_symbol` shape was replaced with `per_dataset` (one entry
+        per (symbol, timeframe) pair, each with its own independent
+        trade-floor verdict) precisely so a blended 1h+4h count is never
+        reported as one figure."""
         base = _base_series("BTC-USD")
         rda.run_accumulation_cycle(provider=_provider(base))
         status = rda.get_accumulation_status()
         assert status["last_successful_run"] is not None
         assert status["last_failed_run"] is None
-        assert set(status["per_symbol"]) == {"BTC-USD", "ETH-USD"}
-        for symbol_status in status["per_symbol"].values():
-            assert symbol_status["latest_real_candle_timestamp"] is not None
-            assert symbol_status["cumulative_unique_real_candles"] == len(base)
-        assert status["certification_min_trade_count"] == 20
-        assert status["remaining_trades_to_floor"] == max(0, 20 - status["cumulative_development_trades_all_symbols"])
-        assert status["validation_state"] in ("insufficient_evidence", "sample_size_floor_cleared_reexamine_full_model_validation")
+        seen = {(d["symbol"], d["timeframe"]) for d in status["per_dataset"]}
+        assert seen == {("BTC-USD", "1h"), ("BTC-USD", "4h"), ("ETH-USD", "1h"), ("ETH-USD", "4h")}
+        for dataset_status in status["per_dataset"]:
+            assert dataset_status["latest_real_candle_timestamp"] is not None
+            assert dataset_status["cumulative_unique_real_candles"] == len(base)
+            assert dataset_status["certification_min_trade_count"] == 20
+            assert dataset_status["remaining_trades_to_floor"] == max(0, 20 - dataset_status["cumulative_unique_development_trades"])
+            assert dataset_status["validation_state"] in ("insufficient_evidence", "sample_size_floor_cleared_reexamine_full_model_validation")
 
     def test_status_reports_last_failed_run(self) -> None:
         with pytest.raises(rda.AccumulationFailure):
@@ -384,7 +415,7 @@ class TestReusesExistingBacktestEngine:
         expected_trades = backtest_symbol_over_candles(FROZEN_DEFINITION, "BTC-USD", base)
         rda.run_accumulation_cycle(provider=_provider(base))
         with _conn() as conn:
-            persisted_entries = {row[0] for row in conn.execute("SELECT entry_timestamp FROM trades WHERE symbol = 'BTC-USD'")}
+            persisted_entries = {row[0] for row in conn.execute("SELECT entry_timestamp FROM trades WHERE symbol = 'BTC-USD' AND timeframe = '1h'")}
         assert persisted_entries == {t.entry_timestamp for t in expected_trades}
 
     def test_module_defines_no_second_setup_detector_or_backtest_function(self) -> None:
@@ -417,19 +448,22 @@ class TestLiveKrakenVerification:
 
         assert result1["status"] == "success"
         for symbol in ("BTC-USD", "ETH-USD"):
-            assert result1["new_candles_appended"][symbol] > 0
+            for timeframe in ("1h", "4h"):
+                assert result1["new_candles_appended"][symbol][timeframe] > 0
 
         with _conn() as conn:
             for symbol in ("BTC-USD", "ETH-USD"):
-                rows = conn.execute("SELECT data_status FROM candles WHERE symbol = ?", (symbol,)).fetchall()
-                assert rows, f"no candles persisted for {symbol}"
-                assert all(r[0] == "historical" for r in rows)
-            boundary_rows = conn.execute("SELECT symbol FROM holdout_boundary").fetchall()
-            assert {r[0] for r in boundary_rows} == {"BTC-USD", "ETH-USD"}
+                for timeframe in ("1h", "4h"):
+                    rows = conn.execute("SELECT data_status FROM candles WHERE symbol = ? AND timeframe = ?", (symbol, timeframe)).fetchall()
+                    assert rows, f"no candles persisted for {symbol} at {timeframe}"
+                    assert all(r[0] == "historical" for r in rows)
+            boundary_rows = conn.execute("SELECT symbol, timeframe FROM holdout_boundary").fetchall()
+            assert {(r[0], r[1]) for r in boundary_rows} == {("BTC-USD", "1h"), ("BTC-USD", "4h"), ("ETH-USD", "1h"), ("ETH-USD", "4h")}
 
         # Second real run, fresh provider instance (simulates a restart).
         result2 = rda.run_accumulation_cycle(provider=KrakenMarketDataProvider())
         assert result2["status"] == "success"
         for symbol in ("BTC-USD", "ETH-USD"):
-            assert result2["new_candles_appended"][symbol] == 0, f"{symbol}: second real run against an overlapping window must append zero duplicate candles"
-            assert result2["new_trades_found"][symbol] == 0, f"{symbol}: second real run must not rediscover any trade as new"
+            for timeframe in ("1h", "4h"):
+                assert result2["new_candles_appended"][symbol][timeframe] == 0, f"{symbol} at {timeframe}: second real run against an overlapping window must append zero duplicate candles"
+                assert result2["new_trades_found"][symbol][timeframe] == 0, f"{symbol} at {timeframe}: second real run must not rediscover any trade as new"

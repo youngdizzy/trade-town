@@ -38,23 +38,39 @@ that no Factory/mutation code path calls.
 WHAT THIS MODULE DOES NOT SOLVE (disclosed, not silently ignored — see
 this milestone's own final report for the full discussion): the
 accumulator's `holdout_boundary` table is keyed by the EXACT
-`(symbol, strategy_id, strategy_version)` triple that was frozen — only
-`app/real_data_accumulator.py::STRATEGY_DEFINITION_ID`'s current
-compiled version has ever been frozen in practice. A real-data Factory
-run is therefore only possible for the exact `(id, version)` pair
-already frozen — never invented on the fly for an arbitrary mutation,
-which would require this module to call `freeze_holdout_baseline()`
-itself and risk exactly the "re-freezing against a grown series"
-unsafety that module's own docstring already warns against. The SAME
-frozen boundary (a fixed timestamp range) is reused as the partition
-for every mutation tested within one real-data Factory run — mutations
-are variations on the same underlying market history, so they share
-the same development/holdout split. Nothing currently prevents calling
+`(symbol, timeframe, strategy_id, strategy_version)` tuple that was
+frozen — only `app/real_data_accumulator.py::STRATEGY_DEFINITION_ID`'s
+current compiled version has ever been frozen in practice. A real-data
+Factory run is therefore only possible for the exact
+`(symbol, timeframe, id, version)` already frozen — never invented on
+the fly for an arbitrary mutation, which would require this module to
+call `freeze_holdout_baseline()` itself and risk exactly the
+"re-freezing against a grown series" unsafety that module's own
+docstring already warns against. The SAME frozen boundary (a fixed
+timestamp range) is reused as the partition for every mutation tested
+within one real-data Factory run — mutations are variations on the
+same underlying market history, so they share the same development/
+holdout split. Nothing currently prevents calling
 `read_holdout_candles_for_final_evaluation()` more than once (no
 "consumed" flag) — a real, disclosed limitation, not solved here per
 this milestone's own Section 9 escape hatch ("if this cannot be safely
 enforced within the current architecture, STOP and report the exact
 limitation rather than pretending it is solved").
+
+TIMEFRAME AS A FIRST-CLASS DIMENSION — CEO directive "TradeTown —
+Timeframe-Aware Real-Data Research Infrastructure 1.0." `timeframe` is
+now an explicit, canonical parameter through every function in this
+module, mirroring `symbol` exactly: `REAL_DATA_TIMEFRAMES` (a small,
+deliberately-bounded allowlist, same shape as `REAL_DATA_SYMBOLS`) is
+checked at preflight, and every SELECT against the accumulator's tables
+now filters by the caller's own requested timeframe rather than the
+single hardcoded value this module previously always used. Never
+encoded into `strategy_id`/`strategy_version`/`symbol` — timeframe is
+its own dimension (Section 4). `DevelopmentOnlyRealDataProvider` now
+also verifies the REQUESTED timeframe matches the one it was built for,
+the same structural guarantee it already gave for symbol — a caller
+asking this provider for a different timeframe's candles fails exactly
+like asking for a different symbol's candles: it has none to give.
 """
 from __future__ import annotations
 
@@ -66,7 +82,7 @@ from datetime import datetime
 from typing import Literal
 
 from app.market_data import Candle, ExternalMarketDataProviderUnavailable, MarketDataProvider, Quote
-from app.real_data_accumulator import PROVIDER_NAME, TIMEFRAME as ACCUMULATOR_TIMEFRAME, _connect, _db_path, _strategy_fingerprint, init_schema
+from app.real_data_accumulator import PROVIDER_NAME, _connect, _db_path, _strategy_fingerprint, init_schema
 from app.research_factory import run_research_factory_cycle
 from app.schemas import (
     ChampionRecord,
@@ -99,17 +115,28 @@ MIN_DEVELOPMENT_CANDLES = 1
 # Never invented, never silently expanded.
 REAL_DATA_SYMBOLS: tuple[str, ...] = ("BTC-USD", "ETH-USD")
 
+# Real, canonical, deliberately-bounded timeframe set — see
+# app/real_data_accumulator.py::TIMEFRAMES's own docstring for why this
+# is exactly {"1h", "4h"} and not all six of app/market_data.py's own
+# TIMEFRAMES entries. Never invented, never silently expanded.
+REAL_DATA_TIMEFRAMES: tuple[str, ...] = ("1h", "4h")
+
 
 class DevelopmentOnlyRealDataProvider(MarketDataProvider):
     """A `MarketDataProvider` whose ENTIRE state is a fixed, already-
     partitioned list of real development-window candles for exactly one
-    symbol, baked in at construction time. This is the structural
-    holdout guarantee this milestone requires: there is no method, no
-    parameter, and no code path on this class that can ever return a
-    holdout candle, because it was never given one to hold."""
+    (symbol, timeframe) pair, baked in at construction time. This is the
+    structural holdout guarantee this milestone requires: there is no
+    method, no parameter, and no code path on this class that can ever
+    return a holdout candle, because it was never given one to hold —
+    and (Section 16) that guarantee is now independently enforced PER
+    TIMEFRAME too: a BTC/1h development provider cannot serve BTC/4h
+    candles (development or holdout), exactly as it already could never
+    serve a different symbol's candles."""
 
-    def __init__(self, symbol: str, development_candles: list[Candle]) -> None:
+    def __init__(self, symbol: str, timeframe: str, development_candles: list[Candle]) -> None:
         self._symbol = symbol
+        self._timeframe = timeframe
         self._candles = development_candles
 
     def get_quote(self, symbol: str) -> Quote:
@@ -121,6 +148,10 @@ class DevelopmentOnlyRealDataProvider(MarketDataProvider):
         if symbol != self._symbol:
             raise ExternalMarketDataProviderUnavailable(
                 f"This DevelopmentOnlyRealDataProvider instance was built for {self._symbol!r} only — {symbol!r} was requested."
+            )
+        if timeframe != self._timeframe:
+            raise ExternalMarketDataProviderUnavailable(
+                f"This DevelopmentOnlyRealDataProvider instance was built for {self._symbol!r} at {self._timeframe!r} only — {timeframe!r} was requested."
             )
         return self._candles[-limit:] if limit < len(self._candles) else list(self._candles)
 
@@ -157,16 +188,18 @@ class RealDataFactoryPreflightFailure:
     detail: str
 
 
-def _read_accumulated_candles(conn, symbol: str) -> list[Candle]:
+def _read_accumulated_candles(conn, symbol: str, timeframe: str) -> list[Candle]:
     """Read-only. Every real candle this module ever sees comes from
     here — a plain SELECT against the accumulator's own `candles` table,
-    ordered chronologically. Never mutates a row (the table's own SQL
+    ordered chronologically, filtered by the CALLER's own requested
+    timeframe (Section 8 — a 1h request can never be satisfied with 4h
+    candles, or vice versa). Never mutates a row (the table's own SQL
     triggers would abort an UPDATE/DELETE anyway — see
     app/real_data_accumulator.py::init_schema)."""
     rows = conn.execute(
         "SELECT symbol, timeframe, candle_timestamp, open, high, low, close, volume, data_status "
         "FROM candles WHERE symbol = ? AND timeframe = ? AND provider = ? ORDER BY candle_timestamp ASC",
-        (symbol, ACCUMULATOR_TIMEFRAME, PROVIDER_NAME),
+        (symbol, timeframe, PROVIDER_NAME),
     ).fetchall()
     return [
         Candle(symbol=row[0], timeframe=row[1], timestamp=row[2], open=row[3], high=row[4], low=row[5], close=row[6], volume=row[7], data_status=row[8])
@@ -174,15 +207,19 @@ def _read_accumulated_candles(conn, symbol: str) -> list[Candle]:
     ]
 
 
-def _read_holdout_boundary(conn: sqlite3.Connection, symbol: str, definition: CompiledStrategyDefinition) -> tuple[str, str, str, str] | None:
+def _read_holdout_boundary(conn: sqlite3.Connection, symbol: str, timeframe: str, definition: CompiledStrategyDefinition) -> tuple[str, str, str, str] | None:
     """Read-only lookup of the accumulator's own frozen boundary for
-    this EXACT (symbol, strategy_id, strategy_version) — never computed
-    or re-frozen by this module. Returns (start, end, dataset_content_hash)
-    or None if this exact definition was never frozen."""
+    this EXACT (symbol, timeframe, strategy_id, strategy_version) —
+    never computed or re-frozen by this module. Section 11/13 — BTC/1h
+    and BTC/4h resolve to fully independent rows now that `timeframe` is
+    part of `holdout_boundary`'s own primary key; a 1h holdout can never
+    satisfy a 4h lookup, or vice versa. Returns
+    (start, end, dataset_content_hash, frozen_at) or None if this exact
+    (symbol, timeframe, definition) was never frozen."""
     row = conn.execute(
         "SELECT holdout_start_timestamp, holdout_end_timestamp, dataset_content_hash, frozen_at FROM holdout_boundary "
-        "WHERE symbol = ? AND strategy_id = ? AND strategy_version = ?",
-        (symbol, definition.id, definition.version),
+        "WHERE symbol = ? AND timeframe = ? AND strategy_id = ? AND strategy_version = ?",
+        (symbol, timeframe, definition.id, definition.version),
     ).fetchone()
     return (row[0], row[1], row[2], row[3]) if row is not None else None
 
@@ -229,42 +266,52 @@ def _open_connection(db_path: str | None) -> sqlite3.Connection:
 
 
 def preflight_real_data_dataset(
-    symbol: str, definition: CompiledStrategyDefinition, *, db_path: str | None = None
+    symbol: str, definition: CompiledStrategyDefinition, *, timeframe: str = "1h", db_path: str | None = None
 ) -> tuple[DevelopmentOnlyRealDataProvider, RealDataResearchProvenance] | RealDataFactoryPreflightFailure:
     """Section 21's read-only preflight. Every one of the directive's
     named failure reasons is reachable here, and only here — a caller
-    never needs to guess why a real-data run cannot proceed."""
+    never needs to guess why a real-data run cannot proceed.
+
+    `timeframe` defaults to `"1h"` — the previously-only-possible value
+    — so every existing caller that omits it keeps its exact prior
+    behavior unchanged (CEO directive "TradeTown — Timeframe-Aware
+    Real-Data Research Infrastructure 1.0")."""
     if symbol not in REAL_DATA_SYMBOLS:
         return RealDataFactoryPreflightFailure(
             reason="REAL_DATA_UNAVAILABLE", detail=f"{symbol!r} is not part of the canonical real-data universe {REAL_DATA_SYMBOLS} — never invented, never silently expanded."
+        )
+    if timeframe not in REAL_DATA_TIMEFRAMES:
+        return RealDataFactoryPreflightFailure(
+            reason="REAL_DATA_UNAVAILABLE",
+            detail=f"{timeframe!r} is not part of the canonical real-data timeframe set {REAL_DATA_TIMEFRAMES} — never invented, never silently expanded.",
         )
 
     path = db_path if db_path is not None else _db_path()
     with closing(_open_connection(db_path)) as conn:
         init_schema(conn)
 
-        candles = _read_accumulated_candles(conn, symbol)
+        candles = _read_accumulated_candles(conn, symbol, timeframe)
         if not candles:
             return RealDataFactoryPreflightFailure(
                 reason="REAL_DATA_UNAVAILABLE",
-                detail=f"LIVE PERSISTED ACCUMULATOR DATA UNAVAILABLE — no accumulated real candles for {symbol!r} in {path!r} yet.",
+                detail=f"LIVE PERSISTED ACCUMULATOR DATA UNAVAILABLE — no accumulated real candles for {symbol!r} at {timeframe!r} in {path!r} yet.",
             )
 
         statuses = {c.data_status for c in candles}
         if statuses != {"historical"}:
             return RealDataFactoryPreflightFailure(
                 reason="REAL_DATASET_MIXED_PROVENANCE",
-                detail=f"Expected every accumulated candle for {symbol!r} to be data_status='historical'; found {sorted(statuses)}.",
+                detail=f"Expected every accumulated candle for {symbol!r} at {timeframe!r} to be data_status='historical'; found {sorted(statuses)}.",
             )
 
-        boundary = _read_holdout_boundary(conn, symbol, definition)
+        boundary = _read_holdout_boundary(conn, symbol, timeframe, definition)
         if boundary is None:
             return RealDataFactoryPreflightFailure(
                 reason="HOLDOUT_BOUNDARY_INVALID",
                 detail=(
-                    f"No frozen holdout boundary exists for {symbol!r} against '{definition.id}' v{definition.version} — "
+                    f"No frozen holdout boundary exists for {symbol!r} at {timeframe!r} against '{definition.id}' v{definition.version} — "
                     "this module never freezes one itself (only app/real_data_accumulator.py::freeze_holdout_baseline() may). "
-                    "A real-data Factory run is only possible for the exact (symbol, strategy_id, strategy_version) already frozen."
+                    "A real-data Factory run is only possible for the exact (symbol, timeframe, strategy_id, strategy_version) already frozen."
                 ),
             )
         holdout_start, holdout_end, dataset_content_hash, frozen_at = boundary
@@ -305,7 +352,7 @@ def preflight_real_data_dataset(
             provider="kraken",
             data_status="real",
             symbol=symbol,
-            timeframe=ACCUMULATOR_TIMEFRAME,
+            timeframe=timeframe,
             development_candle_count=len(development_candles),
             holdout_candle_count=len(holdout_candles),
             dataset_start_timestamp=development_candles[0].timestamp,
@@ -316,27 +363,28 @@ def preflight_real_data_dataset(
             holdout_start_timestamp=holdout_start,
             holdout_end_timestamp=holdout_end,
         )
-        return DevelopmentOnlyRealDataProvider(symbol, development_candles), provenance
+        return DevelopmentOnlyRealDataProvider(symbol, timeframe, development_candles), provenance
 
 
 def read_holdout_candles_for_final_evaluation(
-    symbol: str, definition: CompiledStrategyDefinition, *, db_path: str | None = None
+    symbol: str, definition: CompiledStrategyDefinition, *, timeframe: str = "1h", db_path: str | None = None
 ) -> list[Candle] | RealDataFactoryPreflightFailure:
     """Deliberately SEPARATE from `preflight_real_data_dataset()`/
     `run_real_data_factory_cycle()` — no Factory/mutation code path
     calls this. Returns the frozen holdout slice only, for an explicit,
     final, one-time evaluation a caller performs OUTSIDE the mutation
     loop. See this module's own docstring for the disclosed limitation:
-    nothing here currently prevents calling this more than once."""
+    nothing here currently prevents calling this more than once.
+    `timeframe` defaults to `"1h"` for exact backward compatibility."""
     with closing(_open_connection(db_path)) as conn:
         init_schema(conn)
-        candles = _read_accumulated_candles(conn, symbol)
+        candles = _read_accumulated_candles(conn, symbol, timeframe)
         if not candles:
-            return RealDataFactoryPreflightFailure(reason="REAL_DATA_UNAVAILABLE", detail=f"No accumulated real candles for {symbol!r}.")
-        boundary = _read_holdout_boundary(conn, symbol, definition)
+            return RealDataFactoryPreflightFailure(reason="REAL_DATA_UNAVAILABLE", detail=f"No accumulated real candles for {symbol!r} at {timeframe!r}.")
+        boundary = _read_holdout_boundary(conn, symbol, timeframe, definition)
         if boundary is None:
             return RealDataFactoryPreflightFailure(
-                reason="HOLDOUT_BOUNDARY_INVALID", detail=f"No frozen holdout boundary for {symbol!r} against '{definition.id}' v{definition.version}."
+                reason="HOLDOUT_BOUNDARY_INVALID", detail=f"No frozen holdout boundary for {symbol!r} at {timeframe!r} against '{definition.id}' v{definition.version}."
             )
         holdout_start, holdout_end, _content_hash, _frozen_at = boundary
         _development, holdout = _partition_by_holdout(candles, holdout_start, holdout_end)
@@ -352,6 +400,11 @@ class RealDataFactoryRunOutcome:
 
     status: Literal["completed", "preflight_failed"]
     symbol: str
+    # CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+    # Infrastructure 1.0" — mirrors `symbol` so even a `preflight_failed`
+    # outcome (before any `provenance` exists) still reports which
+    # timeframe was requested, never only inferable from `detail`.
+    timeframe: str
     reason: RealDataUnavailableReason | None
     detail: str
     run: FactoryRunRecord | None = None
@@ -366,6 +419,7 @@ def run_real_data_factory_cycle(
     seed_definition: CompiledStrategyDefinition,
     *,
     symbol: str,
+    timeframe: str = "1h",
     compiled_strategy_registry: dict[str, list[CompiledStrategyDefinition]],
     quant_research_experiments: list[QuantResearchExperiment],
     research_iterations: list[ResearchLoopIterationRecord],
@@ -387,10 +441,20 @@ def run_real_data_factory_cycle(
     never a second backtest engine. FAILS CLOSED on every one of
     Section 5's named conditions rather than ever substituting mock
     data; a preflight failure produces zero calls into the Factory at
-    all (Section 21: "do not partially execute")."""
-    preflight = preflight_real_data_dataset(symbol, seed_definition, db_path=db_path)
+    all (Section 21: "do not partially execute").
+
+    `timeframe` defaults to `"1h"` — the previously-only-possible value
+    — so every existing caller that omits it keeps its exact prior
+    behavior unchanged (CEO directive "TradeTown — Timeframe-Aware
+    Real-Data Research Infrastructure 1.0"). `provenance.timeframe`
+    (verified equal to the requested `timeframe` by construction, since
+    `preflight_real_data_dataset()` stamps it from the same value) is
+    what actually reaches the Factory below, so Section 17's invariant —
+    requested timeframe == accumulated timeframe == Factory provenance
+    timeframe — holds by construction, not by convention."""
+    preflight = preflight_real_data_dataset(symbol, seed_definition, timeframe=timeframe, db_path=db_path)
     if isinstance(preflight, RealDataFactoryPreflightFailure):
-        return RealDataFactoryRunOutcome(status="preflight_failed", symbol=symbol, reason=preflight.reason, detail=preflight.detail)
+        return RealDataFactoryRunOutcome(status="preflight_failed", symbol=symbol, timeframe=timeframe, reason=preflight.reason, detail=preflight.detail)
     provider, provenance = preflight
 
     kwargs: dict[str, object] = {
@@ -428,8 +492,9 @@ def run_real_data_factory_cycle(
     return RealDataFactoryRunOutcome(
         status="completed",
         symbol=symbol,
+        timeframe=timeframe,
         reason=None,
-        detail=f"Real-data Factory run completed against {provenance.development_candle_count} real development candle(s) for {symbol}.",
+        detail=f"Real-data Factory run completed against {provenance.development_candle_count} real development candle(s) for {symbol} at {timeframe}.",
         run=run,
         updated_registry=updated_registry,
         new_iterations=new_iterations,

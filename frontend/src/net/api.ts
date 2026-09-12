@@ -1069,15 +1069,20 @@ export const api = {
   // call automatically when the real-data card mounts; `runRealDataResearchFactoryRun`
   // is the one explicit, CEO-triggered action that can actually run the
   // Factory against accumulated real Kraken candles.
-  checkRealDataResearchReadiness: (definition: CompiledStrategyDefinition, symbol: string) =>
+  // CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+  // Infrastructure 1.0" — `timeframe` defaults to "1h" (the previously-
+  // only-possible value) so every existing call site keeps its exact
+  // prior behavior unchanged.
+  checkRealDataResearchReadiness: (definition: CompiledStrategyDefinition, symbol: string, timeframe: string = "1h") =>
     request<RealDataReadinessRead>("/sandbox/research-factory/run-real-data/preflight", {
       method: "POST",
-      body: JSON.stringify({ definition, symbol }),
+      body: JSON.stringify({ definition, symbol, timeframe }),
     }),
   runRealDataResearchFactoryRun: (
     hypothesis: StrategyHypothesis,
     definition: CompiledStrategyDefinition,
     symbol: string,
+    timeframe: string = "1h",
     options?: { maxGenerations?: number; maxTotalBacktests?: number; maxChildrenPerParent?: number; maxRuntimeSeconds?: number }
   ) =>
     request<RealDataFactoryRunRead>("/sandbox/research-factory/run-real-data", {
@@ -1086,6 +1091,7 @@ export const api = {
         hypothesis,
         definition,
         symbol,
+        timeframe,
         maxGenerations: options?.maxGenerations,
         maxTotalBacktests: options?.maxTotalBacktests,
         maxChildrenPerParent: options?.maxChildrenPerParent,

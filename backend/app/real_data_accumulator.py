@@ -97,6 +97,51 @@ timestamp — an external data-integrity failure, never silently
 overwritten), timestamps moving backward, a concurrent run already in
 progress, or the frozen strategy's own fingerprint/version changing
 unexpectedly between runs.
+
+TIMEFRAME-AWARE PERSISTENCE — CEO directive "TradeTown — Timeframe-Aware
+Real-Data Research Infrastructure 1.0." Until this pass, `TIMEFRAME` was
+a single hardcoded `"1h"` module constant threaded through every table's
+identity — `holdout_boundary`'s primary key was `(symbol, strategy_id,
+strategy_version)` with no timeframe dimension at all, and `trades`'
+primary key was `(symbol, strategy_id, strategy_version, entry_timestamp)`.
+Both are genuinely unsafe to extend to a second timeframe as-is: a 4h
+bar and a 1h bar routinely land on the IDENTICAL wall-clock timestamp
+(every 4th 1h boundary is also a 4h boundary), so two DIFFERENT real
+trades — one discovered from 1h candles, one from 4h candles, for the
+same symbol/strategy — could collide on that same primary key and be
+silently treated as the same row. `TIMEFRAME` is now `TIMEFRAMES`, a
+small, explicit, deliberately-bounded tuple (`("1h", "4h")` — Section
+10's own "smallest safe increment": the existing 1h evidence plus
+exactly one new, live-verified-cleanest additional interval; 1m/5m/15m/
+1d stay out of production accumulation until this architecture is
+proven). `holdout_boundary` and `trades` both gain an explicit
+`timeframe` column AS PART OF THEIR PRIMARY KEY, via `_migrate_legacy_
+timeframe_columns()` below — a real, one-time, idempotent schema
+migration, not a fresh design: any row either table held before this
+migration was written EXCLUSIVELY by this module's own previously-
+single-valued `TIMEFRAME = "1h"` constant (there has never been any
+other code path, in this codebase's entire history, that writes to
+either table), so backfilling `timeframe='1h'` for a pre-existing row
+is a proven historical fact, never a guess. The legacy tables are
+renamed (never dropped) so the migration is provably lossless and
+auditable. `candles` already carried `timeframe` in its own primary key
+from day one — genuinely unaffected. `strategy_fingerprint` is
+DELIBERATELY left keyed on `(strategy_id, strategy_version)` alone:
+strategy identity is what rules a definition compiles to, not what
+dataset it is tested against — the identical frozen strategy is
+evaluated at both 1h and 4h without becoming "a different strategy,"
+exactly as Section 4/5 of the directive requires ("strategy identity !=
+dataset/timeframe identity"). `_get_frozen_definition()` is therefore
+UNCHANGED — one frozen definition serves every timeframe.
+
+Every candle a real Kraken response returns for a requested timeframe
+already carries that SAME timeframe on its own `Candle.timeframe`
+field (see `KrakenMarketDataProvider._parse_kraken_response()`) — this
+module additionally asserts that structural fact explicitly for every
+fetched batch before persisting it (Section 8's hard invariant:
+`dataset.timeframe == requested.timeframe` for every candle), so a
+provider bug could never silently persist a mixed-timeframe dataset
+under one label.
 """
 from __future__ import annotations
 
@@ -118,7 +163,17 @@ from app.strategy_registry import default_researchable_strategies
 
 DEFAULT_DB_PATH = "data/real_data_accumulation.db"
 SYMBOLS = ("BTC-USD", "ETH-USD")
-TIMEFRAME = "1h"
+# Section 10 — deliberately the smallest safe increment: the existing,
+# already-accumulated "1h" plus exactly one new, live-verified-cleanest
+# additional interval. 1m/5m/15m/1d remain intentionally excluded from
+# production accumulation until this timeframe-aware architecture is
+# proven. Never expanded silently — see this module's own docstring.
+TIMEFRAMES: tuple[str, ...] = ("1h", "4h")
+# The one timeframe every row in `holdout_boundary`/`trades` was ever
+# written under before this module became timeframe-aware — a proven
+# historical fact (see `_migrate_legacy_timeframe_columns()`), not a
+# default chosen for convenience.
+_LEGACY_TIMEFRAME = "1h"
 PROVIDER_NAME = "kraken"
 STRATEGY_DEFINITION_ID = "50-ema-breakout-pullback-long"
 
@@ -151,7 +206,105 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)).fetchone() is not None
+
+
+def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _migrate_legacy_holdout_boundary(conn: sqlite3.Connection) -> None:
+    """A no-op on a fresh database (the table doesn't exist yet — the
+    `CREATE TABLE IF NOT EXISTS` below creates it with the new schema
+    directly) and a no-op on an already-migrated one (the `timeframe`
+    column already exists). Otherwise: renames the legacy table (never
+    drops it — the migration must be provably lossless and auditable),
+    creates the new-schema table, and copies every row across with
+    `timeframe='1h'` explicitly backfilled — the one value every row
+    this table has ever held was proven to have (see this module's own
+    docstring)."""
+    if not _table_exists(conn, "holdout_boundary") or "timeframe" in _column_names(conn, "holdout_boundary"):
+        return
+    conn.execute("ALTER TABLE holdout_boundary RENAME TO holdout_boundary_legacy_pre_timeframe")
+    conn.execute(
+        """
+        CREATE TABLE holdout_boundary (
+            symbol TEXT NOT NULL,
+            timeframe TEXT NOT NULL,
+            strategy_id TEXT NOT NULL,
+            strategy_version INTEGER NOT NULL,
+            holdout_start_timestamp TEXT NOT NULL,
+            holdout_end_timestamp TEXT NOT NULL,
+            frozen_at TEXT NOT NULL,
+            dataset_content_hash TEXT NOT NULL,
+            PRIMARY KEY (symbol, timeframe, strategy_id, strategy_version)
+        )
+        """
+    )
+    conn.execute(
+        f"""
+        INSERT INTO holdout_boundary
+            (symbol, timeframe, strategy_id, strategy_version, holdout_start_timestamp, holdout_end_timestamp, frozen_at, dataset_content_hash)
+        SELECT symbol, '{_LEGACY_TIMEFRAME}', strategy_id, strategy_version, holdout_start_timestamp, holdout_end_timestamp, frozen_at, dataset_content_hash
+        FROM holdout_boundary_legacy_pre_timeframe
+        """
+    )
+    conn.commit()
+
+
+def _migrate_legacy_trades(conn: sqlite3.Connection) -> None:
+    """Same treatment as `_migrate_legacy_holdout_boundary()` above, for
+    `trades`' own primary key."""
+    if not _table_exists(conn, "trades") or "timeframe" in _column_names(conn, "trades"):
+        return
+    conn.execute("ALTER TABLE trades RENAME TO trades_legacy_pre_timeframe")
+    conn.execute(
+        """
+        CREATE TABLE trades (
+            symbol TEXT NOT NULL,
+            timeframe TEXT NOT NULL,
+            strategy_id TEXT NOT NULL,
+            strategy_version INTEGER NOT NULL,
+            entry_timestamp TEXT NOT NULL,
+            bars_held INTEGER NOT NULL,
+            entry_price REAL NOT NULL,
+            exit_price REAL,
+            direction TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            r_multiple_realized REAL NOT NULL,
+            is_holdout INTEGER NOT NULL,
+            discovered_in_run_id TEXT NOT NULL,
+            discovered_at TEXT NOT NULL,
+            PRIMARY KEY (symbol, timeframe, strategy_id, strategy_version, entry_timestamp)
+        )
+        """
+    )
+    conn.execute(
+        f"""
+        INSERT INTO trades
+            (symbol, timeframe, strategy_id, strategy_version, entry_timestamp, bars_held, entry_price, exit_price,
+             direction, outcome, r_multiple_realized, is_holdout, discovered_in_run_id, discovered_at)
+        SELECT symbol, '{_LEGACY_TIMEFRAME}', strategy_id, strategy_version, entry_timestamp, bars_held, entry_price, exit_price,
+               direction, outcome, r_multiple_realized, is_holdout, discovered_in_run_id, discovered_at
+        FROM trades_legacy_pre_timeframe
+        """
+    )
+    conn.commit()
+
+
+def _migrate_legacy_timeframe_columns(conn: sqlite3.Connection) -> None:
+    """One-time, idempotent schema migration — see this module's own
+    docstring for the full "why." Must run BEFORE the `CREATE TABLE IF
+    NOT EXISTS` statements in `init_schema()`, since it needs the OLD
+    table (if any) still present under its original name to detect and
+    migrate it."""
+    _migrate_legacy_holdout_boundary(conn)
+    _migrate_legacy_trades(conn)
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
+    _migrate_legacy_timeframe_columns(conn)
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS candles (
@@ -171,6 +324,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS trades (
             symbol TEXT NOT NULL,
+            timeframe TEXT NOT NULL,
             strategy_id TEXT NOT NULL,
             strategy_version INTEGER NOT NULL,
             entry_timestamp TEXT NOT NULL,
@@ -183,7 +337,12 @@ def init_schema(conn: sqlite3.Connection) -> None:
             is_holdout INTEGER NOT NULL,
             discovered_in_run_id TEXT NOT NULL,
             discovered_at TEXT NOT NULL,
-            PRIMARY KEY (symbol, strategy_id, strategy_version, entry_timestamp)
+            -- Section 3/4/7 — timeframe joins the identity: a 4h bar and
+            -- a 1h bar routinely share the identical wall-clock
+            -- timestamp (every 4th 1h boundary is also a 4h boundary),
+            -- so two real, DIFFERENT trades discovered from different
+            -- timeframes' candles must never collide on this key.
+            PRIMARY KEY (symbol, timeframe, strategy_id, strategy_version, entry_timestamp)
         );
 
         CREATE TABLE IF NOT EXISTS runs (
@@ -202,13 +361,21 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
         CREATE TABLE IF NOT EXISTS holdout_boundary (
             symbol TEXT NOT NULL,
+            timeframe TEXT NOT NULL,
             strategy_id TEXT NOT NULL,
             strategy_version INTEGER NOT NULL,
             holdout_start_timestamp TEXT NOT NULL,
             holdout_end_timestamp TEXT NOT NULL,
             frozen_at TEXT NOT NULL,
             dataset_content_hash TEXT NOT NULL,
-            PRIMARY KEY (symbol, strategy_id, strategy_version)
+            -- Section 13 — BTC/1h/strategyX and BTC/4h/strategyX (and
+            -- likewise BTC/4h vs ETH/4h) must freeze fully independent
+            -- boundaries; a strategy's own identity is unaffected by
+            -- which timeframe it is being evaluated against (Section
+            -- 4/5 — strategy identity != dataset/timeframe identity),
+            -- so `strategy_fingerprint` below is deliberately NOT keyed
+            -- on timeframe while this table explicitly is.
+            PRIMARY KEY (symbol, timeframe, strategy_id, strategy_version)
         );
 
         CREATE TABLE IF NOT EXISTS strategy_fingerprint (
@@ -277,45 +444,55 @@ def _check_strategy_fingerprint(conn: sqlite3.Connection, definition: CompiledSt
         )
 
 
-def _append_candles(conn: sqlite3.Connection, symbol: str, candles: list[Candle]) -> int:
+def _append_candles(conn: sqlite3.Connection, symbol: str, timeframe: str, candles: list[Candle]) -> int:
     """Inserts each real candle, deduplicated by its own PRIMARY KEY.
     A candle already on file with IDENTICAL OHLCV is silently skipped
     (the same real observation, re-seen because Kraken's window
     overlaps). A candle already on file with DIFFERENT OHLCV for the
     SAME timestamp is a genuine data-integrity failure — raised, never
-    silently overwritten. Caller owns the transaction."""
+    silently overwritten. `candles` table has always been keyed on
+    `timeframe` (unlike `trades`/`holdout_boundary` — see this module's
+    own docstring), so a 1h and a 4h candle at the same timestamp were
+    always independent rows here; no migration was needed for this
+    table. Caller owns the transaction."""
     fetch_timestamp = _now_iso()
     new_count = 0
     for candle in candles:
         existing = conn.execute(
             "SELECT open, high, low, close, volume, data_status FROM candles WHERE symbol = ? AND timeframe = ? AND provider = ? AND candle_timestamp = ?",
-            (symbol, TIMEFRAME, PROVIDER_NAME, candle.timestamp),
+            (symbol, timeframe, PROVIDER_NAME, candle.timestamp),
         ).fetchone()
         if existing is not None:
             incoming = (candle.open, candle.high, candle.low, candle.close, candle.volume, candle.data_status)
             if tuple(existing) != incoming:
                 raise AccumulationFailure(
-                    f"Conflicting duplicate candle for {symbol} at {candle.timestamp}: stored={tuple(existing)} incoming={incoming}. "
+                    f"Conflicting duplicate candle for {symbol} at {timeframe} {candle.timestamp}: stored={tuple(existing)} incoming={incoming}. "
                     "Treating this as a data-integrity failure rather than silently replacing the stored observation."
                 )
             continue
         conn.execute(
             "INSERT INTO candles (symbol, timeframe, provider, candle_timestamp, fetch_timestamp, open, high, low, close, volume, data_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (symbol, TIMEFRAME, PROVIDER_NAME, candle.timestamp, fetch_timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.data_status),
+            (symbol, timeframe, PROVIDER_NAME, candle.timestamp, fetch_timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.data_status),
         )
         new_count += 1
     return new_count
 
 
-def freeze_holdout_baseline(conn: sqlite3.Connection, symbol: str, definition: CompiledStrategyDefinition, candles: list[Candle]) -> None:
-    """One-time-per-symbol holdout designation, reusing the EXISTING,
-    UNCHANGED `partition_candles_chronologically()`/`validate_holdout()`.
-    A no-op if this symbol already has a frozen boundary on file — never
-    called a second time against a grown series (see this module's own
-    docstring for why that would be unsafe). Caller owns the
+def freeze_holdout_baseline(conn: sqlite3.Connection, symbol: str, timeframe: str, definition: CompiledStrategyDefinition, candles: list[Candle]) -> None:
+    """One-time-per-(symbol, timeframe) holdout designation, reusing the
+    EXISTING, UNCHANGED `partition_candles_chronologically()`/
+    `validate_holdout()`. A no-op if this exact (symbol, timeframe,
+    strategy_id, strategy_version) already has a frozen boundary on
+    file — never called a second time against a grown series (see this
+    module's own docstring for why that would be unsafe). Section 13 —
+    BTC/1h and BTC/4h freeze fully independent boundaries because
+    `timeframe` is now part of `holdout_boundary`'s own primary key; the
+    strategy's own identity (`definition.id`/`.version`) is unaffected
+    by which timeframe it is evaluated against. Caller owns the
     transaction."""
     existing = conn.execute(
-        "SELECT 1 FROM holdout_boundary WHERE symbol = ? AND strategy_id = ? AND strategy_version = ?", (symbol, definition.id, definition.version)
+        "SELECT 1 FROM holdout_boundary WHERE symbol = ? AND timeframe = ? AND strategy_id = ? AND strategy_version = ?",
+        (symbol, timeframe, definition.id, definition.version),
     ).fetchone()
     if existing is not None:
         return
@@ -327,52 +504,57 @@ def freeze_holdout_baseline(conn: sqlite3.Connection, symbol: str, definition: C
         train=train,
         validation=validation,
         holdout=holdout,
-        dataset_id=f"kraken-{symbol}-{TIMEFRAME}-baseline",
+        dataset_id=f"kraken-{symbol}-{timeframe}-baseline",
         dataset_version=content_hash,
         freeze=freeze,
-        report_id=f"real-time-accumulation-baseline-{symbol}",
+        report_id=f"real-time-accumulation-baseline-{symbol}-{timeframe}",
     )
     if report.status != "valid" or not holdout:
-        raise AccumulationFailure(f"Could not establish a valid holdout baseline for {symbol}: {report.status} — {report.detail}")
+        raise AccumulationFailure(f"Could not establish a valid holdout baseline for {symbol} at {timeframe}: {report.status} — {report.detail}")
     conn.execute(
-        "INSERT INTO holdout_boundary (symbol, strategy_id, strategy_version, holdout_start_timestamp, holdout_end_timestamp, frozen_at, dataset_content_hash) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (symbol, definition.id, definition.version, holdout[0].timestamp, holdout[-1].timestamp, _now_iso(), content_hash),
+        "INSERT INTO holdout_boundary (symbol, timeframe, strategy_id, strategy_version, holdout_start_timestamp, holdout_end_timestamp, frozen_at, dataset_content_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (symbol, timeframe, definition.id, definition.version, holdout[0].timestamp, holdout[-1].timestamp, _now_iso(), content_hash),
     )
 
 
-def _holdout_bounds(conn: sqlite3.Connection, symbol: str, definition: CompiledStrategyDefinition) -> tuple[str, str] | None:
+def _holdout_bounds(conn: sqlite3.Connection, symbol: str, timeframe: str, definition: CompiledStrategyDefinition) -> tuple[str, str] | None:
     row = conn.execute(
-        "SELECT holdout_start_timestamp, holdout_end_timestamp FROM holdout_boundary WHERE symbol = ? AND strategy_id = ? AND strategy_version = ?",
-        (symbol, definition.id, definition.version),
+        "SELECT holdout_start_timestamp, holdout_end_timestamp FROM holdout_boundary WHERE symbol = ? AND timeframe = ? AND strategy_id = ? AND strategy_version = ?",
+        (symbol, timeframe, definition.id, definition.version),
     ).fetchone()
     return (row[0], row[1]) if row is not None else None
 
 
-def _discover_and_append_trades(conn: sqlite3.Connection, run_id: str, symbol: str, definition: CompiledStrategyDefinition, candles: list[Candle]) -> int:
+def _discover_and_append_trades(conn: sqlite3.Connection, run_id: str, symbol: str, timeframe: str, definition: CompiledStrategyDefinition, candles: list[Candle]) -> int:
     """Re-runs the SAME, unmodified `backtest_symbol_over_candles()`
     over the full currently-available real window (needed for correct
     50-EMA/chandelier-stop warmup — never a second backtest engine) and
     inserts every discovered trade — already-seen trades are naturally
     de-duplicated by the `trades` table's own PRIMARY KEY (symbol,
-    strategy_id, strategy_version, entry_timestamp), never counted
-    twice across overlapping fetches. Caller owns the transaction."""
+    timeframe, strategy_id, strategy_version, entry_timestamp), never
+    counted twice across overlapping fetches, and never colliding with
+    a DIFFERENT timeframe's trade that happens to share the same real
+    wall-clock entry instant (Section 3 — a 4h bar and a 1h bar
+    routinely land on the identical timestamp). Caller owns the
+    transaction."""
     trades = backtest_symbol_over_candles(definition, symbol, candles)
-    bounds = _holdout_bounds(conn, symbol, definition)
+    bounds = _holdout_bounds(conn, symbol, timeframe, definition)
     new_count = 0
     discovered_at = _now_iso()
     for trade in trades:
         is_holdout = 1 if bounds is not None and bounds[0] <= trade.entry_timestamp <= bounds[1] else 0
         existing = conn.execute(
-            "SELECT 1 FROM trades WHERE symbol = ? AND strategy_id = ? AND strategy_version = ? AND entry_timestamp = ?",
-            (symbol, definition.id, definition.version, trade.entry_timestamp),
+            "SELECT 1 FROM trades WHERE symbol = ? AND timeframe = ? AND strategy_id = ? AND strategy_version = ? AND entry_timestamp = ?",
+            (symbol, timeframe, definition.id, definition.version, trade.entry_timestamp),
         ).fetchone()
         if existing is not None:
             continue
         conn.execute(
-            "INSERT INTO trades (symbol, strategy_id, strategy_version, entry_timestamp, bars_held, entry_price, exit_price, direction, outcome, r_multiple_realized, is_holdout, discovered_in_run_id, discovered_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO trades (symbol, timeframe, strategy_id, strategy_version, entry_timestamp, bars_held, entry_price, exit_price, direction, outcome, r_multiple_realized, is_holdout, discovered_in_run_id, discovered_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 symbol,
+                timeframe,
                 definition.id,
                 definition.version,
                 trade.entry_timestamp,
@@ -445,27 +627,53 @@ def run_accumulation_cycle(*, provider: MarketDataProvider | None = None) -> dic
                 fingerprint = _strategy_fingerprint(definition)
                 _check_strategy_fingerprint(conn, definition, fingerprint)
 
-                new_candles_by_symbol: dict[str, int] = {}
-                new_trades_by_symbol: dict[str, int] = {}
+                # Section 7/10 — each (symbol, timeframe) pair is its own
+                # independent dataset; BTC/1h, BTC/4h, ETH/1h, ETH/4h are
+                # four fully separate accumulation targets sharing only
+                # the one frozen strategy identity above. Nested by
+                # symbol then timeframe (never flattened into a single
+                # string key) so every existing caller reading
+                # `result["new_candles_appended"][symbol]` gets an
+                # explicit, per-timeframe breakdown rather than a
+                # silently blended total.
+                new_candles_by_symbol: dict[str, dict[str, int]] = {}
+                new_trades_by_symbol: dict[str, dict[str, int]] = {}
                 for symbol in SYMBOLS:
-                    try:
-                        candles = provider.get_candles(symbol, TIMEFRAME, 100_000)
-                    except ExternalMarketDataProviderUnavailable as exc:
-                        raise AccumulationFailure(f"Kraken unavailable for {symbol}: {exc}") from exc
-                    if not candles:
-                        raise AccumulationFailure(f"Kraken returned zero real candles for {symbol} — refusing to proceed rather than treating this as a valid empty accumulation.")
-                    if any(c.data_status != "historical" for c in candles):
-                        raise AccumulationFailure(f"Non-real/ambiguous provenance for {symbol}: expected every candle data_status='historical'.")
-                    timestamps = [c.timestamp for c in candles]
-                    if timestamps != sorted(timestamps) or len(set(timestamps)) != len(timestamps):
-                        raise AccumulationFailure(f"Timestamps not strictly increasing/unique for {symbol} — refusing to persist out-of-order or duplicate real data.")
+                    new_candles_by_symbol[symbol] = {}
+                    new_trades_by_symbol[symbol] = {}
+                    for timeframe in TIMEFRAMES:
+                        try:
+                            candles = provider.get_candles(symbol, timeframe, 100_000)
+                        except ExternalMarketDataProviderUnavailable as exc:
+                            raise AccumulationFailure(f"Kraken unavailable for {symbol} at {timeframe}: {exc}") from exc
+                        if not candles:
+                            raise AccumulationFailure(
+                                f"Kraken returned zero real candles for {symbol} at {timeframe} — refusing to proceed rather than treating this as a valid empty accumulation."
+                            )
+                        if any(c.data_status != "historical" for c in candles):
+                            raise AccumulationFailure(f"Non-real/ambiguous provenance for {symbol} at {timeframe}: expected every candle data_status='historical'.")
+                        # Section 8's hard invariant: dataset.timeframe ==
+                        # requested.timeframe for every candle returned.
+                        # A provider bug could otherwise silently persist
+                        # a mixed-timeframe dataset under one label.
+                        if any(c.timeframe != timeframe for c in candles):
+                            raise AccumulationFailure(
+                                f"Provider returned a candle whose own timeframe does not match the requested {timeframe!r} for {symbol} — "
+                                "refusing to persist a mixed-timeframe dataset."
+                            )
+                        timestamps = [c.timestamp for c in candles]
+                        if timestamps != sorted(timestamps) or len(set(timestamps)) != len(timestamps):
+                            raise AccumulationFailure(
+                                f"Timestamps not strictly increasing/unique for {symbol} at {timeframe} — refusing to persist out-of-order or duplicate real data."
+                            )
 
-                    # One transaction per symbol: candles and the trades
-                    # discovered from them commit together, or neither does.
-                    with conn:
-                        freeze_holdout_baseline(conn, symbol, definition, candles)
-                        new_candles_by_symbol[symbol] = _append_candles(conn, symbol, candles)
-                        new_trades_by_symbol[symbol] = _discover_and_append_trades(conn, run_id, symbol, definition, candles)
+                        # One transaction per (symbol, timeframe): candles
+                        # and the trades discovered from them commit
+                        # together, or neither does.
+                        with conn:
+                            freeze_holdout_baseline(conn, symbol, timeframe, definition, candles)
+                            new_candles_by_symbol[symbol][timeframe] = _append_candles(conn, symbol, timeframe, candles)
+                            new_trades_by_symbol[symbol][timeframe] = _discover_and_append_trades(conn, run_id, symbol, timeframe, definition, candles)
 
                 conn.execute(
                     "UPDATE runs SET completed_at = ?, status = 'success', strategy_id = ?, strategy_version = ?, strategy_fingerprint = ?, symbols_processed = ?, new_candles_appended = ?, new_trades_found = ? WHERE run_id = ?",
@@ -486,7 +694,19 @@ def get_accumulation_status() -> dict:
     new API route: a pure function, queried directly by tests and by
     this milestone's own live verification. A future caller that wants
     this over HTTP can wrap it in one router line without touching this
-    module."""
+    module.
+
+    CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+    Infrastructure 1.0," Section 21 — "do not compare 50 trades on 1h
+    directly with 50 trades on 4h as if they were interchangeable
+    evidence." The prior `per_symbol` shape (one blended trade count per
+    symbol, one shared `cumulative_development_trades_all_symbols`
+    total) would silently pool development-evidence counts ACROSS
+    timeframes into one number — exactly the conflation this directive
+    forbids. Replaced with `per_dataset`: one entry per (symbol,
+    timeframe) — each an independent research environment with its OWN
+    trade counts and its OWN 20-trade-floor verdict, never blended with
+    any other timeframe's or symbol's evidence."""
     from app.strategy_lab import CERTIFICATION_MIN_TRADE_COUNT
 
     with closing(_connect()) as conn:
@@ -494,28 +714,41 @@ def get_accumulation_status() -> dict:
         last_success = conn.execute("SELECT run_id, completed_at FROM runs WHERE status = 'success' ORDER BY completed_at DESC LIMIT 1").fetchone()
         last_failure = conn.execute("SELECT run_id, completed_at, error_detail FROM runs WHERE status = 'failed' ORDER BY completed_at DESC LIMIT 1").fetchone()
 
-        per_symbol: dict[str, dict] = {}
+        per_dataset: list[dict] = []
         for symbol in SYMBOLS:
-            latest_candle = conn.execute("SELECT MAX(candle_timestamp) FROM candles WHERE symbol = ? AND provider = ?", (symbol, PROVIDER_NAME)).fetchone()[0]
-            candle_count = conn.execute("SELECT COUNT(*) FROM candles WHERE symbol = ? AND provider = ?", (symbol, PROVIDER_NAME)).fetchone()[0]
-            dev_trade_count = conn.execute("SELECT COUNT(*) FROM trades WHERE symbol = ? AND is_holdout = 0", (symbol,)).fetchone()[0]
-            holdout_trade_count = conn.execute("SELECT COUNT(*) FROM trades WHERE symbol = ? AND is_holdout = 1", (symbol,)).fetchone()[0]
-            per_symbol[symbol] = {
-                "latest_real_candle_timestamp": latest_candle,
-                "cumulative_unique_real_candles": candle_count,
-                "cumulative_unique_development_trades": dev_trade_count,
-                "cumulative_unique_holdout_trades": holdout_trade_count,
-            }
+            for timeframe in TIMEFRAMES:
+                latest_candle = conn.execute(
+                    "SELECT MAX(candle_timestamp) FROM candles WHERE symbol = ? AND timeframe = ? AND provider = ?", (symbol, timeframe, PROVIDER_NAME)
+                ).fetchone()[0]
+                candle_count = conn.execute(
+                    "SELECT COUNT(*) FROM candles WHERE symbol = ? AND timeframe = ? AND provider = ?", (symbol, timeframe, PROVIDER_NAME)
+                ).fetchone()[0]
+                dev_trade_count = conn.execute(
+                    "SELECT COUNT(*) FROM trades WHERE symbol = ? AND timeframe = ? AND is_holdout = 0", (symbol, timeframe)
+                ).fetchone()[0]
+                holdout_trade_count = conn.execute(
+                    "SELECT COUNT(*) FROM trades WHERE symbol = ? AND timeframe = ? AND is_holdout = 1", (symbol, timeframe)
+                ).fetchone()[0]
+                per_dataset.append(
+                    {
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "latest_real_candle_timestamp": latest_candle,
+                        "cumulative_unique_real_candles": candle_count,
+                        "cumulative_unique_development_trades": dev_trade_count,
+                        "cumulative_unique_holdout_trades": holdout_trade_count,
+                        "certification_min_trade_count": CERTIFICATION_MIN_TRADE_COUNT,
+                        "remaining_trades_to_floor": max(0, CERTIFICATION_MIN_TRADE_COUNT - dev_trade_count),
+                        "validation_state": (
+                            "insufficient_evidence" if dev_trade_count < CERTIFICATION_MIN_TRADE_COUNT else "sample_size_floor_cleared_reexamine_full_model_validation"
+                        ),
+                    }
+                )
 
-        total_dev_trades = sum(v["cumulative_unique_development_trades"] for v in per_symbol.values())
         return {
             "last_successful_run": {"run_id": last_success[0], "completed_at": last_success[1]} if last_success else None,
             "last_failed_run": {"run_id": last_failure[0], "completed_at": last_failure[1], "error_detail": last_failure[2]} if last_failure else None,
-            "per_symbol": per_symbol,
-            "cumulative_development_trades_all_symbols": total_dev_trades,
-            "certification_min_trade_count": CERTIFICATION_MIN_TRADE_COUNT,
-            "remaining_trades_to_floor": max(0, CERTIFICATION_MIN_TRADE_COUNT - total_dev_trades),
-            "validation_state": "insufficient_evidence" if total_dev_trades < CERTIFICATION_MIN_TRADE_COUNT else "sample_size_floor_cleared_reexamine_full_model_validation",
+            "per_dataset": per_dataset,
         }
 
 

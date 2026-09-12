@@ -7,6 +7,50 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Timeframe-Aware Real-Data Research Infrastructure
+  1.0."** Closes the exact architectural gap the prior "Real-Data
+  Research Universe Expansion 2.0" audit identified: `holdout_boundary`
+  and `trades` (`app/real_data_accumulator.py`) gain `timeframe` as
+  part of their own primary key — a genuine correctness fix, not
+  cosmetic, since a 4h bar and a 1h bar routinely share the identical
+  wall-clock timestamp and could otherwise collide under the old key.
+  `candles` already carried `timeframe` in its key from day one;
+  `strategy_fingerprint` correctly stays timeframe-independent
+  (strategy identity != dataset/timeframe identity). A real, one-time,
+  idempotent migration backfills any pre-existing row with
+  `timeframe='1h'` (the one value it has ever held) and preserves the
+  original table, renamed, as a permanent audit trail — verified
+  byte-for-byte lossless against a hand-built legacy database.
+  `TIMEFRAMES = ("1h", "4h")` replaces the single hardcoded `TIMEFRAME`
+  constant — the directive's own "smallest safe increment"; 1m/5m/15m/1d
+  stay excluded from production accumulation. `app/real_data_research_bridge.py`
+  gained an explicit `timeframe` parameter (defaulting to `"1h"` for
+  full backward compatibility) threaded through preflight, the Factory
+  run, and `DevelopmentOnlyRealDataProvider`, which now verifies
+  timeframe as well as symbol before serving any candle.
+  `get_accumulation_status()`'s `per_symbol` shape was replaced with
+  `per_dataset` (one independent entry per symbol+timeframe pair, each
+  with its own 20-trade-floor verdict) so a 1h and a 4h trade count are
+  never blended into one number. Frontend: one small timeframe select
+  added next to the existing symbol select on the Real-Data Research
+  card, plus a small timeframe label on Factory Run History rows.
+  **Live-verified**: a real accumulation cycle was run against this
+  environment's own accumulator database for the first time — 720 real
+  candles and 4 fully independent, distinctly-hashed holdout boundaries
+  across BTC-USD/ETH-USD x 1h/4h, with 2-3 real development trades per
+  dataset (honestly below the 20-trade floor everywhere); a live
+  real-data Factory run was then exercised at 4h end to end, the first
+  real 4h research evidence this codebase has produced. 21 new focused
+  tests (`tests/test_timeframe_aware_real_data_infrastructure.py`)
+  cover the full required matrix — cross-timeframe isolation at every
+  layer (provider, holdout, development), dataset identity, provenance,
+  persistence/migration, immutability, mock-path regression, and the
+  real/mock firewall. Full backend suite passes; `mypy app/`/`ruff check`
+  clean; frontend `tsc`/`eslint`/`vite build` clean; Playwright
+  (`realDataResearch.spec.ts` + `sandbox.spec.ts`, 8 tests) passes
+  against an isolated backend. See `docs/Architecture.md`'s "Timeframe-
+  Aware Real-Data Research Infrastructure 1.0" section for full detail.
+
 - **"TradeTown — Real-Data Research Universe Expansion 2.0" (audit —
   no safe expansion found, correctly stopped).** Asked whether the
   real-data research universe (BTC-USD + ETH-USD at 1h via Kraken)

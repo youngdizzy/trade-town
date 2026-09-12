@@ -15708,6 +15708,11 @@ class RealDataFactoryRunRead(CamelModel):
 
     status: Literal["completed", "preflight_failed"]
     symbol: str
+    # CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+    # Infrastructure 1.0" — mirrors `symbol` so even a `preflight_failed`
+    # outcome (before any `provenance` exists) still reports which
+    # timeframe was requested.
+    timeframe: str
     reason: str | None = None
     detail: str
     run: FactoryRunRecord | None = None
@@ -15730,6 +15735,8 @@ class RealDataReadinessRead(CamelModel):
 
     status: Literal["ready", "preflight_failed"]
     symbol: str
+    # Same rationale as `RealDataFactoryRunRead.timeframe`.
+    timeframe: str
     reason: str | None = None
     detail: str
     provenance: RealDataResearchProvenanceRead | None = None

@@ -8211,6 +8211,11 @@ export interface RealDataResearchProvenance {
 export interface RealDataFactoryRunRead {
   status: "completed" | "preflight_failed";
   symbol: string;
+  // CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+  // Infrastructure 1.0" — mirrors `symbol` so even a `preflight_failed`
+  // outcome (before `provenance` exists) still reports the requested
+  // timeframe.
+  timeframe: string;
   reason: string | null;
   detail: string;
   run: FactoryRunRecord | null;
@@ -8225,6 +8230,8 @@ export interface RealDataFactoryRunRead {
 export interface RealDataReadinessRead {
   status: "ready" | "preflight_failed";
   symbol: string;
+  // Same rationale as `RealDataFactoryRunRead.timeframe`.
+  timeframe: string;
   reason: string | null;
   detail: string;
   provenance: RealDataResearchProvenance | null;

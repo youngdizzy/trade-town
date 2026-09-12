@@ -276,6 +276,11 @@ class SubmitRealDataResearchFactoryRunRequest(BaseModel):
     hypothesis: StrategyHypothesis
     definition: CompiledStrategyDefinition
     symbol: str
+    # CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+    # Infrastructure 1.0" — defaults to "1h" (the previously-only-
+    # possible value) so every existing caller/test omitting this field
+    # keeps its exact prior behavior unchanged.
+    timeframe: str = "1h"
     max_generations: int | None = Field(default=None, alias="maxGenerations")
     max_total_backtests: int | None = Field(default=None, alias="maxTotalBacktests")
     max_children_per_parent: int | None = Field(default=None, alias="maxChildrenPerParent")
@@ -287,6 +292,7 @@ class RealDataReadinessRequest(BaseModel):
 
     definition: CompiledStrategyDefinition
     symbol: str
+    timeframe: str = "1h"
 
 
 class SubmitResearchDiscoveryCycleRequest(BaseModel):
@@ -1177,6 +1183,7 @@ async def run_real_data_research_factory_run_endpoint(payload: SubmitRealDataRes
         payload.hypothesis,
         payload.definition,
         symbol=payload.symbol,
+        timeframe=payload.timeframe,
         max_generations=payload.max_generations,
         max_total_backtests=payload.max_total_backtests,
         max_children_per_parent=payload.max_children_per_parent,
@@ -1186,6 +1193,7 @@ async def run_real_data_research_factory_run_endpoint(payload: SubmitRealDataRes
     return RealDataFactoryRunRead(
         status=outcome.status,
         symbol=outcome.symbol,
+        timeframe=outcome.timeframe,
         reason=outcome.reason,
         detail=outcome.detail,
         run=outcome.run,
@@ -1210,15 +1218,16 @@ async def real_data_research_readiness_endpoint(payload: RealDataReadinessReques
     or persisting anything. `status="preflight_failed"` is a real,
     honest, expected outcome, identical in meaning to the same status
     from the run endpoint, just without ever having attempted a run."""
-    result = preflight_real_data_dataset(payload.symbol, payload.definition)
+    result = preflight_real_data_dataset(payload.symbol, payload.definition, timeframe=payload.timeframe)
     if isinstance(result, RealDataFactoryPreflightFailure):
-        return RealDataReadinessRead(status="preflight_failed", symbol=payload.symbol, reason=result.reason, detail=result.detail)
+        return RealDataReadinessRead(status="preflight_failed", symbol=payload.symbol, timeframe=payload.timeframe, reason=result.reason, detail=result.detail)
     _provider, provenance = result
     return RealDataReadinessRead(
         status="ready",
         symbol=payload.symbol,
+        timeframe=payload.timeframe,
         reason=None,
-        detail=f"Real accumulated data available for {payload.symbol}: {provenance.development_candle_count} development candle(s), holdout frozen at {provenance.holdout_boundary_frozen_at}.",
+        detail=f"Real accumulated data available for {payload.symbol} at {payload.timeframe}: {provenance.development_candle_count} development candle(s), holdout frozen at {provenance.holdout_boundary_frozen_at}.",
         provenance=_real_data_provenance_read(provenance),
     )
 

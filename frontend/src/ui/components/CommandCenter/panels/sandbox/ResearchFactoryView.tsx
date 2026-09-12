@@ -181,6 +181,14 @@ function renderScorecard(scorecard: StrategyScorecard) {
 const REAL_DATA_SYMBOLS = ["BTC-USD", "ETH-USD"] as const;
 type RealDataSymbol = (typeof REAL_DATA_SYMBOLS)[number];
 
+// CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+// Infrastructure 1.0" — mirrors backend/app/real_data_accumulator.py::
+// TIMEFRAMES, the deliberately small, explicit allowlist ("smallest
+// safe increment": the existing 1h plus one new, cleanest-verified
+// additional interval). Never invented, never silently expanded here.
+const REAL_DATA_TIMEFRAMES = ["1h", "4h"] as const;
+type RealDataTimeframe = (typeof REAL_DATA_TIMEFRAMES)[number];
+
 // The real-data accumulator's own frozen holdout boundary
 // (backend/app/real_data_accumulator.py::STRATEGY_DEFINITION_ID) exists
 // for exactly ONE (strategyId, version) pair today — compiling this
@@ -305,6 +313,7 @@ function RealDataProvenanceCard({ provenance }: { provenance: RealDataResearchPr
  */
 function RealDataResearchCard({ onRunCompleted }: { onRunCompleted: (run: FactoryRunRecord, provenance: RealDataResearchProvenance | null) => void }) {
   const [symbol, setSymbol] = useState<RealDataSymbol>("BTC-USD");
+  const [timeframe, setTimeframe] = useState<RealDataTimeframe>("1h");
   const [definition, setDefinition] = useState<CompiledStrategyDefinition | null>(null);
   const [definitionError, setDefinitionError] = useState<string | null>(null);
   const [readiness, setReadiness] = useState<RealDataReadinessRead | null>(null);
@@ -339,7 +348,7 @@ function RealDataResearchCard({ onRunCompleted }: { onRunCompleted: (run: Factor
     setReadinessLoading(true);
     setReadinessError(null);
     api
-      .checkRealDataResearchReadiness(definition, symbol)
+      .checkRealDataResearchReadiness(definition, symbol, timeframe)
       .then((r) => {
         if (!cancelled) setReadiness(r);
       })
@@ -352,7 +361,7 @@ function RealDataResearchCard({ onRunCompleted }: { onRunCompleted: (run: Factor
     return () => {
       cancelled = true;
     };
-  }, [definition, symbol]);
+  }, [definition, symbol, timeframe]);
 
   async function runRealDataResearch() {
     if (!definition || running) return;
@@ -361,7 +370,7 @@ function RealDataResearchCard({ onRunCompleted }: { onRunCompleted: (run: Factor
     try {
       const hypothesis: StrategyHypothesis = {
         id: `hyp-real-data-${Date.now()}`,
-        hypothesis: `Real-data research pass for ${definition.name} against accumulated ${symbol} Kraken candles.`,
+        hypothesis: `Real-data research pass for ${definition.name} against accumulated ${symbol} Kraken candles at ${timeframe}.`,
         marketMechanism: "See compiled definition.",
         expectedEdge: "Not claimed — this is a research pass, not a live trading signal.",
         invalidationConditions: "See the existing walk-forward/holdout/robustness gates below.",
@@ -392,14 +401,21 @@ function RealDataResearchCard({ onRunCompleted }: { onRunCompleted: (run: Factor
         reproducibilitySeed: null,
         sourceEvidenceIds: [],
       };
-      const result = await api.runRealDataResearchFactoryRun(hypothesis, definition, symbol);
+      const result = await api.runRealDataResearchFactoryRun(hypothesis, definition, symbol, timeframe);
       if (result.status === "completed" && result.run) {
         onRunCompleted(result.run, result.provenance);
       }
       // Always reflect the exact backend outcome locally too — including
       // a preflight_failed result, which must never be hidden or turned
       // into a fabricated success.
-      setReadiness({ status: result.status === "completed" ? "ready" : "preflight_failed", symbol: result.symbol, reason: result.reason, detail: result.detail, provenance: result.provenance });
+      setReadiness({
+        status: result.status === "completed" ? "ready" : "preflight_failed",
+        symbol: result.symbol,
+        timeframe: result.timeframe,
+        reason: result.reason,
+        detail: result.detail,
+        provenance: result.provenance,
+      });
     } catch (e) {
       setRunError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -414,22 +430,38 @@ function RealDataResearchCard({ onRunCompleted }: { onRunCompleted: (run: Factor
     <Glass className="p-3">
       <div className="flex items-center justify-between gap-2">
         <TerminalLabel>REAL-DATA RESEARCH — RESEARCH ONLY, NEVER TRADING</TerminalLabel>
-        <select
-          value={symbol}
-          onChange={(e) => setSymbol(e.target.value as RealDataSymbol)}
-          disabled={running}
-          className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50 disabled:opacity-40"
-        >
-          {REAL_DATA_SYMBOLS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-1.5">
+          <select
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value as RealDataSymbol)}
+            disabled={running}
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50 disabled:opacity-40"
+          >
+            {REAL_DATA_SYMBOLS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+          <select
+            value={timeframe}
+            onChange={(e) => setTimeframe(e.target.value as RealDataTimeframe)}
+            disabled={running}
+            title="Timeframe"
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50 disabled:opacity-40"
+          >
+            {REAL_DATA_TIMEFRAMES.map((tf) => (
+              <option key={tf} value={tf}>
+                {tf}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <p className="mt-1 text-[8px] text-cmd-textDim">
-        Kraken · {REAL_DATA_SYMBOLS.join(" · ")} · Real accumulated market data. Runs the existing, unmodified Strategy Factory against genuine accumulated candles instead of
-        the simulated mock provider every other panel on this page defaults to. This action researches strategies — it never places a trade or opens a position.
+        Kraken · {REAL_DATA_SYMBOLS.join(" · ")} · {REAL_DATA_TIMEFRAMES.join(" / ")} · Real accumulated market data. Runs the existing, unmodified Strategy Factory against
+        genuine accumulated candles instead of the simulated mock provider every other panel on this page defaults to. This action researches strategies — it never places a
+        trade or opens a position.
       </p>
 
       {definitionError && <div className="mt-1.5 text-[9px] text-cmd-red">{definitionError}</div>}
@@ -817,6 +849,7 @@ export function ResearchFactoryView() {
                 {r.strategyFamily} — {r.generationsCompleted} gen(s)
               </span>
               <div className="flex items-center gap-1">
+                {r.provenance?.timeframe && <span className="text-[8px] uppercase text-cmd-textDim">{r.provenance.timeframe}</span>}
                 <StatusPill tone={PROVENANCE_TONE[provenanceBadgeCategory(r)]}>{provenanceBadgeCategory(r).toUpperCase()}</StatusPill>
                 <StatusPill tone={r.survivorCandidateIds.length > 0 ? "green" : "red"}>{r.survivorCandidateIds.length > 0 ? "survivor found" : "no survivor"}</StatusPill>
               </div>

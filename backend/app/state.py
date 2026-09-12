@@ -3550,6 +3550,7 @@ class GameState:
         definition: CompiledStrategyDefinition,
         *,
         symbol: str,
+        timeframe: str = "1h",
         max_generations: int | None = None,
         max_total_backtests: int | None = None,
         max_children_per_parent: int | None = None,
@@ -3566,7 +3567,12 @@ class GameState:
         into the Factory and mutates NOTHING — `self.data` is returned
         unchanged, exactly like a `preflight_failed` outcome from the
         bridge module itself. Never touches Gatekeeper/RiskContract/
-        Emergency Stop/broker state, and never falls back to mock data."""
+        Emergency Stop/broker state, and never falls back to mock data.
+
+        `timeframe` defaults to `"1h"` — the previously-only-possible
+        value — so every existing caller that omits it keeps its exact
+        prior behavior unchanged (CEO directive "TradeTown —
+        Timeframe-Aware Real-Data Research Infrastructure 1.0")."""
         run_id = f"real-data-factory-run-{definition.id}-{definition.version}-{uuid.uuid4().hex[:12]}"
         async with self.lock:
             quant_research_experiments = self.data.quant_research_experiments
@@ -3582,6 +3588,7 @@ class GameState:
             hypothesis,
             definition,
             symbol=symbol,
+            timeframe=timeframe,
             compiled_strategy_registry=registry_snapshot,
             quant_research_experiments=quant_research_experiments,
             research_iterations=research_iterations_snapshot,
@@ -3641,6 +3648,7 @@ class GameState:
         return merged_state, RealDataFactoryRunOutcome(
             status="completed",
             symbol=symbol,
+            timeframe=timeframe,
             reason=None,
             detail=outcome.detail,
             run=merged_run,

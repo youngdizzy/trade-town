@@ -36,6 +36,9 @@ def _base_series(symbol: str, count: int = 3000) -> list[Candle]:
 
 
 class _FixedProvider:
+    """Auto-retags every returned candle to the REQUESTED timeframe —
+    see test_real_data_accumulator.py's own `_FixedProvider` docstring."""
+
     def __init__(self, candles_by_symbol: dict[str, list[Candle]]) -> None:
         self._candles_by_symbol = candles_by_symbol
 
@@ -44,7 +47,8 @@ class _FixedProvider:
 
     def get_candles(self, symbol: str, timeframe: str, limit: int, *, end_time=None, anchor_price=None) -> list[Candle]:
         candles = self._candles_by_symbol[symbol]
-        return candles[-limit:] if limit > 0 else list(candles)
+        windowed = candles[-limit:] if limit > 0 else list(candles)
+        return [dataclasses.replace(c, timeframe=timeframe) for c in windowed]
 
 
 def _provider(btc: list[Candle], eth: list[Candle] | None = None) -> _FixedProvider:

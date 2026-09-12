@@ -55,7 +55,13 @@ class _FixedProvider:
     """Network-free test double for `KrakenMarketDataProvider`, same
     shape as test_real_data_accumulator.py's own — a real
     `app.market_data.MarketDataProvider` is not subclassed here because
-    `run_accumulation_cycle()` only calls `get_candles()`."""
+    `run_accumulation_cycle()` only calls `get_candles()`. Auto-retags
+    every returned candle to the REQUESTED timeframe (same rationale as
+    test_real_data_accumulator.py's own `_FixedProvider` — see that
+    module's docstring): `_seed_accumulator()` below now accumulates
+    both "1h" and "4h" per symbol, and every test in this file is
+    exercising bridge-level mechanics that apply identically regardless
+    of timeframe."""
 
     def __init__(self, candles_by_symbol: dict[str, list[Candle]]) -> None:
         self._candles_by_symbol = candles_by_symbol
@@ -65,7 +71,8 @@ class _FixedProvider:
 
     def get_candles(self, symbol: str, timeframe: str, limit: int, *, end_time=None, anchor_price=None) -> list[Candle]:
         candles = self._candles_by_symbol[symbol]
-        return candles[-limit:] if limit > 0 else list(candles)
+        windowed = candles[-limit:] if limit > 0 else list(candles)
+        return [dataclasses.replace(c, timeframe=timeframe) for c in windowed]
 
 
 def _provider(btc: list[Candle], eth: list[Candle] | None = None) -> _FixedProvider:
@@ -127,11 +134,11 @@ class TestAccumulatedDataReachesFactory:
         with closing(rda._connect()) as conn:
             rda.init_schema(conn)
             all_candles = conn.execute(
-                "SELECT candle_timestamp FROM candles WHERE symbol=? AND timeframe=? AND provider=?", ("BTC-USD", rda.TIMEFRAME, rda.PROVIDER_NAME)
+                "SELECT candle_timestamp FROM candles WHERE symbol=? AND timeframe=? AND provider=?", ("BTC-USD", "1h", rda.PROVIDER_NAME)
             ).fetchall()
             boundary = conn.execute(
-                "SELECT holdout_start_timestamp, holdout_end_timestamp FROM holdout_boundary WHERE symbol=? AND strategy_id=? AND strategy_version=?",
-                ("BTC-USD", definition.id, definition.version),
+                "SELECT holdout_start_timestamp, holdout_end_timestamp FROM holdout_boundary WHERE symbol=? AND timeframe=? AND strategy_id=? AND strategy_version=?",
+                ("BTC-USD", "1h", definition.id, definition.version),
             ).fetchone()
         holdout_start, holdout_end = boundary
         expected_development = sum(1 for (ts,) in all_candles if not (holdout_start <= ts <= holdout_end))
@@ -162,7 +169,7 @@ class TestProvenanceSurvives:
         with closing(rda._connect()) as conn:
             rda.init_schema(conn)
             total = conn.execute(
-                "SELECT COUNT(*) FROM candles WHERE symbol=? AND timeframe=? AND provider=?", ("BTC-USD", rda.TIMEFRAME, rda.PROVIDER_NAME)
+                "SELECT COUNT(*) FROM candles WHERE symbol=? AND timeframe=? AND provider=?", ("BTC-USD", "1h", rda.PROVIDER_NAME)
             ).fetchone()[0]
 
         assert provenance.development_candle_count + provenance.holdout_candle_count == total
@@ -184,7 +191,7 @@ class TestMixedProvenanceFailsClosed:
             conn.execute(
                 "INSERT INTO candles (symbol, timeframe, provider, candle_timestamp, fetch_timestamp, open, high, low, close, volume, data_status) "
                 "VALUES ('BTC-USD', ?, ?, '1999-01-01T00:00:00+00:00', '2024-01-01T00:00:00+00:00', 1, 1, 1, 1, 1, 'simulated')",
-                (rda.TIMEFRAME, rda.PROVIDER_NAME),
+                ("1h", rda.PROVIDER_NAME),
             )
             conn.commit()
 
@@ -271,8 +278,8 @@ class TestHoldoutStructurallyExcluded:
         with closing(rda._connect()) as conn:
             rda.init_schema(conn)
             boundary = conn.execute(
-                "SELECT holdout_start_timestamp, holdout_end_timestamp FROM holdout_boundary WHERE symbol=? AND strategy_id=? AND strategy_version=?",
-                ("BTC-USD", definition.id, definition.version),
+                "SELECT holdout_start_timestamp, holdout_end_timestamp FROM holdout_boundary WHERE symbol=? AND timeframe=? AND strategy_id=? AND strategy_version=?",
+                ("BTC-USD", "1h", definition.id, definition.version),
             ).fetchone()
         holdout_start, holdout_end = boundary
 

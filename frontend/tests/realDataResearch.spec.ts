@@ -109,7 +109,7 @@ test.describe("Real-Data Research — real-shaped fixture via page.route() (READ
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ status: "ready", symbol: "BTC-USD", reason: null, detail: "Real accumulated data available.", provenance: PROVENANCE_FIXTURE }),
+        body: JSON.stringify({ status: "ready", symbol: "BTC-USD", timeframe: "1h", reason: null, detail: "Real accumulated data available.", provenance: PROVENANCE_FIXTURE }),
       })
     );
     await page.route("**/api/sandbox/research-factory/run-real-data", async (route) => {
@@ -120,7 +120,15 @@ test.describe("Real-Data Research — real-shaped fixture via page.route() (READ
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ status: "completed", symbol: "BTC-USD", reason: null, detail: "Real-data Factory run completed.", run: FIXTURE_RUN, provenance: PROVENANCE_FIXTURE }),
+        body: JSON.stringify({
+          status: "completed",
+          symbol: "BTC-USD",
+          timeframe: "1h",
+          reason: null,
+          detail: "Real-data Factory run completed.",
+          run: FIXTURE_RUN,
+          provenance: PROVENANCE_FIXTURE,
+        }),
       });
     });
 
@@ -169,6 +177,7 @@ test.describe("Real-Data Research — real-shaped fixture via page.route() (READ
         body: JSON.stringify({
           status: "preflight_failed",
           symbol: "BTC-USD",
+          timeframe: "1h",
           reason: "INSUFFICIENT_REAL_CANDLES",
           detail: "BTC-USD has 0 real development candle(s) — below the real floor.",
           provenance: null,

@@ -39,6 +39,12 @@ def _base_series(symbol: str, count: int = 3000) -> list[Candle]:
 
 
 class _FixedProvider:
+    """Auto-retags every returned candle to the REQUESTED timeframe —
+    see test_real_data_accumulator.py's own `_FixedProvider` docstring
+    for why: `_seed_accumulator()` below now accumulates both "1h" and
+    "4h" per symbol, and every test in this file exercises GameState
+    wiring that applies identically regardless of timeframe."""
+
     def __init__(self, candles_by_symbol: dict[str, list[Candle]]) -> None:
         self._candles_by_symbol = candles_by_symbol
 
@@ -47,7 +53,8 @@ class _FixedProvider:
 
     def get_candles(self, symbol: str, timeframe: str, limit: int, *, end_time=None, anchor_price=None) -> list[Candle]:
         candles = self._candles_by_symbol[symbol]
-        return candles[-limit:] if limit > 0 else list(candles)
+        windowed = candles[-limit:] if limit > 0 else list(candles)
+        return [dataclasses.replace(c, timeframe=timeframe) for c in windowed]
 
 
 def _provider(btc: list[Candle], eth: list[Candle] | None = None) -> _FixedProvider:
@@ -150,7 +157,7 @@ def test_mixed_provenance_preflight_failure_also_leaves_state_unchanged() -> Non
             conn.execute(
                 "INSERT INTO candles (symbol, timeframe, provider, candle_timestamp, fetch_timestamp, open, high, low, close, volume, data_status) "
                 "VALUES ('BTC-USD', ?, ?, '1999-01-01T00:00:00+00:00', '2024-01-01T00:00:00+00:00', 1, 1, 1, 1, 1, 'simulated')",
-                (rda.TIMEFRAME, rda.PROVIDER_NAME),
+                ("1h", rda.PROVIDER_NAME),
             )
             conn.commit()
 

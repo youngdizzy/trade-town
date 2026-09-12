@@ -24533,3 +24533,132 @@ The exact next buildable step (timeframe-aware `_get_frozen_definition()`
 selection + a disclosed `holdout_boundary` schema extension) is now a
 precisely-scoped, separately-auditable follow-up milestone, not a
 vague "add more timeframes" ask.
+
+## Timeframe-Aware Real-Data Research Infrastructure 1.0
+
+CEO directive "TradeTown — Timeframe-Aware Real-Data Research
+Infrastructure 1.0" closes the exact architectural gap the prior audit
+identified: `timeframe` is now a first-class dimension of persisted
+real-data research evidence, not an implicit assumption.
+
+**Identity change.** `holdout_boundary` and `trades` (both in
+`app/real_data_accumulator.py`'s isolated SQLite database) gain
+`timeframe` as part of their own primary key — `(symbol, strategy_id,
+strategy_version)` → `(symbol, timeframe, strategy_id, strategy_version)`
+for `holdout_boundary`; `(symbol, strategy_id, strategy_version,
+entry_timestamp)` → `(symbol, timeframe, strategy_id, strategy_version,
+entry_timestamp)` for `trades`. This was a genuine correctness gap, not
+cosmetic: a 4h bar and a 1h bar routinely land on the identical
+wall-clock timestamp (every 4th 1h boundary is also a 4h boundary), so
+two real, different trades discovered from different timeframes' data
+could otherwise collide on the old key. `candles` already carried
+`timeframe` in its own primary key from day one and needed no change.
+`strategy_fingerprint` is deliberately left keyed on `(strategy_id,
+strategy_version)` alone — strategy identity is independent of which
+timeframe it is evaluated against (the same frozen "50-ema-breakout-
+pullback-long" v1 definition is evaluated at both 1h and 4h without
+becoming "a different strategy"), so `_get_frozen_definition()` needed
+no change at all.
+
+**Migration.** A real, one-time, idempotent schema migration
+(`_migrate_legacy_holdout_boundary()`/`_migrate_legacy_trades()`, run
+at the top of `init_schema()`) detects a pre-existing table with no
+`timeframe` column, renames it to `<table>_legacy_pre_timeframe`
+(preserved permanently, never dropped — the migration is provably
+lossless), creates the new-schema table, and backfills every row with
+`timeframe='1h'` — the one value every row either table has EVER held,
+since no other code path in this codebase's history has ever written
+to them. Verified directly against a hand-built legacy-schema database:
+every row round-trips byte-for-byte with `timeframe` correctly
+backfilled, and the renamed legacy tables remain queryable as an audit
+trail. A no-op on a fresh database and a no-op on an already-migrated
+one.
+
+**Scope: exactly two timeframes.** `TIMEFRAMES = ("1h", "4h")` (was a
+single `TIMEFRAME = "1h"` constant) — the directive's own "smallest
+safe increment": the existing 1h plus one new, live-verified-cleanest
+additional interval. 1m/5m/15m/1d remain intentionally excluded from
+production accumulation. `run_accumulation_cycle()` now loops `for
+symbol in SYMBOLS: for timeframe in TIMEFRAMES`, fetching, validating,
+freezing, and persisting each of the four (symbol, timeframe)
+combinations as fully independent datasets — asserting Section 8's
+hard invariant (`candle.timeframe == requested timeframe` for every
+candle) before persisting anything, so a provider bug could never
+silently create a mixed-timeframe dataset.
+
+**Bridge.** `app/real_data_research_bridge.py` gained
+`REAL_DATA_TIMEFRAMES = ("1h", "4h")` (mirrors the existing
+`REAL_DATA_SYMBOLS` allowlist pattern) and an explicit `timeframe`
+parameter on `preflight_real_data_dataset()`, `run_real_data_factory_cycle()`,
+and `read_holdout_candles_for_final_evaluation()` — defaulting to
+`"1h"` so every existing caller/test keeps its exact prior behavior.
+`DevelopmentOnlyRealDataProvider` now verifies the requested timeframe
+matches the one it was built for, in addition to the pre-existing
+symbol check — the same structural "physically cannot serve what it
+was never given" guarantee, now enforced per timeframe too.
+
+**Provenance and API.** `RealDataFactoryRunOutcome`/`RealDataFactoryRunRead`/
+`RealDataReadinessRead` all gained a `timeframe` field mirroring
+`symbol`, so even a `preflight_failed` outcome reports which timeframe
+was requested. `FactoryRunProvenance`/`RealDataResearchProvenanceRead`
+already carried a `timeframe` field from the prior milestone — it now
+genuinely varies (previously always "1h" by construction). No new
+provenance object was created.
+
+**Observability.** `get_accumulation_status()`'s `per_symbol` shape
+(one blended count per symbol) was replaced with `per_dataset` — one
+entry per (symbol, timeframe) pair, each independently reporting its
+own candle/trade counts and its own 20-trade-floor verdict, per the
+directive's own Section 21 ("do not compare 50 trades on 1h directly
+with 50 trades on 4h as if they were interchangeable evidence").
+
+**Frontend**: the existing "REAL-DATA RESEARCH" card gained one small
+timeframe `<select>` next to the existing symbol `<select>` (1h/4h),
+threaded through the existing readiness-check and run API calls; a
+small timeframe label was added next to each Factory Run History row's
+existing REAL/MOCK/UNKNOWN badge when known. No redesign, no new tab,
+no new dashboard.
+
+**Live verification**: with real Kraken access available, a real
+accumulation cycle was run against this environment's own (previously
+empty) accumulator database — the first real evidence this environment
+has ever accumulated. Result: 720 real candles and 4 fully independent,
+distinctly-hashed holdout boundaries across BTC-USD/ETH-USD × 1h/4h;
+2-3 real development trades discovered per dataset (all honestly below
+the 20-trade floor — `insufficient_evidence`, reported per-dataset,
+never blended). A live real-data Factory run was then exercised at 4h
+against this newly accumulated data end-to-end, confirming
+`provenance.timeframe == "4h"` throughout — the first real 4h research
+evidence this codebase has ever produced.
+
+**Verified**: 21 new focused tests
+(`tests/test_timeframe_aware_real_data_infrastructure.py`) covering
+the full directive-required matrix (holdout/symbol/dataset identity
+independence, cross-timeframe provider/research/holdout rejection,
+development isolation, provenance, persistence across a simulated
+restart, immutability, mock-path regression, trading/paper isolation)
+plus the explicit real/mock firewall combinations (real 1h + mock 4h,
+real 4h + mock 1h, real 1h + real 4h never sharing one identity). Every
+pre-existing real-data test file was updated for the new schema/shape
+(the `_FixedProvider` test doubles across `test_real_data_accumulator.py`,
+`test_real_data_research_bridge.py`, `test_state_real_data_research_factory.py`,
+`test_real_data_readiness_endpoint.py`, and `test_factory_run_provenance.py`
+now auto-retag their fixture candles to whichever timeframe the
+accumulator requests, since it now requests both). Full backend suite
+passes; `mypy app/`/`ruff check app/ tests/` clean. Frontend
+`tsc`/`eslint`/`vite build` clean; the existing `realDataResearch.spec.ts`/
+`sandbox.spec.ts` Playwright suites (8 tests) pass against an isolated
+dev backend with the new timeframe selector present.
+
+### Explicitly not built this pass
+
+No change to the Strategy Factory's mutation/compilation/backtest/
+validation/champion-challenger logic beyond carrying the explicit
+timeframe parameter through the existing data path. No new engine, no
+new provenance object, no second strategy or timeframe registry. No
+symbol-universe expansion (still exactly BTC-USD/ETH-USD — see the
+prior audit). No automatic promotion of anything the new 4h evidence
+produced — the live 4h Factory run above stopped at "completed,"
+observed, never auto-submitted to champion/challenger. No change to
+paper trading, Gatekeeper, RiskContract, Emergency Stop, or position
+sizing.

@@ -2226,13 +2226,18 @@ Factory loop `POST /research-factory/run` uses, but against accumulated
 real Kraken candles (`app/real_data_accumulator.py`) instead of the mock
 provider, via `app/real_data_research_bridge.py`. Body:
 `{ "hypothesis": StrategyHypothesis, "definition": CompiledStrategyDefinition,
-"symbol": "BTC-USD", "maxGenerations": 5, "maxTotalBacktests": 10,
+"symbol": "BTC-USD", "timeframe": "1h", "maxGenerations": 5, "maxTotalBacktests": 10,
 "maxChildrenPerParent": 3, "maxRuntimeSeconds": 300 }` (`symbol` must be
 one of the canonical `REAL_DATA_SYMBOLS` — `"BTC-USD"`/`"ETH-USD"` today;
-`definition` must be the EXACT `(strategyId, version)` the accumulator
-has already frozen a holdout boundary for — never invented on the fly).
+`timeframe` — CEO directive "TradeTown — Timeframe-Aware Real-Data
+Research Infrastructure 1.0" — defaults to `"1h"` and must be one of
+the canonical `REAL_DATA_TIMEFRAMES`, `"1h"`/`"4h"` today, never
+invented or silently expanded; `definition` must be the EXACT
+`(strategyId, version)` the accumulator has already frozen a holdout
+boundary for at that exact timeframe — never invented on the fly).
 Returns `RealDataFactoryRunRead`: `status` (`"completed"` |
-`"preflight_failed"`), `symbol`, `reason` (one of
+`"preflight_failed"`), `symbol`, `timeframe` (mirrors the request —
+reported even on `preflight_failed`), `reason` (one of
 `REAL_DATA_UNAVAILABLE`/`INSUFFICIENT_REAL_CANDLES`/
 `REAL_DATA_PROVENANCE_INVALID`/`HOLDOUT_BOUNDARY_INVALID`/
 `REAL_DATASET_MIXED_PROVENANCE`, `null` on success), `detail`, `run`
@@ -2269,10 +2274,11 @@ readiness WITHOUT ever running the Factory or mutating any state (never
 touches `game_state`). Exists because auto-calling the mutating run
 endpoint just to display READY/BLOCKED/INSUFFICIENT on page load would
 risk silently starting a real Factory run every time the tab opens.
-Body: `{ "definition": CompiledStrategyDefinition, "symbol": "BTC-USD" }`.
-Returns `RealDataReadinessRead`: `status` (`"ready"` |
-`"preflight_failed"`), `symbol`, `reason` (same five reason codes as
-above, `null` on success), `detail`, and `provenance`
+Body: `{ "definition": CompiledStrategyDefinition, "symbol": "BTC-USD", "timeframe": "1h" }`
+(`timeframe` defaults to `"1h"`, same canonical allowlist as the run
+endpoint above). Returns `RealDataReadinessRead`: `status` (`"ready"` |
+`"preflight_failed"`), `symbol`, `timeframe` (mirrors the request),
+`reason` (same five reason codes as above, `null` on success), `detail`, and `provenance`
 (`RealDataResearchProvenanceRead`, `null` on `preflight_failed`) — wraps
 the exact same `preflight_real_data_dataset()` the run endpoint uses
 internally, with zero new business logic.

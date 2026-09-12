@@ -78,7 +78,6 @@ from app.asset_discovery import DISCOVERY_SYMBOL_POOL
 from app.holdout import freeze_strategy, partition_candles_chronologically, run_holdout_evaluation, validate_holdout
 from app.market_data import TIMEFRAMES, ExternalMarketDataProviderUnavailable, KrakenMarketDataProvider, MarketDataProvider
 from app.real_data_accumulator import SYMBOLS as ACCUMULATOR_SYMBOLS
-from app.real_data_accumulator import TIMEFRAME as ACCUMULATOR_TIMEFRAME
 from app.real_data_accumulator import _get_frozen_definition
 from app.research_experiment import run_research_experiment
 from app.strategy_registry import default_researchable_strategies
@@ -234,25 +233,32 @@ class TestTimeframeAxisIsProviderAndEngineCapable:
         assert len(result.symbols[0].windows) == 3
 
 
-class TestTimeframeAxisAccumulatorGapIsReal:
-    """AXIS 2, part 2 — the real, disclosed reason no new REAL EVIDENCE
-    is accumulated by this milestone: `app/real_data_accumulator.py`'s
-    frozen-definition selection and TIMEFRAME constant are structurally
-    single-valued, not timeframe-aware. Structural proof, not prose —
-    this test starts failing the exact day a future milestone makes the
-    accumulator timeframe-aware, which is precisely the signal that
-    milestone should update this module's own docstring."""
+class TestTimeframeAxisGapWasClosedByTheFollowUpMilestone:
+    """AXIS 2, part 2 — UPDATE per CEO directive "TradeTown —
+    Timeframe-Aware Real-Data Research Infrastructure 1.0": the gap
+    this class originally documented (a single, hardcoded `TIMEFRAME`
+    constant and a frozen-definition selector with no timeframe
+    awareness) is now CLOSED, exactly as this class's own original
+    docstring predicted it eventually would be. `_get_frozen_definition()`
+    correctly remains timeframe-parameter-free (strategy identity is
+    independent of which timeframe it is evaluated against — Section
+    4/5 of that follow-up directive), but `TIMEFRAME` is now the plural,
+    deliberately-bounded `TIMEFRAMES = ("1h", "4h")`, and
+    `holdout_boundary`/`trades` both gained `timeframe` as part of their
+    own primary key. Structural proof, not prose — kept in this file
+    (rather than deleted) as the permanent record of the finding this
+    audit made and the follow-up that closed it."""
 
-    def test_frozen_definition_selection_has_no_timeframe_parameter(self) -> None:
+    def test_frozen_definition_selection_still_has_no_timeframe_parameter(self) -> None:
+        """Correctly unchanged — strategy identity is independent of
+        the timeframe it is evaluated against."""
         params = inspect.signature(_get_frozen_definition).parameters
-        assert "timeframe" not in params, (
-            "app/real_data_accumulator.py::_get_frozen_definition() now accepts a timeframe — re-audit this milestone's "
-            "own finding; a safe multi-timeframe accumulation path may now exist."
-        )
+        assert "timeframe" not in params
 
-    def test_accumulator_timeframe_constant_is_still_a_single_value(self) -> None:
-        assert isinstance(ACCUMULATOR_TIMEFRAME, str)
-        assert ACCUMULATOR_TIMEFRAME == "1h"
+    def test_accumulator_timeframe_is_now_a_small_bounded_tuple(self) -> None:
+        from app.real_data_accumulator import TIMEFRAMES
+
+        assert TIMEFRAMES == ("1h", "4h"), "the follow-up milestone's own 'smallest safe increment' scope has changed — re-audit before assuming this"
 
     def test_accumulator_symbols_constant_is_unchanged_by_this_audit(self) -> None:
         """This milestone made no production code change — the real,
