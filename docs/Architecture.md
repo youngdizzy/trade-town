@@ -24786,7 +24786,7 @@ frozen holdout boundaries, 1-3 development trades per dimension —
 correctly `insufficient_evidence` everywhere, honestly below the
 20-trade floor.
 
-**Verified.** Full backend suite: 4,618 passed. `mypy app/`/
+**Verified.** Full backend suite: 4,622 passed. `mypy app/`/
 `ruff check app/ tests/` clean. Frontend `tsc`/`eslint`/`vite build`
 clean (no frontend files changed — no new information reached an API
 response). Trading-isolation diff scan: zero references anywhere in

@@ -89,7 +89,7 @@ development milestones, not semver releases.
     trading, strategy parameters, thresholds, or `app/ai_provider.py`
     (present, unmodified, confirmed unreferenced by this pipeline).
     Diff-scanned for every forbidden keyword; zero matches. Full backend
-    suite: 4,618 passed; `mypy app/`/`ruff check app/ tests/` clean.
+    suite: 4,622 passed; `mypy app/`/`ruff check app/ tests/` clean.
     Frontend `tsc`/`eslint`/`vite build` clean (no frontend files
     changed). One `.gitignore` hygiene fix: `data/*.db-wal`,
     `data/*.db-shm`, and `data/*.db.lock` were not covered alongside
