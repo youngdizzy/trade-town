@@ -7,6 +7,52 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Real-Data Research Evidence Ledger & Provenance 1.0."**
+  Closes a real gap the prior audit's own Phase 2 confirmed:
+  `FactoryRunRecord` carried NO run-level provenance field at all — a
+  completed real-data run's rich identity (provider, dataset hash,
+  development/holdout windows, strategy fingerprint) lived only in the
+  ephemeral API response and was lost the moment it was persisted into
+  `factory_runs`; the only surviving signal was a per-candidate
+  `datasetMetadata.source`, absent entirely for a run with zero
+  candidates (e.g. `compile_rejected`).
+  - **One canonical contract**, `FactoryRunProvenance` (`app/schemas.py`)
+    — `dataStatus: "real" | "mock" | "unknown"` plus provider/symbols/
+    timeframe/dataset hash/development window/holdout window+candle
+    count/holdout freeze time/strategy id+version+fingerprint/Factory
+    run id. Reuses `app/real_data_research_bridge.py::RealDataResearchProvenance`'s
+    exact real-data field set verbatim (extended with two previously-
+    discarded fields, `holdout_start_timestamp`/`holdout_end_timestamp`,
+    computed but never retained) rather than inventing a second,
+    competing shape. Attached once at run creation
+    (`app/state.py::submit_research_factory_run()`/
+    `submit_real_data_research_factory_run()`), never mutated
+    afterward — same convention `FactoryRunRecord` itself already
+    documents.
+  - **Mock runs are unambiguously `"mock"`**, never a fabricated
+    `"unknown"` — this entry point structurally never accepts a
+    `market_data_provider`, so its own provenance is a real, known fact,
+    not an inference. `strategy_fingerprint` for the mock path reuses
+    the identical, unmodified `_strategy_fingerprint()` the accumulator/
+    bridge already use — one fingerprint algorithm, not two.
+  - **Historical records stay honestly `None`** (`provenance` is
+    optional, defaulting to absent) — never backfilled, never inferred
+    as real or mock from strategy id, timestamps, or any other
+    assumption.
+  - **Frontend**: the smallest necessary adjustment — a REAL/MOCK/
+    UNKNOWN badge on each Factory Run History row and the active
+    Factory Status header, sourced only from the new field; plus the
+    holdout window's own start/end timestamps in the existing real-data
+    provenance card. No redesign, no new dashboard.
+  - 10 new focused tests (`tests/test_factory_run_provenance.py`)
+    covering persistence, dataset/fingerprint/holdout identity,
+    serialize→reload round-trips, immutability across subsequent runs,
+    mixed-provenance fail-closed behavior producing no fabricated
+    provenance, and a structural proof this change never references
+    trading/risk internals. All pre-existing real-data/factory tests
+    (96) plus the full backend suite pass unmodified; `mypy`/`ruff`/
+    `tsc`/`eslint`/`vite build` all clean.
+
 - **"TradeTown — Real-Data Evidence Progression & Factory Validation
   1.0."** An evidence-validation audit of the full real-data pipeline
   (Kraken → accumulator → bridge → Factory → backtest/walk-forward/

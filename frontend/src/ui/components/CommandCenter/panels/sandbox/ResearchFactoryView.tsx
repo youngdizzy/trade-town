@@ -215,6 +215,23 @@ const READINESS_LABEL: Record<ReadinessCategory, string> = {
   blocked: "BLOCKED",
 };
 
+// CEO directive "TradeTown — Real-Data Research Evidence Ledger &
+// Provenance 1.0" — the smallest necessary Factory-history adjustment:
+// a per-run REAL/MOCK/UNKNOWN badge, sourced only from
+// `FactoryRunRecord.provenance` (never inferred from strategy id,
+// timestamps, or any other assumption). `provenance === null` — every
+// run persisted before this field existed — renders UNKNOWN, honestly,
+// never guessed as real or mock.
+const PROVENANCE_TONE: Record<"real" | "mock" | "unknown", "green" | "amber" | "purple"> = {
+  real: "green",
+  mock: "amber",
+  unknown: "purple",
+};
+
+function provenanceBadgeCategory(run: FactoryRunRecord): "real" | "mock" | "unknown" {
+  return run.provenance?.dataStatus ?? "unknown";
+}
+
 // Section 12 — every named backend failure reason gets its own precise,
 // honest explanation; nothing collapses into a vague "something went
 // wrong." A reason this UI has never seen (a genuine technical failure,
@@ -264,6 +281,7 @@ function RealDataProvenanceCard({ provenance }: { provenance: RealDataResearchPr
           Purpose: final evaluation only. Development optimization above does not include holdout data ({provenance.holdoutCandleCount.toLocaleString()} candle(s) reserved,
           frozen at {provenance.holdoutBoundaryFrozenAt}). This UI has no control to include holdout data or alter the boundary.
         </p>
+        <DataRow label="Holdout window" value={`${provenance.holdoutStartTimestamp} → ${provenance.holdoutEndTimestamp}`} />
       </div>
       <p className="mt-2 border-t border-cmd-border/40 pt-2 text-[8px] italic text-cmd-textDim">
         Backtest evidence is historical research, not a guarantee of future performance.
@@ -693,7 +711,10 @@ export function ResearchFactoryView() {
         <>
           {realDataProvenance && <RealDataProvenanceCard provenance={realDataProvenance} />}
           <Glass className="p-3">
-            <TerminalLabel>Factory Status — Run {factoryRun.id}</TerminalLabel>
+            <div className="flex items-center justify-between gap-2">
+              <TerminalLabel>Factory Status — Run {factoryRun.id}</TerminalLabel>
+              <StatusPill tone={PROVENANCE_TONE[provenanceBadgeCategory(factoryRun)]}>{provenanceBadgeCategory(factoryRun).toUpperCase()} DATA</StatusPill>
+            </div>
             <p className="mt-1 text-[9px] text-cmd-textDim">
               Automatic OBSERVE→GENERATE→MUTATE→COMPILE→BACKTEST→VALIDATE→STRESS→COMPARE→ACCEPT/BIN loop. Every generation reuses the same real funnel above —
               never a second backtest engine. No candidate is ever auto-submitted to Champion/Challenger or given live/paper execution authority.
@@ -795,7 +816,10 @@ export function ResearchFactoryView() {
               <span className="text-cmd-text">
                 {r.strategyFamily} — {r.generationsCompleted} gen(s)
               </span>
-              <StatusPill tone={r.survivorCandidateIds.length > 0 ? "green" : "red"}>{r.survivorCandidateIds.length > 0 ? "survivor found" : "no survivor"}</StatusPill>
+              <div className="flex items-center gap-1">
+                <StatusPill tone={PROVENANCE_TONE[provenanceBadgeCategory(r)]}>{provenanceBadgeCategory(r).toUpperCase()}</StatusPill>
+                <StatusPill tone={r.survivorCandidateIds.length > 0 ? "green" : "red"}>{r.survivorCandidateIds.length > 0 ? "survivor found" : "no survivor"}</StatusPill>
+              </div>
             </div>
           ))}
         </Glass>

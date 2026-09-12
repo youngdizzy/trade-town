@@ -2136,7 +2136,14 @@ lifecycle stage, the wrapped `ResearchLoopIterationRecord` when a real
 backtest ran, an optional `MutationCandidate` with its own real
 `mutatedSourceText` or a disclosed `null`), real decomposable summary
 counts, `topRejectionReasons`/`topLessons`, a real disclosed
-`stopReason`, and the current champion (if any) for context. Never calls
+`stopReason`, the current champion (if any) for context, and — CEO
+directive "TradeTown — Real-Data Research Evidence Ledger & Provenance
+1.0" — a permanent `provenance` (`FactoryRunProvenance | null`):
+`dataStatus` (`"real"`/`"mock"`/`"unknown"`) plus provider/symbols/
+timeframe/dataset identity/development+holdout windows/strategy
+id+version+fingerprint, attached once at creation and never mutated
+afterward; `null` only for a run persisted before this field existed
+(never inferred). Never calls
 Champion/Challenger or any promotion path — a real survivor is only ever
 LABELED eligible; a separate, explicit, unmodified
 `POST /champion-challenger/compare` call is still required. Permanently
@@ -2231,21 +2238,44 @@ Returns `RealDataFactoryRunRead`: `status` (`"completed"` |
 `REAL_DATASET_MIXED_PROVENANCE`, `null` on success), `detail`, `run`
 (the full `FactoryRunRecord`, `null` on `preflight_failed`), and
 `provenance` (`RealDataResearchProvenanceRead` — provider, real
-development/holdout candle counts, dataset start/end timestamps, a
-SHA-256 dataset content hash, the strategy fingerprint, and the holdout
-freeze timestamp; `null` on `preflight_failed`). A `preflight_failed`
-response makes zero calls into the Factory and mutates nothing — it is
-a real, honest, expected outcome (most commonly `REAL_DATA_UNAVAILABLE`
-until a real accumulation cycle has actually run against this
-deployment's `data/real_data_accumulation.db`), never an error to work
-around. Holdout candles are structurally never reachable through this
-endpoint (see `DevelopmentOnlyRealDataProvider`'s own module docstring).
-Never falls back to mock data on any failure, never mixes real and mock
+development/holdout candle counts, dataset start/end timestamps,
+holdout start/end timestamps, a SHA-256 dataset content hash, the
+strategy fingerprint, and the holdout freeze timestamp; `null` on
+`preflight_failed`). A `preflight_failed` response makes zero calls
+into the Factory and mutates nothing — it is a real, honest, expected
+outcome (most commonly `REAL_DATA_UNAVAILABLE` until a real
+accumulation cycle has actually run against this deployment's
+`data/real_data_accumulation.db`), never an error to work around.
+Holdout candles are structurally never reachable through this endpoint
+(see `DevelopmentOnlyRealDataProvider`'s own module docstring). Never
+falls back to mock data on any failure, never mixes real and mock
 candles within one run, never auto-promotes a survivor, and never
 touches Gatekeeper/Risk Contract/Emergency Stop/broker state. This
 endpoint is not wired into the Autonomous Research Orchestrator and is
 never called automatically — a human/API caller must explicitly submit
 each run.
+
+CEO directive "TradeTown — Real-Data Research Evidence Ledger &
+Provenance 1.0" — the returned `run.provenance` (`FactoryRunProvenance`,
+same object attached to every persisted `FactoryRunRecord` — see below)
+carries this exact same identity permanently: it is not lost the moment
+this response is returned.
+
+### `POST /api/sandbox/research-factory/run-real-data/preflight`
+
+CEO directive "TradeTown — Real-Data Research Command Center UI 1.0" —
+a tiny, read-only companion to the endpoint above: checks real-data
+readiness WITHOUT ever running the Factory or mutating any state (never
+touches `game_state`). Exists because auto-calling the mutating run
+endpoint just to display READY/BLOCKED/INSUFFICIENT on page load would
+risk silently starting a real Factory run every time the tab opens.
+Body: `{ "definition": CompiledStrategyDefinition, "symbol": "BTC-USD" }`.
+Returns `RealDataReadinessRead`: `status` (`"ready"` |
+`"preflight_failed"`), `symbol`, `reason` (same five reason codes as
+above, `null` on success), `detail`, and `provenance`
+(`RealDataResearchProvenanceRead`, `null` on `preflight_failed`) — wraps
+the exact same `preflight_real_data_dataset()` the run endpoint uses
+internally, with zero new business logic.
 
 ### `GET /api/sandbox/research-factory/lineage/{strategy_family}`
 

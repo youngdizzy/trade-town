@@ -1107,6 +1107,8 @@ def _real_data_provenance_read(provenance: RealDataResearchProvenance | None) ->
         datasetContentHash=provenance.dataset_content_hash,
         strategyFingerprint=provenance.strategy_fingerprint,
         holdoutBoundaryFrozenAt=provenance.holdout_boundary_frozen_at,
+        holdoutStartTimestamp=provenance.holdout_start_timestamp,
+        holdoutEndTimestamp=provenance.holdout_end_timestamp,
     )
 
 

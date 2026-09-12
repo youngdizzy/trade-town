@@ -24378,3 +24378,81 @@ real-data tests pass unmodified; full backend suite, mypy, and ruff all
 clean. No trading behavior, threshold, or promotion criterion touched;
 the existing Real-Data Research UI needed no change (it already had the
 correct copy for this reason).
+
+## CEO directive "TradeTown — Real-Data Research Evidence Ledger & Provenance 1.0"
+
+Closes a real gap the prior audit's own Phase 2 confirmed while tracing
+the pipeline: `FactoryRunRecord` carried NO run-level provenance field
+at all. A completed real-data run's rich identity (provider, dataset
+content hash, development/holdout windows, strategy fingerprint) lived
+only in the ephemeral `RealDataFactoryRunRead` API response — the
+moment it was persisted into `factory_runs`, that identity was gone.
+The only surviving signal was a per-candidate
+`iteration.experiment.datasetMetadata.source`, which doesn't exist at
+all for a run with zero candidates (e.g. `compile_rejected`).
+
+**One canonical contract**, `FactoryRunProvenance` (`app/schemas.py`) —
+`data_status: "real" | "mock" | "unknown"` plus provider, symbols,
+timeframe, dataset content hash, development window, holdout window +
+candle count + freeze timestamp, strategy id/version/fingerprint, and
+the Factory run id. Deliberately reuses
+`app/real_data_research_bridge.py::RealDataResearchProvenance`'s exact
+real-data field set (extended with two fields that dataclass computed
+internally but discarded, `holdout_start_timestamp`/
+`holdout_end_timestamp`) rather than inventing a second, competing
+provenance shape — the directive's own explicit "exactly one canonical
+contract" principle. Attached to `FactoryRunRecord.provenance` once at
+run creation (`app/state.py::submit_research_factory_run()`/
+`submit_real_data_research_factory_run()`, both already using the
+"never mutated after creation" convention this record itself
+documents) and never touched again.
+
+**Mock runs are unambiguously `"mock"`, never a fabricated
+`"unknown"`**: `submit_research_factory_run()` structurally never
+accepts a `market_data_provider` parameter, so every run it produces is
+a real, known fact about that exact code path — not an inference.
+`strategy_fingerprint` for the mock path reuses the identical,
+unmodified `_strategy_fingerprint()` the accumulator/bridge already
+use, imported directly (this codebase's own established pattern of
+reusing underscore-prefixed private helpers across modules for genuine
+reuse) rather than a second fingerprint algorithm. The real path's
+`FactoryRunProvenance` is populated directly from the bridge's own
+already-verified `RealDataResearchProvenance` — never recomputed.
+
+**Historical records stay honestly absent**: `provenance` defaults to
+`None`; a pre-existing record's JSON simply has no such key, and
+Pydantic leaves it `None` on load — never backfilled, never inferred as
+real or mock from strategy id, timestamps, or any other assumption
+(verified directly: `FactoryRunRecord.model_validate()` against a
+hand-built legacy JSON object with no `provenance` key).
+
+**Frontend** (the smallest necessary adjustment per the directive's own
+Section 16 — no redesign): a REAL/MOCK/UNKNOWN `StatusPill` badge on
+every Factory Run History row and on the active Factory Status header,
+sourced only from `FactoryRunRecord.provenance?.dataStatus ?? "unknown"`;
+the existing real-data provenance card also now shows the holdout
+window's own start/end timestamps.
+
+**Verified**: 10 new focused tests (`tests/test_factory_run_provenance.py`)
+covering real/mock persistence, dataset-hash/fingerprint/holdout
+identity matching the bridge's own independently-recomputed values,
+a `model_dump_json`/`model_validate_json` serialize-reload round trip,
+immutability of an earlier run's provenance across a later run, mixed-
+provenance preflight failure producing no run and no fabricated
+provenance, and a structural proof this change never references
+trading/risk internals. All 96 pre-existing real-data/factory tests
+plus the full backend suite pass unmodified; `mypy app/`/
+`ruff check app/ tests/` both clean; frontend `tsc`/`eslint`/
+`vite build` all clean; the pre-existing `sandbox.spec.ts` and
+`realDataResearch.spec.ts` Playwright suites (8 tests) pass unmodified
+against an isolated dev backend.
+
+### Explicitly not built this pass
+
+No change to Strategy Factory mutation/compilation/backtesting logic,
+walk-forward, holdout partitioning/freezing, model validation,
+champion/challenger selection or thresholds, evidence floors, Gatekeeper,
+Risk Contract, Emergency Stop, position sizing, or any trading/paper-
+trading behavior. No dataset-identity hashing beyond what the bridge
+already computes at the research boundary (no continuous/background
+hashing). No second database, no external service, no new UI dashboard.

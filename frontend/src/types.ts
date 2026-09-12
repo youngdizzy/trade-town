@@ -8146,6 +8146,34 @@ export interface FactoryRunRecord {
   // Survivor Engine" — the real Pareto frontier over every real
   // (backtested) candidate in this run's entire lineage tree.
   paretoFrontier: ParetoFrontierEntry[];
+  // CEO directive "TradeTown — Real-Data Research Evidence Ledger &
+  // Provenance 1.0" — the ONE canonical, permanent run-level provenance
+  // record. `null` for every run persisted before this field existed —
+  // an honest UNKNOWN, never inferred as real or mock after the fact.
+  provenance: FactoryRunProvenance | null;
+}
+
+// Same directive — the ONE canonical research-provenance contract,
+// covering REAL, MOCK, and (by field absence on `FactoryRunRecord`)
+// UNKNOWN runs alike. Most fields are genuinely inapplicable (`null`)
+// for a mock run — never a fabricated placeholder.
+export interface FactoryRunProvenance {
+  dataStatus: "real" | "mock" | "unknown";
+  provider: string | null;
+  symbols: string[];
+  timeframe: string | null;
+  datasetContentHash: string | null;
+  developmentCandleCount: number | null;
+  developmentStartTimestamp: string | null;
+  developmentEndTimestamp: string | null;
+  holdoutCandleCount: number | null;
+  holdoutStartTimestamp: string | null;
+  holdoutEndTimestamp: string | null;
+  holdoutBoundaryFrozenAt: string | null;
+  strategyId: string;
+  strategyVersion: number;
+  strategyFingerprint: string | null;
+  factoryRunId: string;
 }
 
 // CEO directive "TradeTown — Real-Data Strategy Factory Integration &
@@ -8165,6 +8193,11 @@ export interface RealDataResearchProvenance {
   datasetContentHash: string;
   strategyFingerprint: string;
   holdoutBoundaryFrozenAt: string;
+  // CEO directive "TradeTown — Real-Data Research Evidence Ledger &
+  // Provenance 1.0" — the frozen holdout window's own start/end
+  // timestamps.
+  holdoutStartTimestamp: string;
+  holdoutEndTimestamp: string;
 }
 
 // Same directive — read-only exposure of

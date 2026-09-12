@@ -142,6 +142,13 @@ class RealDataResearchProvenance:
     dataset_content_hash: str
     strategy_fingerprint: str
     holdout_boundary_frozen_at: str
+    # CEO directive "TradeTown — Real-Data Research Evidence Ledger &
+    # Provenance 1.0," Section 10 — the frozen holdout window's own real
+    # start/end timestamps (previously only used internally to partition
+    # candles, then discarded). Additive: every existing field/consumer
+    # of this dataclass is unaffected.
+    holdout_start_timestamp: str
+    holdout_end_timestamp: str
 
 
 @dataclass(frozen=True)
@@ -306,6 +313,8 @@ def preflight_real_data_dataset(
             dataset_content_hash=content_hash,
             strategy_fingerprint=fingerprint,
             holdout_boundary_frozen_at=frozen_at,
+            holdout_start_timestamp=holdout_start,
+            holdout_end_timestamp=holdout_end,
         )
         return DevelopmentOnlyRealDataProvider(symbol, development_candles), provenance
 

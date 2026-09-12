@@ -133,6 +133,7 @@ from app.schemas import (
     BlackSwanRiskTier,
     ChallengerComparison,
     ChampionRecord,
+    FactoryRunProvenance,
     FactoryRunRecord,
     ResearchDiscoveryCycleRecord,
     ResearchLessonRecord,
@@ -198,6 +199,7 @@ from app.research_factory import (
     MAX_TOTAL_BACKTESTS_PER_FACTORY_RUN,
     run_research_factory_cycle,
 )
+from app.real_data_accumulator import _strategy_fingerprint
 from app.real_data_research_bridge import RealDataFactoryRunOutcome, run_real_data_factory_cycle
 from app.research_discovery import run_research_discovery_cycle
 from app.research_orchestrator import ResearchOrchestratorDecision, ResearchOrchestratorOutcome, ResearchOrchestratorSeed, decide_research_orchestration
@@ -278,7 +280,7 @@ from app.knowledge_sharing import (
 )
 from app.model_validation import cap_strategy_model_validations, generate_model_validation_report
 from app.talent import mark_talent_report_viewed
-from app.watchlist import default_watchlist
+from app.watchlist import SEED_SYMBOLS, default_watchlist
 from app.ai_provider import get_ai_provider
 from app.ai_context_builder import build_evidence_packet_for_proposal, resolve_deterministic_outcome
 from app.ai_reasoning import run_devils_advocate_reasoning, run_researcher_reasoning
@@ -3460,7 +3462,35 @@ class GameState:
         # 1.0" — real simulation-time cadence field, populated the exact
         # same way regardless of whether a human or the new orchestrator
         # triggered this run.
-        run_record = run_record.model_copy(update={"sim_day": started_sim_day})
+        #
+        # CEO directive "TradeTown — Real-Data Research Evidence Ledger
+        # & Provenance 1.0" — this entry point NEVER passes a
+        # `market_data_provider` into `run_research_factory_cycle()`
+        # above (structurally, not by convention — there is no
+        # parameter to pass one through here), so every run it produces
+        # is unambiguously `data_status="mock"` — a real, not inferred,
+        # fact about this exact code path, never left as "unknown".
+        # `strategy_fingerprint` reuses the identical, unmodified
+        # `_strategy_fingerprint()` the accumulator/real-data bridge
+        # already use — the same strategy-identity hash, never a second
+        # fingerprint algorithm for the mock path.
+        # `symbols is None` resolves to the SAME default
+        # `app/research_experiment.py::run_research_experiment()` itself
+        # applies (`SEED_SYMBOLS`) — reused verbatim rather than
+        # recording a misleading empty list for a run that actually
+        # tested the real default universe.
+        resolved_symbols_for_provenance = symbols if symbols is not None else [s for s, _name, _cat in SEED_SYMBOLS]
+        provenance = FactoryRunProvenance(
+            dataStatus="mock",
+            provider="mock",
+            symbols=resolved_symbols_for_provenance,
+            timeframe=resolved_timeframe,
+            strategyId=definition.id,
+            strategyVersion=definition.version,
+            strategyFingerprint=_strategy_fingerprint(definition),
+            factoryRunId=run_record.id,
+        )
+        run_record = run_record.model_copy(update={"sim_day": started_sim_day, "provenance": provenance})
         new_iterations = all_iterations[len(research_iterations_snapshot):]
         new_lessons = all_lessons[len(research_lessons_snapshot):]
         family_slug = strategy_definition_slug(definition.name)
@@ -3572,7 +3602,34 @@ class GameState:
         assert outcome.updated_registry is not None
         assert outcome.new_iterations is not None
         assert outcome.new_lessons is not None
-        run_record = outcome.run.model_copy(update={"sim_day": started_sim_day})
+        assert outcome.provenance is not None
+        # CEO directive "TradeTown — Real-Data Research Evidence Ledger
+        # & Provenance 1.0" — the ONE canonical provenance contract,
+        # populated from the bridge's own already-verified
+        # `RealDataResearchProvenance` (fingerprint-checked, holdout-
+        # bounded, content-hashed) — never recomputed or re-derived
+        # here. Persisted onto the run record itself so it survives
+        # exactly like every other field `FactoryRunRecord` already
+        # never mutates after creation.
+        provenance = FactoryRunProvenance(
+            dataStatus="real",
+            provider=outcome.provenance.provider,
+            symbols=[outcome.provenance.symbol],
+            timeframe=outcome.provenance.timeframe,
+            datasetContentHash=outcome.provenance.dataset_content_hash,
+            developmentCandleCount=outcome.provenance.development_candle_count,
+            developmentStartTimestamp=outcome.provenance.dataset_start_timestamp,
+            developmentEndTimestamp=outcome.provenance.dataset_end_timestamp,
+            holdoutCandleCount=outcome.provenance.holdout_candle_count,
+            holdoutStartTimestamp=outcome.provenance.holdout_start_timestamp,
+            holdoutEndTimestamp=outcome.provenance.holdout_end_timestamp,
+            holdoutBoundaryFrozenAt=outcome.provenance.holdout_boundary_frozen_at,
+            strategyId=definition.id,
+            strategyVersion=definition.version,
+            strategyFingerprint=outcome.provenance.strategy_fingerprint,
+            factoryRunId=outcome.run.id,
+        )
+        run_record = outcome.run.model_copy(update={"sim_day": started_sim_day, "provenance": provenance})
         family_slug = strategy_definition_slug(definition.name)
         merged_state, merged_run = await self._merge_factory_run_result(
             run_record=run_record,

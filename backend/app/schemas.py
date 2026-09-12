@@ -15420,6 +15420,47 @@ class ParetoFrontierEntry(CamelModel):
     reason: str
 
 
+class FactoryRunProvenance(CamelModel):
+    """CEO directive "TradeTown — Real-Data Research Evidence Ledger &
+    Provenance 1.0" — the ONE canonical, permanent, run-level provenance
+    contract for a `FactoryRunRecord`. Attached once at run creation
+    (`app/state.py::submit_research_factory_run()`/
+    `submit_real_data_research_factory_run()`) and never mutated
+    afterward — same "never mutated after creation" convention
+    `FactoryRunRecord` itself already documents. Reuses
+    `app/real_data_research_bridge.py::RealDataResearchProvenance`'s
+    exact real-data field set verbatim (never a second, competing real-
+    data provenance shape) generalized with an explicit `data_status`
+    discriminator so a mock run can be represented in the SAME contract
+    rather than inventing `MockDataProvenance` as a second system.
+
+    `data_status="unknown"` exists in the type for completeness but is
+    never constructed by this codebase today — every run created before
+    this field existed simply has `FactoryRunRecord.provenance = None`
+    (the honest absence-means-unknown representation backward
+    compatibility requires — see this milestone's own final report,
+    Section 18). `None`/optional fields below are genuinely inapplicable
+    for a mock run (e.g. no holdout boundary exists for the mock path at
+    all) — never a fabricated placeholder value."""
+
+    data_status: Literal["real", "mock", "unknown"] = Field(alias="dataStatus")
+    provider: str | None = None
+    symbols: list[str] = Field(default_factory=list)
+    timeframe: str | None = None
+    dataset_content_hash: str | None = Field(default=None, alias="datasetContentHash")
+    development_candle_count: int | None = Field(default=None, alias="developmentCandleCount")
+    development_start_timestamp: str | None = Field(default=None, alias="developmentStartTimestamp")
+    development_end_timestamp: str | None = Field(default=None, alias="developmentEndTimestamp")
+    holdout_candle_count: int | None = Field(default=None, alias="holdoutCandleCount")
+    holdout_start_timestamp: str | None = Field(default=None, alias="holdoutStartTimestamp")
+    holdout_end_timestamp: str | None = Field(default=None, alias="holdoutEndTimestamp")
+    holdout_boundary_frozen_at: str | None = Field(default=None, alias="holdoutBoundaryFrozenAt")
+    strategy_id: str = Field(alias="strategyId")
+    strategy_version: int = Field(alias="strategyVersion")
+    strategy_fingerprint: str | None = Field(default=None, alias="strategyFingerprint")
+    factory_run_id: str = Field(alias="factoryRunId")
+
+
 class FactoryCandidateRecord(CamelModel):
     """One real node in a Research Factory run's lineage tree. `iteration`
     is `None` only when `lifecycle_stage == "compile_rejected"` — a
@@ -15560,6 +15601,13 @@ class FactoryRunRecord(CamelModel):
     # backfilled/guessed) — see app/research_orchestrator.py's own
     # module docstring for how a `None` cadence baseline is handled.
     sim_day: int | None = Field(default=None, alias="simDay")
+    # CEO directive "TradeTown — Real-Data Research Evidence Ledger &
+    # Provenance 1.0" — the ONE canonical, permanent run-level provenance
+    # record (see `FactoryRunProvenance`'s own docstring). `None` for
+    # every run persisted before this field existed — never backfilled,
+    # never inferred as real or mock after the fact (Section 18/4's own
+    # explicit rule: absence honestly means UNKNOWN).
+    provenance: FactoryRunProvenance | None = None
 
 
 class ResearchOrchestratorStatus(CamelModel):
@@ -15638,6 +15686,13 @@ class RealDataResearchProvenanceRead(CamelModel):
     dataset_content_hash: str = Field(alias="datasetContentHash")
     strategy_fingerprint: str = Field(alias="strategyFingerprint")
     holdout_boundary_frozen_at: str = Field(alias="holdoutBoundaryFrozenAt")
+    # CEO directive "TradeTown — Real-Data Research Evidence Ledger &
+    # Provenance 1.0," Section 10 — the frozen holdout window's own
+    # start/end timestamps, mirroring
+    # `app/real_data_research_bridge.py::RealDataResearchProvenance`'s
+    # own additive fields.
+    holdout_start_timestamp: str = Field(alias="holdoutStartTimestamp")
+    holdout_end_timestamp: str = Field(alias="holdoutEndTimestamp")
 
 
 class RealDataFactoryRunRead(CamelModel):
