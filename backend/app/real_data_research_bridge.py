@@ -180,6 +180,25 @@ def _read_holdout_boundary(conn: sqlite3.Connection, symbol: str, definition: Co
     return (row[0], row[1], row[2], row[3]) if row is not None else None
 
 
+def _read_recorded_fingerprint(conn: sqlite3.Connection, strategy_id: str, strategy_version: int) -> str | None:
+    """CEO directive "TradeTown — Real-Data Evidence Progression &
+    Factory Validation 1.0," Section 7/23 (Test F) — read-only lookup of
+    the fingerprint the accumulator itself recorded for this EXACT
+    (strategy_id, strategy_version) the one time it first accumulated
+    against it (`app/real_data_accumulator.py::_check_strategy_fingerprint()`,
+    called only from `run_accumulation_cycle()`, never from here). This
+    module never writes to this table — it only cross-checks a caller-
+    supplied `CompiledStrategyDefinition` against it, closing a real gap
+    the audit found: `_read_holdout_boundary()` above keys on
+    `(symbol, strategy_id, strategy_version)` alone, so nothing
+    previously stopped a caller from supplying a definition that SHARES
+    that identity but has different actual rules (different
+    `source_text`) — the frozen holdout would still silently look up
+    and apply, attributing evidence to the wrong strategy identity."""
+    row = conn.execute("SELECT fingerprint FROM strategy_fingerprint WHERE strategy_id = ? AND strategy_version = ?", (strategy_id, strategy_version)).fetchone()
+    return row[0] if row is not None else None
+
+
 def _partition_by_holdout(candles: list[Candle], holdout_start: str, holdout_end: str) -> tuple[list[Candle], list[Candle]]:
     """The SAME inclusive-bounds comparison
     app/real_data_accumulator.py::_discover_and_append_trades() already
@@ -243,6 +262,27 @@ def preflight_real_data_dataset(
             )
         holdout_start, holdout_end, dataset_content_hash, frozen_at = boundary
 
+        # CEO directive "TradeTown — Real-Data Evidence Progression &
+        # Factory Validation 1.0," Section 7/23 (Test F) — the holdout
+        # boundary lookup above keys on (symbol, strategy_id, version)
+        # alone. Cross-check the CALLER's actual definition against the
+        # fingerprint the accumulator itself recorded for this exact
+        # identity, so a definition sharing the id/version but carrying
+        # different real rules (different source_text) can never
+        # silently inherit a holdout boundary frozen for a different
+        # strategy.
+        fingerprint = _strategy_fingerprint(definition)
+        recorded_fingerprint = _read_recorded_fingerprint(conn, definition.id, definition.version)
+        if recorded_fingerprint is None or recorded_fingerprint != fingerprint:
+            return RealDataFactoryPreflightFailure(
+                reason="REAL_DATA_PROVENANCE_INVALID",
+                detail=(
+                    f"Strategy fingerprint mismatch for '{definition.id}' v{definition.version}: "
+                    f"{'no fingerprint was ever recorded by the accumulator for this exact (id, version)' if recorded_fingerprint is None else f'recorded {recorded_fingerprint[:16]}..., caller supplied {fingerprint[:16]}...'}. "
+                    "The supplied definition's actual rules cannot be verified as the same strategy this holdout boundary was frozen for."
+                ),
+            )
+
         development_candles, holdout_candles = _partition_by_holdout(candles, holdout_start, holdout_end)
         if len(development_candles) < MIN_DEVELOPMENT_CANDLES:
             return RealDataFactoryPreflightFailure(
@@ -250,7 +290,6 @@ def preflight_real_data_dataset(
                 detail=f"{symbol!r} has {len(development_candles)} real development candle(s) — below the real MIN_DEVELOPMENT_CANDLES={MIN_DEVELOPMENT_CANDLES} floor.",
             )
 
-        fingerprint = _strategy_fingerprint(definition)
         content_hash = hashlib.sha256(
             "".join(f"{c.symbol}|{c.timeframe}|{c.timestamp}|{c.open}|{c.high}|{c.low}|{c.close}|{c.volume}\n" for c in development_candles).encode("utf-8")
         ).hexdigest()

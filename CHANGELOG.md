@@ -7,6 +7,35 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Real-Data Evidence Progression & Factory Validation
+  1.0."** An evidence-validation audit of the full real-data pipeline
+  (Kraken → accumulator → bridge → Factory → backtest/walk-forward/
+  holdout/model-validation), not a feature milestone. This
+  deployment's real-data accumulator has never run an accumulation
+  cycle (0 candles, 0 trades, 0 frozen holdout boundaries, verified
+  directly against `data/real_data_accumulation.db`), so the correct,
+  honest outcome is `INSUFFICIENT_REAL_DATA_EVIDENCE` — the entry gate
+  stopped the audit before any research execution, exactly as
+  designed. No trading behavior, threshold, or promotion criterion was
+  touched; no evidence was fabricated to force a result.
+  - **One real evidence-integrity gap found and fixed**: `app/real_data_research_bridge.py`'s
+    holdout-boundary lookup keyed on `(symbol, strategy_id, strategy_version)`
+    alone, so a caller supplying a `CompiledStrategyDefinition` that
+    shared that identity but carried different actual rules (a
+    different `source_text`, hence a different real fingerprint) could
+    have silently inherited a holdout boundary frozen for a different
+    strategy — `REAL_DATA_PROVENANCE_INVALID` existed in the reason
+    type but was dead code, never actually reachable. Fixed by
+    cross-checking the caller's computed fingerprint against the one
+    `app/real_data_accumulator.py` itself recorded for that exact
+    `(strategy_id, strategy_version)` at accumulation time — reuses the
+    existing `strategy_fingerprint` table and `_strategy_fingerprint()`
+    function verbatim; zero new tables, zero new taxonomy. Narrowly
+    scoped (2 files, ~80 lines), backward-safe (all 42 pre-existing
+    real-data tests pass unmodified), and covered by 2 new focused
+    tests. The existing Real-Data Research UI (commit `9955112`)
+    already had the correct copy for this reason and needed no change.
+
 - **"TradeTown — Real-Data Strategy Factory Integration & Holdout
   Enforcement 1.0."** An audit ("Real-Data Research Factory Integration
   & Evidence Progression Forensic Audit 1.0") found `app/real_data_accumulator.py`

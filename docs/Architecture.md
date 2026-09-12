@@ -24323,3 +24323,58 @@ CEO choose a symbol from the real, canonical `REAL_DATA_SYMBOLS`
 universe and see the real preflight outcome (including an honest
 `"preflight_failed"` state) before deciding whether to submit. Not
 implemented in this turn.
+
+## CEO directive "TradeTown — Real-Data Research Command Center UI 1.0"
+
+Implements the UI surface named above. Added a "REAL-DATA RESEARCH" card
+inside the existing `RESEARCH FACTORY` sub-tab (`ResearchFactoryView.tsx`)
+— no new top-level tab, no second Research Factory. Checks readiness
+automatically (read-only) on mount/symbol change via one new tiny
+endpoint, `POST /research-factory/run-real-data/preflight` — added
+because the mutating run endpoint cannot safely be auto-called just to
+display READY/BLOCKED/INSUFFICIENT without risking a real Factory run
+firing silently on every tab open. It wraps the existing, unmodified
+`preflight_real_data_dataset()` with zero new business logic and zero
+state mutation. Only the explicit "Run Real-Data Research" click
+triggers real Factory work; a completed run's `FactoryRunRecord` renders
+through the same existing Factory Status/Candidate Lineage cards the
+mock path already uses. Holdout is shown as a frozen, reserved fact with
+no control to include it. Verified: 3 new backend tests, 4 new
+Playwright tests (a real-backend group proving this dev environment's
+genuinely empty accumulator produces an honest BLOCKED state, plus a
+`page.route()`-intercepted group — following this repo's own existing
+precedent — exercising the otherwise-unreachable READY/insufficient
+paths), the pre-existing `sandbox.spec.ts` suite unaffected, and
+mypy/ruff/tsc/eslint/vite build all clean. Committed as `9955112`.
+
+## CEO directive "TradeTown — Real-Data Evidence Progression & Factory Validation 1.0"
+
+An evidence-validation audit, not a feature milestone: does the now-
+connected real-data pipeline produce credible, reproducible evidence?
+This deployment's accumulator has never run an accumulation cycle — 0
+candles, 0 trades, 0 frozen holdout boundaries, verified directly
+against `data/real_data_accumulation.db`, and confirmed against the
+main game save (0 of 13 `factoryRuns`/19 candidates carry
+`datasetMetadata.source == "external_real_provider"`). The correct,
+honest verdict is `INSUFFICIENT_REAL_DATA_EVIDENCE` (directive's own
+verdict **F**) — the entry gate correctly stopped the audit before any
+research execution; this is a successful outcome of the milestone, not
+a failure.
+
+While tracing the pipeline, found one real, previously-undiscovered
+evidence-integrity gap: `preflight_real_data_dataset()`'s holdout-
+boundary lookup keys on `(symbol, strategy_id, strategy_version)`
+alone, so a caller supplying a `CompiledStrategyDefinition` sharing that
+identity but carrying different actual rules (different `source_text`,
+hence a different real fingerprint) could have silently inherited a
+holdout boundary frozen for a different strategy —
+`REAL_DATA_PROVENANCE_INVALID` already existed in the reason type but
+was unreachable dead code. Fixed narrowly: cross-check the caller's
+computed fingerprint against the one the accumulator itself recorded
+in its own `strategy_fingerprint` table for that exact
+`(strategy_id, strategy_version)` — reuses existing tables/functions
+verbatim, zero new taxonomy. 2 new focused tests; all 42 pre-existing
+real-data tests pass unmodified; full backend suite, mypy, and ruff all
+clean. No trading behavior, threshold, or promotion criterion touched;
+the existing Real-Data Research UI needed no change (it already had the
+correct copy for this reason).

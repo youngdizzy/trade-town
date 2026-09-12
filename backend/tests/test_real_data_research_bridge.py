@@ -196,6 +196,47 @@ class TestMixedProvenanceFailsClosed:
         assert outcome.provenance is None
 
 
+# --- Test F (directive Section 23): fingerprint mismatch fails closed ------
+
+
+class TestFingerprintMismatchFailsClosed:
+    def test_same_id_and_version_but_different_rules_is_rejected(self) -> None:
+        """The holdout boundary lookup keys on (symbol, strategy_id,
+        strategy_version) alone — a caller supplying a definition that
+        shares that identity but carries DIFFERENT actual rules
+        (different source_text, hence a different real fingerprint)
+        must never silently inherit a holdout boundary frozen for the
+        real accumulated strategy."""
+        _seed_accumulator()
+        frozen = _frozen_definition()
+        mismatched = frozen.model_copy(update={"source_text": frozen.source_text + " (a materially different rule set)"})
+        assert rda._strategy_fingerprint(mismatched) != rda._strategy_fingerprint(frozen)
+
+        outcome = run_real_data_factory_cycle(_hypothesis(), mismatched, symbol="BTC-USD", **_run_kwargs(mismatched))
+        assert outcome.status == "preflight_failed"
+        assert outcome.reason == "REAL_DATA_PROVENANCE_INVALID"
+        assert outcome.run is None
+        assert outcome.new_iterations is None
+        assert outcome.provenance is None
+
+    def test_an_id_version_pair_the_accumulator_never_recorded_a_fingerprint_for_is_rejected(self) -> None:
+        """Defense in depth: even if a holdout_boundary row somehow
+        existed with no matching strategy_fingerprint row (never
+        possible via the real accumulator's own freeze path, which
+        always records both together), this must fail closed rather
+        than silently trusting an unverifiable identity."""
+        _seed_accumulator()
+        frozen = _frozen_definition()
+        with closing(rda._connect()) as conn:
+            rda.init_schema(conn)
+            conn.execute("DELETE FROM strategy_fingerprint WHERE strategy_id = ? AND strategy_version = ?", (frozen.id, frozen.version))
+            conn.commit()
+
+        outcome = run_real_data_factory_cycle(_hypothesis(), frozen, symbol="BTC-USD", **_run_kwargs(frozen))
+        assert outcome.status == "preflight_failed"
+        assert outcome.reason == "REAL_DATA_PROVENANCE_INVALID"
+
+
 # --- Test D: real-unavailable never falls back to mock ------------------
 
 
