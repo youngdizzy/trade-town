@@ -8148,6 +8148,55 @@ export interface FactoryRunRecord {
   paretoFrontier: ParetoFrontierEntry[];
 }
 
+// CEO directive "TradeTown — Real-Data Strategy Factory Integration &
+// Holdout Enforcement 1.0" — read-only exposure of
+// backend/app/real_data_research_bridge.py::RealDataResearchProvenance.
+// Every field was genuinely read from the accumulator's own SQLite
+// tables at preflight time — never fabricated or estimated.
+export interface RealDataResearchProvenance {
+  provider: "kraken";
+  dataStatus: "real";
+  symbol: string;
+  timeframe: string;
+  developmentCandleCount: number;
+  holdoutCandleCount: number;
+  datasetStartTimestamp: string;
+  datasetEndTimestamp: string;
+  datasetContentHash: string;
+  strategyFingerprint: string;
+  holdoutBoundaryFrozenAt: string;
+}
+
+// Same directive — read-only exposure of
+// backend/app/real_data_research_bridge.py::RealDataFactoryRunOutcome.
+// `status: "preflight_failed"` is a real, honest, expected outcome —
+// never an error: it means zero calls were made into the Factory and
+// nothing was mutated. `reason` is one of REAL_DATA_UNAVAILABLE /
+// INSUFFICIENT_REAL_CANDLES / REAL_DATA_PROVENANCE_INVALID /
+// HOLDOUT_BOUNDARY_INVALID / REAL_DATASET_MIXED_PROVENANCE, null only
+// when status is "completed".
+export interface RealDataFactoryRunRead {
+  status: "completed" | "preflight_failed";
+  symbol: string;
+  reason: string | null;
+  detail: string;
+  run: FactoryRunRecord | null;
+  provenance: RealDataResearchProvenance | null;
+}
+
+// CEO directive "TradeTown — Real-Data Research Command Center UI 1.0"
+// — read-only exposure of
+// backend/app/routers/sandbox.py::real_data_research_readiness_endpoint().
+// Never runs the Factory and never mutates any state — exists solely so
+// the UI can show real-data readiness BEFORE an explicit run.
+export interface RealDataReadinessRead {
+  status: "ready" | "preflight_failed";
+  symbol: string;
+  reason: string | null;
+  detail: string;
+  provenance: RealDataResearchProvenance | null;
+}
+
 export interface LessonEvidenceSummary {
   lessonId: string;
   supportingIterations: number;

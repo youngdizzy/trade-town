@@ -15659,6 +15659,27 @@ class RealDataFactoryRunRead(CamelModel):
     provenance: RealDataResearchProvenanceRead | None = None
 
 
+class RealDataReadinessRead(CamelModel):
+    """CEO directive "TradeTown — Real-Data Research Command Center UI
+    1.0" — a read-only exposure of
+    `app/real_data_research_bridge.py::preflight_real_data_dataset()`'s
+    own result, with NO Factory call and NO state mutation of any kind
+    (unlike `POST /research-factory/run-real-data`, which actually runs
+    the Factory when preflight succeeds). Exists solely so the UI can
+    display real-data readiness BEFORE the CEO explicitly triggers a
+    run — auto-calling the mutating run endpoint just to check status
+    would violate this milestone's own "one deliberate CEO action, one
+    deliberate research request" rule. `status="preflight_failed"` is a
+    real, honest, expected outcome; `reason` is `None` only when
+    `status="ready"`; `provenance` is populated only when `status="ready"`."""
+
+    status: Literal["ready", "preflight_failed"]
+    symbol: str
+    reason: str | None = None
+    detail: str
+    provenance: RealDataResearchProvenanceRead | None = None
+
+
 class LessonEvidenceSummary(CamelModel):
     """Section 12 — "memory is evidence, not truth." Computed FRESH per
     request (CAGS, matching `ResearchExperimentRecord`'s own convention),

@@ -104,6 +104,8 @@ import type {
   ConstitutionState,
   FactoryRunRecord,
   FactoryStatsRead,
+  RealDataFactoryRunRead,
+  RealDataReadinessRead,
   FailedStrategyArchiveEntry,
   FailureModeCount,
   FamilyResearchStats,
@@ -1060,6 +1062,36 @@ export const api = {
   getResearchFactoryLineage: (strategyFamily: string) =>
     request<ResearchLoopIterationRecord[]>(`/sandbox/research-factory/lineage/${encodeURIComponent(strategyFamily)}`),
   getResearchFactoryStats: () => request<FactoryStatsRead>("/sandbox/research-factory/stats"),
+  // CEO directive "TradeTown — Real-Data Strategy Factory Integration &
+  // Holdout Enforcement 1.0" / "Real-Data Research Command Center UI
+  // 1.0." `checkRealDataResearchReadiness` is read-only — it never
+  // touches game state and never runs the Factory, so it is safe to
+  // call automatically when the real-data card mounts; `runRealDataResearchFactoryRun`
+  // is the one explicit, CEO-triggered action that can actually run the
+  // Factory against accumulated real Kraken candles.
+  checkRealDataResearchReadiness: (definition: CompiledStrategyDefinition, symbol: string) =>
+    request<RealDataReadinessRead>("/sandbox/research-factory/run-real-data/preflight", {
+      method: "POST",
+      body: JSON.stringify({ definition, symbol }),
+    }),
+  runRealDataResearchFactoryRun: (
+    hypothesis: StrategyHypothesis,
+    definition: CompiledStrategyDefinition,
+    symbol: string,
+    options?: { maxGenerations?: number; maxTotalBacktests?: number; maxChildrenPerParent?: number; maxRuntimeSeconds?: number }
+  ) =>
+    request<RealDataFactoryRunRead>("/sandbox/research-factory/run-real-data", {
+      method: "POST",
+      body: JSON.stringify({
+        hypothesis,
+        definition,
+        symbol,
+        maxGenerations: options?.maxGenerations,
+        maxTotalBacktests: options?.maxTotalBacktests,
+        maxChildrenPerParent: options?.maxChildrenPerParent,
+        maxRuntimeSeconds: options?.maxRuntimeSeconds,
+      }),
+    }),
   // CEO directive "TradeTown — Phase 10: Real Data + True Holdout +
   // Portfolio Intelligence." See backend/app/routers/sandbox.py's own
   // docstrings on each endpoint for the exact real behavior/honesty

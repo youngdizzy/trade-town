@@ -33,6 +33,7 @@ from app.research_factory import summarize_lesson_evidence
 from app.research_loop import compute_benchmark_comparisons, compute_outlier_dependence, derive_research_failure_codes
 from app.failure_taxonomy import find_similar_failed_strategies
 from app.quant_research_lab import classify_research_relationship, count_experiments_for_family, find_similar_experiments
+from app.real_data_research_bridge import RealDataFactoryPreflightFailure, RealDataResearchProvenance, preflight_real_data_dataset
 from app.strategy_families import SUPPORTED_FAMILIES, UNSUPPORTED_FAMILIES
 from app.schemas import (
     AdversarialResearchResult,
@@ -69,6 +70,7 @@ from app.schemas import (
     ResearchLoopIterationRecord,
     ResearchOrchestratorStatus,
     RealDataFactoryRunRead,
+    RealDataReadinessRead,
     RealDataResearchProvenanceRead,
     SeedHypothesisProposalRead,
     RiskProfileTemplate,
@@ -278,6 +280,13 @@ class SubmitRealDataResearchFactoryRunRequest(BaseModel):
     max_total_backtests: int | None = Field(default=None, alias="maxTotalBacktests")
     max_children_per_parent: int | None = Field(default=None, alias="maxChildrenPerParent")
     max_runtime_seconds: int | None = Field(default=None, alias="maxRuntimeSeconds")
+
+
+class RealDataReadinessRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    definition: CompiledStrategyDefinition
+    symbol: str
 
 
 class SubmitResearchDiscoveryCycleRequest(BaseModel):
@@ -1079,6 +1088,28 @@ async def research_loop_lesson_evidence(strategy_family: str | None = Query(defa
     return summarize_lesson_evidence(lessons)
 
 
+def _real_data_provenance_read(provenance: RealDataResearchProvenance | None) -> RealDataResearchProvenanceRead | None:
+    """CEO directive "TradeTown — Real-Data Research Command Center UI
+    1.0" — shared by both the run endpoint and the new read-only
+    preflight endpoint below, so the exact same provenance mapping is
+    never duplicated."""
+    if provenance is None:
+        return None
+    return RealDataResearchProvenanceRead(
+        provider=provenance.provider,
+        dataStatus=provenance.data_status,
+        symbol=provenance.symbol,
+        timeframe=provenance.timeframe,
+        developmentCandleCount=provenance.development_candle_count,
+        holdoutCandleCount=provenance.holdout_candle_count,
+        datasetStartTimestamp=provenance.dataset_start_timestamp,
+        datasetEndTimestamp=provenance.dataset_end_timestamp,
+        datasetContentHash=provenance.dataset_content_hash,
+        strategyFingerprint=provenance.strategy_fingerprint,
+        holdoutBoundaryFrozenAt=provenance.holdout_boundary_frozen_at,
+    )
+
+
 @router.post("/research-factory/run", response_model=FactoryRunRecord)
 async def run_research_factory_run_endpoint(payload: SubmitResearchFactoryRunRequest) -> FactoryRunRecord:
     """CEO directive "TradeTown — Phase 7: Autonomous Strategy Evolution
@@ -1156,23 +1187,37 @@ async def run_real_data_research_factory_run_endpoint(payload: SubmitRealDataRes
         reason=outcome.reason,
         detail=outcome.detail,
         run=outcome.run,
-        provenance=(
-            RealDataResearchProvenanceRead(
-                provider=outcome.provenance.provider,
-                dataStatus=outcome.provenance.data_status,
-                symbol=outcome.provenance.symbol,
-                timeframe=outcome.provenance.timeframe,
-                developmentCandleCount=outcome.provenance.development_candle_count,
-                holdoutCandleCount=outcome.provenance.holdout_candle_count,
-                datasetStartTimestamp=outcome.provenance.dataset_start_timestamp,
-                datasetEndTimestamp=outcome.provenance.dataset_end_timestamp,
-                datasetContentHash=outcome.provenance.dataset_content_hash,
-                strategyFingerprint=outcome.provenance.strategy_fingerprint,
-                holdoutBoundaryFrozenAt=outcome.provenance.holdout_boundary_frozen_at,
-            )
-            if outcome.provenance is not None
-            else None
-        ),
+        provenance=_real_data_provenance_read(outcome.provenance),
+    )
+
+
+@router.post("/research-factory/run-real-data/preflight", response_model=RealDataReadinessRead)
+async def real_data_research_readiness_endpoint(payload: RealDataReadinessRequest) -> RealDataReadinessRead:
+    """CEO directive "TradeTown — Real-Data Research Command Center UI
+    1.0" — the one tiny, additive, read-only endpoint this milestone's
+    own Section 19 proved necessary: the CEO-facing UI must show real-
+    data readiness (READY / BLOCKED / INSUFFICIENT) BEFORE an explicit
+    run, and auto-calling the mutating `POST /research-factory/run-real-data`
+    on page load — the only other way to observe preflight — would
+    silently start a real Factory run every time the tab opens once
+    data ever becomes available, violating "one deliberate CEO action,
+    one deliberate research request." This endpoint calls the EXISTING,
+    UNMODIFIED `preflight_real_data_dataset()` directly — no new
+    business logic, no second accumulator/holdout/provenance check —
+    and returns without ever touching `game_state`, running the Factory,
+    or persisting anything. `status="preflight_failed"` is a real,
+    honest, expected outcome, identical in meaning to the same status
+    from the run endpoint, just without ever having attempted a run."""
+    result = preflight_real_data_dataset(payload.symbol, payload.definition)
+    if isinstance(result, RealDataFactoryPreflightFailure):
+        return RealDataReadinessRead(status="preflight_failed", symbol=payload.symbol, reason=result.reason, detail=result.detail)
+    _provider, provenance = result
+    return RealDataReadinessRead(
+        status="ready",
+        symbol=payload.symbol,
+        reason=None,
+        detail=f"Real accumulated data available for {payload.symbol}: {provenance.development_candle_count} development candle(s), holdout frozen at {provenance.holdout_boundary_frozen_at}.",
+        provenance=_real_data_provenance_read(provenance),
     )
 
 

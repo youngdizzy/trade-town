@@ -5,15 +5,19 @@ import type {
   AgentId,
   CandidacyBinning,
   CandidateLifecycleStage,
+  CompiledStrategyDefinition,
   FactoryCandidateRecord,
   FactoryRunRecord,
   FactoryStatsRead,
   FamilyResearchStats,
   ParetoStatus,
+  RealDataReadinessRead,
+  RealDataResearchProvenance,
   ResearchDiscoveryCycleRecord,
   ResearchExperimentRecord,
   ResearchLoopIterationRecord,
   ResearchScorecardClassification,
+  StrategyHypothesis,
   StrategyScorecard,
 } from "@/types";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
@@ -170,6 +174,300 @@ function renderScorecard(scorecard: StrategyScorecard) {
   );
 }
 
+// CEO directive "TradeTown — Real-Data Research Command Center UI 1.0."
+// Mirrors backend/app/real_data_research_bridge.py::REAL_DATA_SYMBOLS —
+// the canonical real-data universe, never invented, never silently
+// expanded here.
+const REAL_DATA_SYMBOLS = ["BTC-USD", "ETH-USD"] as const;
+type RealDataSymbol = (typeof REAL_DATA_SYMBOLS)[number];
+
+// The real-data accumulator's own frozen holdout boundary
+// (backend/app/real_data_accumulator.py::STRATEGY_DEFINITION_ID) exists
+// for exactly ONE (strategyId, version) pair today — compiling this
+// EXACT name + source text deterministically reproduces that same
+// `50-ema-breakout-pullback-long` v1 identity (id is a slug of `name`;
+// version defaults to 1 for a fresh, unregistered compile), which is
+// verified live in this milestone's own final report. A real-data run
+// can never succeed against any other strategy text, so this card never
+// lets the CEO type arbitrary strategy rules — it researches the one
+// real strategy the accumulator has actually reserved holdout evidence
+// for.
+const FROZEN_STRATEGY_NAME = "50 EMA Breakout Pullback (Long)";
+const FROZEN_STRATEGY_SOURCE_TEXT =
+  "This strategy waits for price to stay below the 50 EMA, then closes above the 50 EMA on a confirmed candle. It then requires at least 2 bearish candles as the pullback. Entry triggers when price closes above the previous swing high established before the pullback. Use a chandelier stop with a 22-period ATR and a 3x multiplier. Target 2R.";
+
+type ReadinessCategory = "ready" | "blocked" | "insufficient";
+
+function categorizeReadiness(readiness: RealDataReadinessRead): ReadinessCategory {
+  if (readiness.status === "ready") return "ready";
+  return readiness.reason === "INSUFFICIENT_REAL_CANDLES" ? "insufficient" : "blocked";
+}
+
+const READINESS_TONE: Record<ReadinessCategory, "green" | "amber" | "red"> = {
+  ready: "green",
+  insufficient: "amber",
+  blocked: "red",
+};
+
+const READINESS_LABEL: Record<ReadinessCategory, string> = {
+  ready: "READY",
+  insufficient: "INSUFFICIENT EVIDENCE",
+  blocked: "BLOCKED",
+};
+
+// Section 12 — every named backend failure reason gets its own precise,
+// honest explanation; nothing collapses into a vague "something went
+// wrong." A reason this UI has never seen (a genuine technical failure,
+// not one of the five named research conditions) falls through to the
+// raw backend `detail` string instead of a fabricated label.
+const READINESS_REASON_EXPLANATION: Record<string, string> = {
+  REAL_DATA_UNAVAILABLE: "The real-data accumulator currently has no usable accumulated market data for this symbol. No Factory run was executed. No mock data was substituted. No trading action was taken.",
+  INSUFFICIENT_REAL_CANDLES: "The accumulated dataset does not currently contain enough usable real data for this research run. No artificial data will be added.",
+  REAL_DATA_PROVENANCE_INVALID: "The accumulated dataset's provenance could not be verified as genuine real market data. No Factory run was executed.",
+  HOLDOUT_BOUNDARY_INVALID: "No frozen holdout boundary exists yet for this exact strategy version. No Factory run was executed.",
+  REAL_DATASET_MIXED_PROVENANCE: "The accumulated dataset mixes real and non-real candles. No Factory run was executed. No mock data was substituted.",
+};
+
+/**
+ * Section 7/9/13 — the one shared provenance display, reused for BOTH
+ * the pre-run readiness check and a completed run's own result (the
+ * backend computes identical fields for each — same
+ * `preflight_real_data_dataset()` call). Never displays "LIVE" — "real"
+ * means real market data, never live trading. Holdout is shown as a
+ * fixed, reserved fact, never as a second pool of candles to analyze —
+ * there is no control here that could include it.
+ */
+function RealDataProvenanceCard({ provenance }: { provenance: RealDataResearchProvenance }) {
+  return (
+    <Glass className="p-3">
+      <TerminalLabel>DATA PROVENANCE — REAL MARKET DATA</TerminalLabel>
+      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+        <div>
+          <DataRow label="Provider" value="Kraken" />
+          <DataRow label="Status" value={<StatusPill tone="green">REAL</StatusPill>} />
+          <DataRow label="Symbol" value={provenance.symbol} />
+          <DataRow label="Timeframe" value={provenance.timeframe} />
+          <DataRow label="Development candles" value={provenance.developmentCandleCount.toLocaleString()} />
+        </div>
+        <div>
+          <DataRow label="Dataset window" value={`${provenance.datasetStartTimestamp} → ${provenance.datasetEndTimestamp}`} />
+          <DataRow label="Dataset content hash" value={`${provenance.datasetContentHash.slice(0, 12)}…`} />
+          <DataRow label="Strategy fingerprint" value={`${provenance.strategyFingerprint.slice(0, 12)}…`} />
+        </div>
+      </div>
+      <div className="mt-2 border-t border-cmd-border/40 pt-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] uppercase tracking-wide text-cmd-cyan">Holdout</span>
+          <StatusPill tone="purple">FROZEN / RESERVED</StatusPill>
+        </div>
+        <p className="mt-1 text-[8px] text-cmd-textDim">
+          Purpose: final evaluation only. Development optimization above does not include holdout data ({provenance.holdoutCandleCount.toLocaleString()} candle(s) reserved,
+          frozen at {provenance.holdoutBoundaryFrozenAt}). This UI has no control to include holdout data or alter the boundary.
+        </p>
+      </div>
+      <p className="mt-2 border-t border-cmd-border/40 pt-2 text-[8px] italic text-cmd-textDim">
+        Backtest evidence is historical research, not a guarantee of future performance.
+      </p>
+    </Glass>
+  );
+}
+
+/**
+ * CEO directive "TradeTown — Real-Data Research Command Center UI 1.0."
+ * The one CEO-facing surface for backend milestone 08c4b26
+ * (app/real_data_research_bridge.py) — a controlled, honest window onto
+ * accumulated real Kraken candles, never a second Research Factory.
+ * READY/BLOCKED/INSUFFICIENT is checked automatically (read-only,
+ * side-effect-free — never runs the Factory) whenever this card mounts
+ * or the chosen symbol changes; only the explicit "Run Real-Data
+ * Research" click ever triggers real Factory work. On completion, the
+ * resulting `FactoryRunRecord` is handed to the SAME existing "Factory
+ * Status"/"Candidate Lineage" rendering the mock path already uses
+ * below — no second backtest/validation display is built here.
+ */
+function RealDataResearchCard({ onRunCompleted }: { onRunCompleted: (run: FactoryRunRecord, provenance: RealDataResearchProvenance | null) => void }) {
+  const [symbol, setSymbol] = useState<RealDataSymbol>("BTC-USD");
+  const [definition, setDefinition] = useState<CompiledStrategyDefinition | null>(null);
+  const [definitionError, setDefinitionError] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<RealDataReadinessRead | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  // Compiled once — deterministic and stateless (see
+  // backend/app/strategy_compiler.py), so re-running this effect would
+  // only ever reproduce the identical definition; not re-run per symbol.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .compileStrategy(FROZEN_STRATEGY_NAME, FROZEN_STRATEGY_SOURCE_TEXT)
+      .then((d) => {
+        if (!cancelled) setDefinition(d);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setDefinitionError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Read-only preflight — safe to call automatically. Never the mutating
+  // run endpoint, so opening this tab never starts real Factory work.
+  useEffect(() => {
+    if (!definition) return;
+    let cancelled = false;
+    setReadinessLoading(true);
+    setReadinessError(null);
+    api
+      .checkRealDataResearchReadiness(definition, symbol)
+      .then((r) => {
+        if (!cancelled) setReadiness(r);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setReadinessError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setReadinessLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [definition, symbol]);
+
+  async function runRealDataResearch() {
+    if (!definition || running) return;
+    setRunning(true);
+    setRunError(null);
+    try {
+      const hypothesis: StrategyHypothesis = {
+        id: `hyp-real-data-${Date.now()}`,
+        hypothesis: `Real-data research pass for ${definition.name} against accumulated ${symbol} Kraken candles.`,
+        marketMechanism: "See compiled definition.",
+        expectedEdge: "Not claimed — this is a research pass, not a live trading signal.",
+        invalidationConditions: "See the existing walk-forward/holdout/robustness gates below.",
+        symbolUniverse: [symbol],
+        timeframe: definition.timeframe,
+        entryConditions: "See compiled definition.",
+        exitConditions: "See compiled definition.",
+        stopLossLogic: "See compiled definition.",
+        takeProfitLogic: "See compiled definition.",
+        positionSizingLogic: "Fixed risk per trade (CEO-configured RiskLimits.riskPerTradePct).",
+        riskConstraints: "Standard.",
+        indicatorsFeatures: [],
+        regimeAssumptions: "",
+        researchRationale: "",
+        parentStrategyFamily: null,
+        parentDefinitionId: null,
+        parentDefinitionVersion: null,
+        proposedBy: "quant",
+        createdAt: new Date().toISOString(),
+        generation: 0,
+        lineageId: null,
+        reasonForGeneration: null,
+        lessonsUsed: [],
+        failureCodesAddressed: [],
+        mutationOperatorUsed: null,
+        expectedImprovement: null,
+        expectedRisk: null,
+        reproducibilitySeed: null,
+        sourceEvidenceIds: [],
+      };
+      const result = await api.runRealDataResearchFactoryRun(hypothesis, definition, symbol);
+      if (result.status === "completed" && result.run) {
+        onRunCompleted(result.run, result.provenance);
+      }
+      // Always reflect the exact backend outcome locally too — including
+      // a preflight_failed result, which must never be hidden or turned
+      // into a fabricated success.
+      setReadiness({ status: result.status === "completed" ? "ready" : "preflight_failed", symbol: result.symbol, reason: result.reason, detail: result.detail, provenance: result.provenance });
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const category = readiness ? categorizeReadiness(readiness) : null;
+  const canRun = definition !== null && !running && readiness?.status === "ready";
+
+  return (
+    <Glass className="p-3">
+      <div className="flex items-center justify-between gap-2">
+        <TerminalLabel>REAL-DATA RESEARCH — RESEARCH ONLY, NEVER TRADING</TerminalLabel>
+        <select
+          value={symbol}
+          onChange={(e) => setSymbol(e.target.value as RealDataSymbol)}
+          disabled={running}
+          className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50 disabled:opacity-40"
+        >
+          {REAL_DATA_SYMBOLS.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="mt-1 text-[8px] text-cmd-textDim">
+        Kraken · {REAL_DATA_SYMBOLS.join(" · ")} · Real accumulated market data. Runs the existing, unmodified Strategy Factory against genuine accumulated candles instead of
+        the simulated mock provider every other panel on this page defaults to. This action researches strategies — it never places a trade or opens a position.
+      </p>
+
+      {definitionError && <div className="mt-1.5 text-[9px] text-cmd-red">{definitionError}</div>}
+
+      {!definitionError && (
+        <div className="mt-2 border-t border-cmd-border/40 pt-2">
+          {readinessLoading && !readiness && <div className="text-[9px] text-cmd-textDim">Checking real-data readiness…</div>}
+          {readinessError && <div className="text-[9px] text-cmd-red">{readinessError}</div>}
+          {readiness && category && (
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] uppercase tracking-wide text-cmd-textDim">Status</span>
+              <StatusPill tone={READINESS_TONE[category]}>{READINESS_LABEL[category]}</StatusPill>
+            </div>
+          )}
+          {readiness && category !== "ready" && readiness.reason && (
+            <p className="mt-1 text-[9px] text-cmd-text">
+              <span className="text-cmd-cyan">Reason:</span> {readiness.reason}
+              <br />
+              {READINESS_REASON_EXPLANATION[readiness.reason] ?? readiness.detail}
+            </p>
+          )}
+          {readiness && category === "ready" && readiness.provenance && (
+            <div className="mt-1.5">
+              <RealDataProvenanceCard provenance={readiness.provenance} />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-col gap-1 border-t border-cmd-border/40 pt-2">
+        <button
+          type="button"
+          disabled={!canRun}
+          onClick={() => void runRealDataResearch()}
+          title="Research only. Uses accumulated Kraken data. Does not place orders or open positions."
+          className="rounded-sm border border-cmd-cyan/60 bg-cmd-cyan/10 px-3 py-1.5 text-[9px] uppercase tracking-wide text-cmd-cyan transition-colors hover:enabled:bg-cmd-cyan/20 disabled:opacity-40"
+        >
+          {running ? "Running real-data research…" : "Run Real-Data Research"}
+        </button>
+        <p className="text-[8px] italic text-cmd-textDim">Research only · Uses accumulated Kraken data · Does not place orders or open positions</p>
+      </div>
+
+      {running && (
+        <div className="mt-2 border-t border-cmd-border/40 pt-2 text-[9px] text-cmd-textDim">
+          <DataRow label="Provider" value="Kraken" />
+          <DataRow label="Dataset" value="Accumulated real market data" />
+          <DataRow label="Pipeline" value="Research → Backtest → Validation" />
+          <p className="mt-1 text-[8px] italic">No trading action is being taken.</p>
+        </div>
+      )}
+
+      {runError && <div className="mt-1.5 text-[9px] text-cmd-red">{runError}</div>}
+    </Glass>
+  );
+}
+
 /**
  * CEO directive "TradeTown — Next Major Implementation Pass, Phase 4-6:
  * Self-Improving Strategy Factory + Validation Funnel," Section 19 — a
@@ -199,6 +497,12 @@ export function ResearchFactoryView() {
   const [factoryRun, setFactoryRun] = useState<FactoryRunRecord | null>(null);
   const [factoryRuns, setFactoryRuns] = useState<FactoryRunRecord[]>([]);
   const [factoryStats, setFactoryStats] = useState<FactoryStatsRead | null>(null);
+  // CEO directive "TradeTown — Real-Data Research Command Center UI
+  // 1.0" — set only when the currently-displayed `factoryRun` came from
+  // the real-data card below; cleared whenever a NEW mock-path run
+  // (runFactory() below) replaces it, so a mock run is never shown
+  // alongside stale real-data provenance.
+  const [realDataProvenance, setRealDataProvenance] = useState<RealDataResearchProvenance | null>(null);
 
   useEffect(() => {
     api
@@ -283,6 +587,7 @@ export function ResearchFactoryView() {
       }
       const run = await api.runResearchFactoryRun(buildHypothesis(definition.timeframe), definition);
       setFactoryRun(run);
+      setRealDataProvenance(null);
     } catch (err) {
       setFactoryError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -292,6 +597,13 @@ export function ResearchFactoryView() {
 
   return (
     <div className="space-y-3">
+      <RealDataResearchCard
+        onRunCompleted={(run, provenance) => {
+          setFactoryRun(run);
+          setRealDataProvenance(provenance);
+        }}
+      />
+
       <Glass className="p-3">
         <TerminalLabel>Research Factory — hypothesis to funnel decision, never a black-box score</TerminalLabel>
         <p className="mt-1 text-[9px] text-cmd-textDim">
@@ -379,6 +691,7 @@ export function ResearchFactoryView() {
 
       {factoryRun && (
         <>
+          {realDataProvenance && <RealDataProvenanceCard provenance={realDataProvenance} />}
           <Glass className="p-3">
             <TerminalLabel>Factory Status — Run {factoryRun.id}</TerminalLabel>
             <p className="mt-1 text-[9px] text-cmd-textDim">
