@@ -7,6 +7,37 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Real-Data Evidence Accumulation 3.0" (no code
+  implementation needed — documented, not built).** Asked whether the
+  existing real-data pipeline could already accumulate genuine new
+  Kraken evidence toward the unchanged 20-trade floor through repeated
+  invocation. A fresh audit reconfirmed every prior invariant with no
+  regression, then **live-verified, twice, against the real persistent
+  database**: `python -m app.real_data_accumulator` appended 5 genuine
+  new 1h candles and 2 genuine new 4h candles per symbol (720→725,
+  720→722), found 0 new trades (honest — no fabricated signal), and an
+  immediate second run appended exactly 0 candles/trades (idempotency).
+  All 4 holdout boundaries and the strategy fingerprint were confirmed
+  byte-identical before and after this real growth. The one genuine gap
+  found — this operational workflow had never been documented — is now
+  written down in `docs/Architecture.md`'s "Real-Data Evidence
+  Accumulation 3.0" section (how to invoke it, recommended cadence,
+  output/failure semantics, how to check progress via the existing
+  `get_accumulation_status()`). No new scheduler, endpoint, UI surface,
+  schema, or code of any kind was added — per the directive's own
+  explicit instruction not to build infrastructure the existing,
+  already-working system does not need. Two focused regression tests
+  were added directly proving Section 25's explicitly-named invariants
+  that were only transitively covered before: the frozen strategy's
+  fingerprint stays byte-identical across genuine development-data
+  growth, and crossing the 20-trade floor reports eligibility for the
+  existing validation pipeline — never a fabricated "validated" verdict
+  — since `get_accumulation_status()` is read-only and cannot itself
+  trigger any validation stage. Full backend suite: 4,624 passed;
+  `mypy app/`/`ruff check app/ tests/` clean. No frontend files changed
+  (no new information reached an API response), so Playwright was not
+  required.
+
 - **"TradeTown — Real-Data Evidence Accumulation & Validation Readiness
   2.0."** An evidence-integrity and validation-readiness audit, not a
   new trading system. A forensic Phase 0 audit of the real-data

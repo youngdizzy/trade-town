@@ -272,6 +272,29 @@ class TestDeduplicationAndIdempotency:
 
 
 class TestFailClosedConditions:
+    def test_fingerprint_before_and_after_real_growth_are_identical(self) -> None:
+        """CEO directive "TradeTown — Real-Data Evidence Accumulation
+        3.0," Section 15/25 (test 13) — explicit `fingerprint_before` ==
+        `fingerprint_after` proof across genuine development-data growth
+        (not merely "a mismatch is rejected," which
+        `test_strategy_fingerprint_mismatch_hard_fails` below already
+        covers)."""
+        base = _base_series("BTC-USD")
+        rda.run_accumulation_cycle(provider=_provider(base))
+        with _conn() as conn:
+            fingerprint_before = conn.execute(
+                "SELECT fingerprint FROM strategy_fingerprint WHERE strategy_id = ? AND strategy_version = ?", (FROZEN_DEFINITION.id, FROZEN_DEFINITION.version)
+            ).fetchone()[0]
+
+        grown = _extend(base, 300)
+        rda.run_accumulation_cycle(provider=_provider(grown))
+        with _conn() as conn:
+            fingerprint_after = conn.execute(
+                "SELECT fingerprint FROM strategy_fingerprint WHERE strategy_id = ? AND strategy_version = ?", (FROZEN_DEFINITION.id, FROZEN_DEFINITION.version)
+            ).fetchone()[0]
+
+        assert fingerprint_before == fingerprint_after, "the frozen strategy's own fingerprint must never change merely because development data grew"
+
     def test_strategy_fingerprint_mismatch_hard_fails(self) -> None:
         base = _base_series("BTC-USD")
         rda.run_accumulation_cycle(provider=_provider(base))
@@ -420,6 +443,37 @@ class TestObservability:
             assert dataset_status["certification_min_trade_count"] == 20
             assert dataset_status["remaining_trades_to_floor"] == max(0, 20 - dataset_status["cumulative_unique_development_trades"])
             assert dataset_status["validation_state"] in ("insufficient_evidence", "sample_size_floor_cleared_reexamine_full_model_validation")
+
+    def test_reaching_the_20_trade_floor_reports_eligibility_never_a_fabricated_pass(self) -> None:
+        """CEO directive "TradeTown — Real-Data Evidence Accumulation
+        3.0," Section 18/25 (test 15) — crossing the 20-trade floor must
+        report "eligible for the existing validation pipeline," never a
+        synthetic "validated" verdict; `get_accumulation_status()` is a
+        pure, read-only reporting function that itself never calls any
+        validation stage, so reaching this state cannot possibly trigger
+        one. 20 trade rows are inserted directly into this test's own
+        isolated database — a legitimate white-box test of the READING/
+        threshold logic alone (this file's own established convention,
+        e.g. `test_strategy_fingerprint_mismatch_hard_fails` below
+        already manipulates a table directly), never a claim that these
+        rows are real Kraken-derived evidence."""
+        base = _base_series("BTC-USD")
+        rda.run_accumulation_cycle(provider=_provider(base))
+        with _conn() as conn:
+            for i in range(20):
+                conn.execute(
+                    "INSERT INTO trades (symbol, timeframe, strategy_id, strategy_version, entry_timestamp, bars_held, entry_price, exit_price, direction, outcome, r_multiple_realized, is_holdout, discovered_in_run_id, discovered_at) "
+                    "VALUES ('BTC-USD', '1h', ?, ?, ?, 5, 100.0, 105.0, 'long', 'win', 1.0, 0, 'test-floor-fixture', ?)",
+                    (FROZEN_DEFINITION.id, FROZEN_DEFINITION.version, f"2020-01-{i + 1:02d}T00:00:00+00:00", rda._now_iso()),
+                )
+        status = rda.get_accumulation_status()
+        entry = next(d for d in status["per_dataset"] if d["symbol"] == "BTC-USD" and d["timeframe"] == "1h")
+        assert entry["cumulative_unique_development_trades"] >= 20
+        assert entry["remaining_trades_to_floor"] == 0
+        assert entry["validation_state"] == "sample_size_floor_cleared_reexamine_full_model_validation"
+        # The exact wording matters: "eligible to (re)examine," never a
+        # bare "validated"/"passed" verdict fabricated from a trade count.
+        assert entry["validation_state"] not in ("validated", "passed", "certified")
 
     def test_first_accumulated_at_is_stable_while_latest_advances_on_growth(self) -> None:
         base = _base_series("BTC-USD")

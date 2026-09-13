@@ -24812,3 +24812,116 @@ dimensions. No change to strategy parameters, thresholds, capital
 allocation, or the 20-trade evidence floor. No change to trading,
 paper trading, Gatekeeper, RiskContract, RiskEngine, Emergency Stop, or
 any broker/order/position code.
+
+## Real-Data Evidence Accumulation 3.0
+
+CEO directive "TradeTown — Real-Data Evidence Accumulation 3.0" asked
+whether the existing real-data pipeline (built and independently
+forensically audited across three prior milestones) could already
+accumulate genuine new Kraken evidence toward the unchanged 20-trade
+floor through repeated invocation, or whether it needed new
+infrastructure to do so.
+
+**Finding: no code implementation was necessary.** A fresh Phase 0
+audit reconfirmed every previously-verified invariant (real-data
+provider, candle validation, timeframe isolation, frozen holdouts,
+development-only provider, real/mock firewall, Factory provider
+injection, provenance, deterministic research, the unchanged 20-trade
+floor, trading isolation) against the exact current source with no
+regression. `run_accumulation_cycle()` already has everything Section
+9's "preferred architecture" asks for: a one-shot, idempotent,
+lock-protected entry point (`if __name__ == "__main__":` at the bottom
+of `app/real_data_accumulator.py`) designed from its very first
+milestone to be invoked repeatedly by an external trigger. Nothing was
+missing.
+
+**Live-verified, twice, against the real persistent database** (not a
+test fixture): running `python -m app.real_data_accumulator` from
+`backend/` appended 5 genuine new 1h candles and 2 genuine new 4h
+candles per symbol (720→725 and 720→722), found 0 new trades in that
+window (an honest result — no fabricated signal), and — the idempotency
+proof — running it again immediately afterward appended exactly 0
+candles and 0 trades. Before/after comparison confirmed every existing
+invariant held through this real growth: all 4 holdout boundaries
+byte-identical (same start/end timestamps, same `dataset_content_hash`,
+same `frozen_at`), the strategy fingerprint unchanged
+(`1febc98cdd58425c...`), and every previously-persisted candle/trade
+row untouched.
+
+**The only genuine gap found**: this operational workflow had never
+been written down. Documented here rather than built as new code,
+per the directive's own Section 7 ("if the existing system already
+works, document exactly how it should be operated" rather than adding
+infrastructure for its own sake):
+
+### Operating the real-data accumulator
+
+Run from the `backend/` directory, with the same environment the
+FastAPI process itself uses (so `DATABASE_URL`/`REAL_DATA_ACCUMULATOR_DB_PATH`
+resolve to the correct persistent volume):
+
+```
+cd backend && python -m app.real_data_accumulator
+```
+
+- **Recommended cadence**: hourly, a few minutes after the hour
+  (e.g. `5 * * * *` in cron), since the shortest accumulated timeframe
+  is 1h. Running more often than needed is harmless — see idempotency
+  above — so an imprecise or occasionally-missed schedule is safe;
+  the module's own docstring already documents this design intent.
+- **Output**: a single JSON object to stdout on success, e.g.
+  `{"run_id": ..., "status": "success", "new_candles_appended": {...}, "new_trades_found": {...}}`.
+  `status: "success"` with all-zero counts is `NO_NEW_DATA`, not a
+  failure — this is not a separate status string, it is the same
+  "success" outcome with zero counts, and must be read that way rather
+  than treated as an error.
+- **Concurrency**: a second invocation while one is already running
+  exits with `status: "skipped_concurrent"` (also not a failure) —
+  the OS advisory lock (`fcntl.flock`) makes this safe even from an
+  overlapping cron schedule.
+- **Failure**: any fail-closed condition (Kraken unreachable,
+  malformed/nonfinite/conflicting data, a changed strategy fingerprint)
+  raises `AccumulationFailure`, which this entry point does not catch —
+  it propagates as an uncaught Python exception, giving a non-zero
+  exit code and a full traceback on stderr, which any standard cron
+  mailer/log collector will surface as an alertable failure. The
+  `runs` table's own `status='failed'`/`error_detail` row (see
+  `app/real_data_accumulator.py::get_accumulation_status()`) is the
+  durable, queryable record of exactly what failed and why.
+- **Checking progress**: `app.real_data_accumulator.get_accumulation_status()`
+  already returns everything Section 19 asks for — per-dataset candle/
+  trade counts, `first_accumulated_at`/`latest_accumulated_at`,
+  `remaining_trades_to_floor`, `validation_state` — callable from a
+  Python shell (`python -c "from app.real_data_accumulator import get_accumulation_status; import json; print(json.dumps(get_accumulation_status(), indent=2))"`)
+  today. No new API endpoint or UI surface was added for this: nothing
+  currently consumes this data outside tests and manual checks, and
+  the directive's own Section 19 explicitly warns against building
+  observability infrastructure the architecture does not yet
+  materially need. Wiring a read-only endpoint for it remains a small,
+  well-scoped, low-risk FUTURE item if a real operational need for it
+  is identified later — deliberately not built speculatively here.
+
+**New tests.** Two focused regression tests close the only gaps found
+against the directive's own explicitly-named test list (Section 25):
+`test_fingerprint_before_and_after_real_growth_are_identical` proves
+the frozen strategy's fingerprint stays byte-identical across genuine
+development-data growth (previously only proven transitively by every
+multi-run test, and by this milestone's own live before/after
+snapshot — this makes it an explicit, permanent regression test), and
+`test_reaching_the_20_trade_floor_reports_eligibility_never_a_fabricated_pass`
+proves crossing the 20-trade floor reports
+`"sample_size_floor_cleared_reexamine_full_model_validation"` — never
+a bare "validated"/"passed" string — and that `get_accumulation_status()`
+itself is read-only and cannot trigger any validation stage. **Full
+backend suite: 4,624 passed.** `mypy app/`/`ruff check app/ tests/`
+clean. No frontend files changed, so Playwright was not required.
+
+### Explicitly not built this pass
+
+No new scheduler, daemon, queue, or cloud infrastructure — the
+existing one-shot/external-trigger design was already correct and is
+preserved as-is. No new database schema or migration (none was
+needed). No new API endpoint or UI surface (see above). No change to
+the strategy, the 20-trade floor, the research universe, timeframes,
+Factory/validation gating, or any trading/risk/broker/AI/OpenClaw
+code.
