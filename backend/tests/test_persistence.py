@@ -21,7 +21,7 @@ import app.db as db
 import app.persistence as persistence
 from app.models import Base, SaveBackup, SaveGame, SaveModule
 from app.save_modules import ALL_MODULES
-from app.schemas import EntityTransform, TimeState
+from app.schemas import EntityTransform, FoundationalMentorProgress, TimeState
 from app.state import default_state
 
 
@@ -456,6 +456,43 @@ def test_add_missing_columns_backfills_a_not_null_callable_default_column(tmp_pa
         assert row[0] is not None
     finally:
         db.engine = original_engine
+
+
+def test_foundational_mentor_progression_state_survives_persistence_round_trip(temp_db):
+    """TradeTown — Autonomous MentorLib + Agent Academy/Training 1.0's
+    80% Progression Gate reuses FoundationalMentorProgress's existing
+    fields (graduation_status, coach_note, quiz_attempts,
+    correct_quiz_attempts) rather than a new store — an agent blocked
+    mid-remediation (see app/foundational_mentors.py's
+    _apply_quiz_average_remediation) must survive a real save/load round
+    trip through SQLite exactly like every other module already does."""
+    state = default_state()
+    blocked_progress = FoundationalMentorProgress(
+        mentor_id="tjr",  # type: ignore[arg-type]
+        completed_lesson_ids=["tjr-psychology", "tjr-daily-routine"],
+        current_lesson_study_pct=0.0,
+        quiz_attempts=7,
+        correct_quiz_attempts=3,
+        consecutive_quiz_failures=0,
+        graduation_status="in_progress",
+        coach_note=(
+            'TJR: every lesson passed at least once, but the qualifying quiz average is 42.9% — below the '
+            'required 80%. Repeating "Emotional Control & Consistency" for additional graded attempts.'
+        ),
+    )
+    new_foundational = state.foundational_mentor_state.model_copy(update={"progress": {"scout": {"tjr": blocked_progress}}})
+    state = state.model_copy(update={"foundational_mentor_state": new_foundational})
+
+    persistence.persist_save(state)
+    loaded = persistence.load_save()
+
+    assert loaded is not None
+    loaded_progress = loaded.foundational_mentor_state.progress["scout"]["tjr"]
+    assert loaded_progress.graduation_status == "in_progress"
+    assert loaded_progress.quiz_attempts == 7
+    assert loaded_progress.correct_quiz_attempts == 3
+    assert loaded_progress.coach_note == blocked_progress.coach_note
+    assert loaded_progress.completed_lesson_ids == ["tjr-psychology", "tjr-daily-routine"]
 
 
 def test_add_missing_columns_raises_for_a_not_null_column_with_no_default(tmp_path: Path):
