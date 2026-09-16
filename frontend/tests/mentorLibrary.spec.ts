@@ -91,6 +91,37 @@ test("the MENTORLIB tab renders the Academy Dashboard and CEO Learning Mode reve
   expect(relevantErrors).toEqual([]);
 });
 
+test("an employee's Academy Report shows the real 80% passing threshold and a Pass/Blocked verdict, never a CEO-answerable question", async ({ page }) => {
+  await page.goto("/");
+  await continueGame(page);
+
+  // Give the shared real tick loop a moment to produce at least one
+  // real employee progress record before opening the dashboard.
+  await page.waitForTimeout(3000);
+
+  await clickButton(page, "Command ⌁");
+  await clickExpand(page);
+  await clickTab(page, "MENTORLIB");
+
+  // Whichever real employee is currently studying, top-ranked, or
+  // needing help — all three lists render the same per-agent report;
+  // every row shows a real completion percentage.
+  const firstStudentRow = page.locator("button").filter({ hasText: "%" }).first();
+  await expect(firstStudentRow).toBeVisible();
+  await firstStudentRow.click();
+
+  await expect(page.getByText("Passing threshold")).toBeVisible();
+  await expect(page.getByText("Meets threshold")).toBeVisible();
+  // The row's own value is exactly one of the real, honest verdicts —
+  // never a question the CEO is meant to answer.
+  const meetsThresholdRow = page.locator("div", { has: page.getByText("Meets threshold", { exact: true }) }).first();
+  await expect(meetsThresholdRow.getByText(/^(PASS|BLOCKED|—)$/)).toBeVisible();
+  // The report is observational only — no quiz question or answer
+  // choices are ever rendered for the CEO here (that would mean the
+  // CEO, not the agent, is being asked to take the agent's quiz).
+  await expect(page.getByTestId("ceo-lesson-viewer")).toHaveCount(0);
+});
+
 test("Current Certifications honestly shows no certifications and no per-row actions before any real graduation exists", async ({ page }) => {
   // Certification Management's Revoke/Downgrade/Promote can only act on
   // a real earned CertificationRecord, and reaching one takes many real

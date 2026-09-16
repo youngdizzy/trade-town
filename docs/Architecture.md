@@ -3095,6 +3095,47 @@ student has an approved graduation on the active mentor, the company as
 a whole graduates that track (`companyGraduatedSimDay`) and the next
 roadmap entry unlocks — "mastery before progression."
 
+**The 80% Progression Gate — "TradeTown — Autonomous MentorLib + Agent
+Academy/Training 1.0."** A directive audit found lesson-completion alone
+was the *only* graduation requirement — an employee who eventually
+passed every lesson reached `"pending_approval"` regardless of how many
+quiz attempts that took, with no minimum-mastery floor. `can_agent_advance()`
+in `app/foundational_mentors.py` is now the one authoritative,
+per-agent progression boundary `tick_employee_progress()` calls:
+completing every lesson AND a qualifying quiz average of at least
+`PASSING_QUIZ_AVERAGE_PCT` (80.0). The qualifying average
+(`qualifying_quiz_average()`) is `correctQuizAttempts / quizAttempts` —
+every graded attempt this employee has ever made on this track, not
+best-attempt (which would let unlimited retries cherry-pick a lucky
+pass) or latest-attempt (which would erase a real history of struggle).
+This reuses the one scoring signal the module already tracked since the
+original build; no second scoring system, per-question log, or
+per-lesson score was added. The gate is always evaluated per employee —
+one employee's average never raises or lowers another's, and nothing in
+this progression path reads a company-wide or department-wide figure
+(`AcademyDashboard.avgQuizScorePct` remains a purely observational
+fleet-wide dashboard stat, never a gating input).
+
+If every lesson is complete but the average is still below 80%,
+`_apply_quiz_average_remediation()` reopens the track's own final lesson
+for one more real graded attempt (the existing lesson/quiz mechanism —
+no new content), leaving `graduationStatus` at `"in_progress"` and
+setting a real `coachNote` naming the actual current average and the
+required threshold. Passing that lesson again adds one more real
+qualifying attempt to the same permanent running average and
+re-triggers the same check, repeating for as long as the average stays
+below 80% — an employee is never silently advanced and never silently
+stuck. `quizAttempts`/`correctQuizAttempts` are never reset by this
+process (only a CEO-initiated `revoke_certification()` does that, as a
+deliberate full restart), so there is no way to manufacture a passing
+average by having a bad attempt forgotten.
+
+The CEO's own optional personal Learning Mode (below) is unaffected and
+was already architecturally separate before this audit — `ceoProgress`
+has never gated or fed into any employee's `graduationStatus`, and this
+directive's own audit confirmed that boundary was already correctly
+enforced rather than needing correction.
+
 **The Academy Dashboard is a pure client-side derivation — zero new
 backend broadcast fields.** `computeAcademyDashboard()` in
 `frontend/src/ui/components/CommandCenter/lib/derive.ts` computes
@@ -3106,8 +3147,11 @@ from state already broadcast (`foundationalMentorState` +
 47's Knowledge Base (`computeKnowledgeBase`) already established, chosen
 deliberately over adding a parallel backend-computed dashboard schema.
 Clicking an employee in any list opens their real Employee Academy
-Report (mentor, current lesson, completion %, quiz average, Discipline/
-Knowledge scores, certifications).
+Report (mentor, current lesson, completion %, quiz average, the real
+80% passing threshold and a derived Meets Threshold PASS/BLOCKED
+indicator — mirroring `can_agent_advance()`'s own check client-side for
+display only, never re-deciding it — Discipline/Knowledge scores,
+certifications).
 
 **Coach Recommendations are real, not the brief's full list.** Only
 "Repeat Lesson" and "One-on-One Coaching" are computed, both driven by
