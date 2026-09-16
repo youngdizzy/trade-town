@@ -65,7 +65,8 @@ development milestones, not semver releases.
     `test_foundational_mentors.py` (85 tests) and
     `test_persistence.py` (22 tests) pass repeatedly; the
     `mentorLibrary.spec.ts` (4 tests) and `mentorLab.spec.ts` (1 test)
-    Playwright specs pass against a live, isolated backend.
+    Playwright specs pass against a live, isolated backend. Full
+    backend suite: 4,608 passed, 29 skipped, 0 failed.
   - Scope-checked against the directive's own exclusion list: no
     trading strategy, Gatekeeper, Risk Contract, paper trading,
     real-data accumulation, research Factory, champion/challenger,
