@@ -91,15 +91,53 @@ per-agent-varying pass chance grounded in the agent's own trade-decision
 history — not a fabricated understanding score.
 
 GRADUATION QUEUE — the real "Approve Graduation" gate. When an employee
-completes every lesson (all correctly quizzed), their
-`graduation_status` becomes `"pending_approval"`, not immediately
-`"graduated"` — matching the brief's own "CEO Responsibilities: Approve
-Graduation" and "Graduation Queue" dashboard section. Only
-`approve_graduation()` (a real CEO action) advances it to `"graduated"`.
-Once every student in `STUDENT_AGENT_IDS` has an approved graduation on
-the currently-active mentor, the company as a whole graduates that
-track (`company_graduated_sim_day`) and the next roadmap entry unlocks
-— "mastery before progression," per the brief.
+completes every lesson (all correctly quizzed) *and* clears the 80%
+Progression Gate below, their `graduation_status` becomes
+`"pending_approval"`, not immediately `"graduated"` — matching the
+brief's own "CEO Responsibilities: Approve Graduation" and "Graduation
+Queue" dashboard section. Only `approve_graduation()` (a real CEO
+action) advances it to `"graduated"`. Once every student in
+`STUDENT_AGENT_IDS` has an approved graduation on the currently-active
+mentor, the company as a whole graduates that track
+(`company_graduated_sim_day`) and the next roadmap entry unlocks —
+"mastery before progression," per the brief.
+
+80% PROGRESSION GATE (TradeTown — Autonomous MentorLib + Agent Academy/
+Training 1.0 directive) — reaching `"pending_approval"` requires TWO
+independent, per-agent conditions, both checked by `can_agent_advance()`:
+completing every lesson, AND a qualifying quiz average of at least
+`PASSING_QUIZ_AVERAGE_PCT` (80.0). The qualifying average is
+`correct_quiz_attempts / quiz_attempts` — i.e. EVERY graded attempt this
+employee has ever made on this track counts, not best-attempt (which
+would let unlimited retries cherry-pick a lucky pass) and not
+latest-attempt (which would erase a real history of struggle the moment
+one quiz goes well). This is the smallest rule consistent with what
+already existed: `FoundationalMentorProgress.quiz_attempts` and
+`.correct_quiz_attempts` are the one real running-total scoring signal
+this module has tracked since the original build (see "AUTO-GRADED
+QUIZZES" above) — no second, per-question, or per-lesson scoring system
+was invented to compute this average. Gating is always evaluated per
+agent — one employee's score never raises or lowers another's, and
+there is no company-wide/department-wide average anywhere in this
+module's progression logic (`AcademyDashboard.avgQuizScorePct` on the
+frontend is a separate, purely observational fleet-wide stat computed
+for the CEO's dashboard — it never feeds back into any individual
+employee's `graduation_status`).
+
+If every lesson is complete but the average is still below 80%, the
+employee is NOT silently advanced and NOT silently stuck forever:
+`_apply_quiz_average_remediation()` reopens the track's own final
+lesson for one more real graded attempt (the existing lesson+quiz
+mechanism, not a new one), leaving `graduation_status` at
+`"in_progress"` and setting a real `coach_note` naming the actual
+current average and the gate it must clear. Passing that lesson again
+adds one more real qualifying attempt to the same running average and
+re-triggers this same check — repeating for as long as the average
+stays below 80%. `quiz_attempts`/`correct_quiz_attempts` are never
+reset by this process (only a CEO-initiated `revoke_certification()`
+resets those, as a deliberate full restart) — every attempt, pass or
+fail, stays counted permanently, so there is no path to "grind away" a
+low average by having it forgotten.
 
 CERTIFICATION MANAGEMENT — a quality-of-life fix over the original
 "Approve Graduation only" gate: once a certification appears in Current
@@ -219,6 +257,10 @@ MAX_QUIZ_PASS_PROBABILITY = 0.90
 # 3+ consecutive quiz failures escalates the Coach's recommendation from
 # "Repeat Lesson" to "One-on-One Coaching" — see module docstring.
 COACH_ESCALATION_THRESHOLD = 3
+# TradeTown — Autonomous MentorLib + Agent Academy/Training 1.0's hard
+# progression gate. See module docstring's "80% PROGRESSION GATE" for
+# the full reasoning behind the qualifying-average policy this checks.
+PASSING_QUIZ_AVERAGE_PCT = 80.0
 
 _CONTENT_DISCLAIMER = (
     "This track's name credits a real, respected trading educator whose stated area of expertise inspired it. "
@@ -1146,6 +1188,54 @@ def _is_graduated_progress(mentor: FoundationalMentorProfile, progress: Foundati
     return all(lesson.id in completed for lesson in mentor.lessons)
 
 
+def qualifying_quiz_average(progress: FoundationalMentorProgress) -> float | None:
+    """The one canonical scoring rule behind the 80% Progression Gate —
+    see module docstring. Every graded attempt this employee has ever
+    made on this track qualifies (all-qualifying-attempts, not best or
+    latest); `None` only when no attempt has been made yet (an agent
+    that hasn't been quizzed has no average to check, not a 0% one)."""
+    if progress.quiz_attempts <= 0:
+        return None
+    return (progress.correct_quiz_attempts / progress.quiz_attempts) * 100.0
+
+
+def can_agent_advance(mentor: FoundationalMentorProfile, progress: FoundationalMentorProgress) -> bool:
+    """The one authoritative, per-agent progression boundary — see module
+    docstring's "80% PROGRESSION GATE". True only when this employee has
+    both completed every lesson AND cleared PASSING_QUIZ_AVERAGE_PCT on
+    their own real qualifying quiz average. Never reads any other
+    agent's, department's, or company-wide average."""
+    if not _is_graduated_progress(mentor, progress):
+        return False
+    average = qualifying_quiz_average(progress)
+    return average is not None and average >= PASSING_QUIZ_AVERAGE_PCT
+
+
+def _apply_quiz_average_remediation(mentor: FoundationalMentorProfile, progress: FoundationalMentorProgress) -> FoundationalMentorProgress:
+    """Called only when every lesson has been individually passed but
+    `can_agent_advance()` is still False — the employee is neither
+    silently advanced nor silently stuck. Reopens the track's own final
+    lesson (the existing lesson+quiz mechanism, no new content or
+    scoring system) for one more real graded attempt, which adds one
+    more real qualifying attempt to the same permanent running average
+    the next time `tick_employee_progress` grades it. `quiz_attempts`/
+    `correct_quiz_attempts` are left untouched — remediation never
+    erases a real attempt, it only earns the chance to add more."""
+    final_lesson = max(mentor.lessons, key=lambda lesson: lesson.order)
+    average = qualifying_quiz_average(progress) or 0.0
+    note = (
+        f'{mentor.name}: every lesson passed at least once, but the qualifying quiz average is {average:.1f}% — '
+        f'below the required {PASSING_QUIZ_AVERAGE_PCT:.0f}%. Repeating "{final_lesson.title}" for additional graded attempts.'
+    )
+    return progress.model_copy(
+        update={
+            "completed_lesson_ids": [lid for lid in progress.completed_lesson_ids if lid != final_lesson.id],
+            "current_lesson_study_pct": 0.0,
+            "coach_note": note,
+        }
+    )
+
+
 def _next_roadmap_id(state: FoundationalMentorState, mentor_id: FoundationalMentorId) -> FoundationalMentorId | None:
     """Reads the real, persisted `state.roadmap_order` — not the module-
     level `_ROADMAP_ORDER` constant — so CEO-added custom mentors
@@ -1219,8 +1309,11 @@ def tick_employee_progress(
                     }
                 )
                 if progress.graduation_status == "in_progress" and _is_graduated_progress(active_mentor, progress):
-                    progress = progress.model_copy(update={"graduation_status": "pending_approval"})
-                    newly_pending.append(agent_id)
+                    if can_agent_advance(active_mentor, progress):
+                        progress = progress.model_copy(update={"graduation_status": "pending_approval", "coach_note": None})
+                        newly_pending.append(agent_id)
+                    else:
+                        progress = _apply_quiz_average_remediation(active_mentor, progress)
             else:
                 progress = progress.model_copy(
                     update={

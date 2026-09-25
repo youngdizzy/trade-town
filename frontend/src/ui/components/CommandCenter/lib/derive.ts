@@ -1417,6 +1417,14 @@ export const ACADEMY_STUDENT_AGENT_IDS: AgentId[] = ["scout", "atlas", "echo", "
 // Mirrors backend's COACH_ESCALATION_THRESHOLD.
 const COACH_ESCALATION_THRESHOLD = 3;
 
+// Mirrors backend's PASSING_QUIZ_AVERAGE_PCT (foundational_mentors.py) —
+// TradeTown — Autonomous MentorLib + Agent Academy/Training 1.0's hard
+// 80% Progression Gate. The real gate is enforced server-side by
+// can_agent_advance()/tick_employee_progress(); this is purely the
+// display-layer mirror so the CEO's dashboard can show the same number
+// the backend actually checks, not a separately-invented one.
+export const PASSING_QUIZ_AVERAGE_PCT = 80;
+
 export interface AcademyStudentSummary {
   agentId: AgentId;
   mentorId: FoundationalMentorId;
@@ -1426,6 +1434,8 @@ export interface AcademyStudentSummary {
   completedLessonCount: number;
   completionPct: number;
   quizAveragePct: number;
+  hasQualifyingAttempts: boolean;
+  meetsQuizThreshold: boolean;
   consecutiveQuizFailures: number;
   graduationStatus: "in_progress" | "pending_approval" | "graduated";
   coachNote: string | null;
@@ -1460,6 +1470,8 @@ function studentSummaryFor(agentId: AgentId, mentorId: FoundationalMentorId, fou
   const currentLesson = sortedLessons.find((l) => !(progress?.completedLessonIds.includes(l.id) ?? false)) ?? null;
   const quizAttempts = progress?.quizAttempts ?? 0;
   const correctQuizAttempts = progress?.correctQuizAttempts ?? 0;
+  const hasQualifyingAttempts = quizAttempts > 0;
+  const quizAveragePct = hasQualifyingAttempts ? (correctQuizAttempts / quizAttempts) * 100 : 0;
   return {
     agentId,
     mentorId,
@@ -1468,7 +1480,12 @@ function studentSummaryFor(agentId: AgentId, mentorId: FoundationalMentorId, fou
     totalLessons,
     completedLessonCount,
     completionPct: totalLessons > 0 ? (completedLessonCount / totalLessons) * 100 : 0,
-    quizAveragePct: quizAttempts > 0 ? (correctQuizAttempts / quizAttempts) * 100 : 0,
+    quizAveragePct,
+    hasQualifyingAttempts,
+    // Mirrors backend's can_agent_advance() lesson-completion check —
+    // this agent's own real average against this agent's own real
+    // record only, never any other agent's or a company-wide figure.
+    meetsQuizThreshold: hasQualifyingAttempts && quizAveragePct >= PASSING_QUIZ_AVERAGE_PCT,
     consecutiveQuizFailures: progress?.consecutiveQuizFailures ?? 0,
     graduationStatus: progress?.graduationStatus ?? "in_progress",
     coachNote: progress?.coachNote ?? null,

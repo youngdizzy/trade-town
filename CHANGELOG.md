@@ -7,6 +7,74 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Autonomous MentorLib + Agent Academy/Training 1.0."**
+  A correctness audit of the agent-education architecture, not a new
+  system. Research first (per the directive's own Section 16) found
+  `app/foundational_mentors.py` ("MentorLib"/the Professional Academy)
+  already had the right shape — employees are the real students,
+  auto-progressing via `tick_employee_progress()` with auto-graded
+  quizzes tied to a real per-agent aptitude signal, never the CEO
+  answering on an agent's behalf (`ceo/view`/`ceo/quiz` operate on an
+  entirely separate, always-optional `ceoProgress` bucket that was
+  already architecturally isolated from real employee progress). The
+  one genuine gap: reaching the Graduation Queue required only
+  *completing* every lesson, with no minimum-mastery floor — an
+  employee who scraped through on repeated retries graduated exactly
+  the same as one who passed cleanly.
+  - Added the one canonical, per-agent progression boundary the
+    directive asks for: `can_agent_advance()` requires both lesson
+    completion AND a qualifying quiz average
+    (`qualifying_quiz_average()` = `correctQuizAttempts / quizAttempts`
+    — every graded attempt this employee has ever made on this track,
+    not best/latest-only) of at least `PASSING_QUIZ_AVERAGE_PCT`
+    (80.0%). This reuses the one real scoring signal the module
+    already tracked since the original build — no second scoring
+    system, per-question log, or company-wide average was introduced
+    (the existing `avgQuizScorePct` fleet-wide dashboard stat remains
+    purely observational and was never a gating input, before or
+    after this change).
+  - Added real, automatic remediation: when every lesson is complete
+    but the average is still short, `_apply_quiz_average_remediation()`
+    reopens the track's own final lesson for one more real graded
+    attempt using the existing lesson/quiz mechanism, sets a real
+    `coachNote` naming the actual average and the required threshold,
+    and leaves `graduationStatus` at `"in_progress"` — never silently
+    advancing and never silently stuck. `quizAttempts`/
+    `correctQuizAttempts` are never reset by this path (only a
+    CEO-initiated Revoke Certification is a deliberate full restart),
+    so there is no way to manufacture a passing average.
+  - Frontend: `derive.ts` mirrors `PASSING_QUIZ_AVERAGE_PCT` and adds
+    a `meetsQuizThreshold` field (display-only — the real gate is
+    enforced server-side); the Employee Academy Report in
+    `MentorLibraryPanel.tsx` now shows the real "Passing threshold"
+    and a PASS/BLOCKED verdict alongside the existing quiz average,
+    coach note, and graduation status.
+  - 22 new backend tests cover the exact-80% boundary, the 79.99%
+    edge case (never rounded up), per-agent independence (one
+    employee's score cannot raise or lower another's), remediation
+    after a below-threshold finish, eventual recovery once the
+    average clears 80%, that a genuinely strong cohort still reaches
+    approval within a realistic number of ticks, persistence of a
+    blocked-mid-remediation record across a real SQLite save/load
+    round trip, and that the CEO's own optional quiz never touches
+    any employee's real progress. One new Playwright assertion
+    (`mentorLibrary.spec.ts`) confirms the Employee Academy Report
+    shows the threshold/verdict and never renders a quiz question for
+    the CEO to answer. `mypy app/`/`ruff check app/ tests/` clean
+    across the whole backend; `tsc -b`/`eslint`/`vite build` clean;
+    `test_foundational_mentors.py` (85 tests) and
+    `test_persistence.py` (22 tests) pass repeatedly; the
+    `mentorLibrary.spec.ts` (4 tests) and `mentorLab.spec.ts` (1 test)
+    Playwright specs pass against a live, isolated backend. Full
+    backend suite: 4,608 passed, 29 skipped, 0 failed.
+  - Scope-checked against the directive's own exclusion list: no
+    trading strategy, Gatekeeper, Risk Contract, paper trading,
+    real-data accumulation, research Factory, champion/challenger,
+    broker integration, or AI-provider code was touched — every
+    changed file is education-only (`foundational_mentors.py` and its
+    tests, `derive.ts`, `MentorLibraryPanel.tsx`,
+    `mentorLibrary.spec.ts`, this changelog, and `Architecture.md`).
+
 - **"TradeTown — Real-Data Evidence Accumulation 3.0" (no code
   implementation needed — documented, not built).** Asked whether the
   existing real-data pipeline could already accumulate genuine new

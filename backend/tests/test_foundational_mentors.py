@@ -15,18 +15,21 @@ import random
 from app.foundational_mentors import (
     COACH_ESCALATION_THRESHOLD,
     MAX_CUSTOM_MENTORS,
+    PASSING_QUIZ_AVERAGE_PCT,
     STUDENT_AGENT_IDS,
     _ROADMAP_ORDER,
     add_custom_lesson,
     add_custom_mentor,
     add_resource,
     approve_graduation,
+    can_agent_advance,
     default_foundational_mentor_state,
     downgrade_certification,
     grade_ceo_lesson_quiz,
     mark_ceo_lesson_viewed,
     pause_company_training,
     promote_certification,
+    qualifying_quiz_average,
     repeat_mentor_company_wide,
     reset_certification_progress,
     resume_company_training,
@@ -35,7 +38,7 @@ from app.foundational_mentors import (
     skip_to_next_mentor,
     tick_employee_progress,
 )
-from app.schemas import DisciplineReview, FoundationalMentorState, PostDecisionReview
+from app.schemas import DisciplineReview, FoundationalMentorProgress, FoundationalMentorState, PostDecisionReview
 
 
 def _tjr_lesson_ids(state: FoundationalMentorState) -> list[str]:
@@ -75,12 +78,17 @@ def _high_aptitude_review(agent_id: str) -> DisciplineReview:
     )
 
 
-def _tick_until_all_students_pending(state: FoundationalMentorState, *, max_ticks: int = 500) -> FoundationalMentorState:
+def _tick_until_all_students_pending(state: FoundationalMentorState, *, max_ticks: int = 2500) -> FoundationalMentorState:
     """Runs enough real ticks, with every student given a max-aptitude
     Discipline Review (guaranteeing the highest legal pass probability),
     for the whole tjr cohort to reach pending_approval. Some quiz
     failures are still possible even at max aptitude (a real, clamped
-    <100% chance) — max_ticks is generous to absorb that."""
+    <100% chance) — max_ticks is generous to absorb that, plus the real
+    80% Progression Gate's own remediation retries (see
+    can_agent_advance()/PASSING_QUIZ_AVERAGE_PCT): even at
+    MAX_QUIZ_PASS_PROBABILITY, a real run of bad luck can knock a
+    qualifying average below 80% and cost one or more extra real
+    graded attempts on the track's final lesson before it clears."""
     reviews = [_high_aptitude_review(aid) for aid in STUDENT_AGENT_IDS]
     for _ in range(max_ticks):
         state, _ = tick_employee_progress(state, discipline_reviews=reviews, sim_day=1)
@@ -841,3 +849,187 @@ class TestSetActiveMentor:
         state = default_foundational_mentor_state()
         _, error = set_active_mentor(state, "tjr")  # type: ignore[arg-type]
         assert error is not None
+
+
+class TestEightyPercentProgressionGate:
+    """TradeTown — Autonomous MentorLib + Agent Academy/Training 1.0's
+    hard progression gate. See foundational_mentors.py's module
+    docstring, "80% PROGRESSION GATE" — can_agent_advance() is the one
+    canonical, per-agent boundary; qualifying_quiz_average() is
+    correct_quiz_attempts/quiz_attempts (every qualifying attempt, never
+    best/latest-only)."""
+
+    def _mentor(self, state: FoundationalMentorState):
+        return next(m for m in state.mentors if m.id == "tjr")
+
+    def _progress(self, lesson_ids: list[str], *, quiz_attempts: int, correct_quiz_attempts: int) -> FoundationalMentorProgress:
+        return FoundationalMentorProgress(
+            mentor_id="tjr",  # type: ignore[arg-type]
+            completed_lesson_ids=lesson_ids,
+            current_lesson_study_pct=0.0,
+            quiz_attempts=quiz_attempts,
+            correct_quiz_attempts=correct_quiz_attempts,
+        )
+
+    def test_exactly_80_percent_advances(self):
+        state = default_foundational_mentor_state()
+        lesson_ids = _tjr_lesson_ids(state)
+        progress = self._progress(lesson_ids, quiz_attempts=10, correct_quiz_attempts=8)
+        assert qualifying_quiz_average(progress) == 80.0
+        assert can_agent_advance(self._mentor(state), progress) is True
+
+    def test_above_80_percent_advances(self):
+        state = default_foundational_mentor_state()
+        lesson_ids = _tjr_lesson_ids(state)
+        progress = self._progress(lesson_ids, quiz_attempts=100, correct_quiz_attempts=92)
+        assert can_agent_advance(self._mentor(state), progress) is True
+
+    def test_below_80_percent_blocks(self):
+        state = default_foundational_mentor_state()
+        lesson_ids = _tjr_lesson_ids(state)
+        progress = self._progress(lesson_ids, quiz_attempts=100, correct_quiz_attempts=78)
+        assert can_agent_advance(self._mentor(state), progress) is False
+
+    def test_79_99_percent_blocks_and_is_never_rounded_up_to_pass(self):
+        state = default_foundational_mentor_state()
+        lesson_ids = _tjr_lesson_ids(state)
+        progress = self._progress(lesson_ids, quiz_attempts=10_000, correct_quiz_attempts=7_999)
+        average = qualifying_quiz_average(progress)
+        assert average is not None
+        assert round(average, 2) == 79.99
+        assert average < PASSING_QUIZ_AVERAGE_PCT
+        assert can_agent_advance(self._mentor(state), progress) is False
+
+    def test_one_agents_high_score_cannot_compensate_for_anothers_low_score(self):
+        state = default_foundational_mentor_state()
+        mentor = self._mentor(state)
+        lesson_ids = _tjr_lesson_ids(state)
+        agent_a = self._progress(lesson_ids, quiz_attempts=100, correct_quiz_attempts=92)  # eligible
+        agent_b = self._progress(lesson_ids, quiz_attempts=100, correct_quiz_attempts=78)  # not eligible
+        # Each agent's own progress record is the only input to the gate —
+        # evaluating them in either order, or side by side, changes nothing.
+        assert can_agent_advance(mentor, agent_b) is False
+        assert can_agent_advance(mentor, agent_a) is True
+        assert can_agent_advance(mentor, agent_b) is False
+
+    def test_incomplete_lessons_block_regardless_of_a_perfect_average(self):
+        state = default_foundational_mentor_state()
+        lesson_ids = _tjr_lesson_ids(state)
+        progress = self._progress(lesson_ids[:-1], quiz_attempts=7, correct_quiz_attempts=7)  # 100%, one lesson short
+        assert can_agent_advance(self._mentor(state), progress) is False
+
+    def test_no_qualifying_attempts_yet_cannot_advance(self):
+        state = default_foundational_mentor_state()
+        lesson_ids = _tjr_lesson_ids(state)
+        progress = self._progress(lesson_ids, quiz_attempts=0, correct_quiz_attempts=0)
+        assert qualifying_quiz_average(progress) is None
+        assert can_agent_advance(self._mentor(state), progress) is False
+
+
+class TestQuizAverageRemediation:
+    """The real, automatic remediation path when every lesson has been
+    individually passed but the qualifying average is still below the
+    80% gate — see _apply_quiz_average_remediation()'s docstring."""
+
+    def _seed_scout_pre_final_quiz(self, state: FoundationalMentorState, lesson_ids: list[str], *, quiz_attempts: int, correct_quiz_attempts: int) -> FoundationalMentorState:
+        seeded = FoundationalMentorProgress(
+            mentor_id="tjr",  # type: ignore[arg-type]
+            completed_lesson_ids=lesson_ids[:-1],
+            current_lesson_study_pct=0.0,
+            quiz_attempts=quiz_attempts,
+            correct_quiz_attempts=correct_quiz_attempts,
+        )
+        return state.model_copy(update={"progress": {"scout": {"tjr": seeded}}})
+
+    def test_finishing_every_lesson_below_80_percent_average_blocks_instead_of_advancing(self, monkeypatch):
+        monkeypatch.setattr("app.foundational_mentors.random.uniform", lambda *a, **k: 100.0)
+        monkeypatch.setattr("app.foundational_mentors.random.random", lambda: 0.0)  # always passes the quiz that's attempted
+        state = default_foundational_mentor_state()
+        lesson_ids = _tjr_lesson_ids(state)
+        # 2/6 so far; passing the final (8th) lesson's quiz makes it 3/7 ≈ 42.9% — below the 80% gate.
+        state = self._seed_scout_pre_final_quiz(state, lesson_ids, quiz_attempts=6, correct_quiz_attempts=2)
+        state, newly_pending = tick_employee_progress(state, discipline_reviews=[_high_aptitude_review("scout")], sim_day=1)
+        progress = state.progress["scout"]["tjr"]
+
+        assert "scout" not in newly_pending
+        assert progress.graduation_status == "in_progress"  # blocked, never silently advanced
+        # The real attempt is kept, never erased — this is what makes the
+        # average recoverable, and what stops any manipulation via "forgetting" a bad attempt.
+        assert progress.quiz_attempts == 7
+        assert progress.correct_quiz_attempts == 3
+        # The final lesson is reopened for a genuine retest using the
+        # existing lesson/quiz mechanism — not a fabricated pass.
+        assert lesson_ids[-1] not in progress.completed_lesson_ids
+        assert set(progress.completed_lesson_ids) == set(lesson_ids[:-1])
+        assert progress.coach_note is not None
+        assert "80%" in progress.coach_note
+        assert lesson_ids[-1] not in progress.completed_lesson_ids
+
+    def test_remediation_retries_eventually_clear_the_gate_once_the_average_recovers(self, monkeypatch):
+        monkeypatch.setattr("app.foundational_mentors.random.uniform", lambda *a, **k: 100.0)
+        monkeypatch.setattr("app.foundational_mentors.random.random", lambda: 0.0)  # always passes
+        state = default_foundational_mentor_state()
+        lesson_ids = _tjr_lesson_ids(state)
+        state = self._seed_scout_pre_final_quiz(state, lesson_ids, quiz_attempts=6, correct_quiz_attempts=2)
+        reviews = [_high_aptitude_review("scout")]
+
+        newly_pending: list[str] = []
+        for _ in range(30):
+            state, newly_pending = tick_employee_progress(state, discipline_reviews=reviews, sim_day=1)  # type: ignore[arg-type]
+            if "scout" in newly_pending:
+                break
+
+        assert "scout" in newly_pending
+        progress = state.progress["scout"]["tjr"]
+        assert progress.graduation_status == "pending_approval"
+        average = qualifying_quiz_average(progress)
+        assert average is not None
+        assert average >= PASSING_QUIZ_AVERAGE_PCT
+        assert progress.coach_note is None  # cleared the moment the gate actually clears
+
+    def test_high_aptitude_cohort_still_reaches_pending_approval_through_real_ticks(self):
+        # Regression guard for the gate's interaction with the existing
+        # probabilistic tick loop (see _tick_until_all_students_pending) —
+        # a realistic ~90%-pass-probability cohort must still be able to
+        # clear the 80% average within a generous number of real ticks,
+        # confirming the gate doesn't create an unwinnable lock for a
+        # genuinely strong cohort.
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        for agent_id in STUDENT_AGENT_IDS:
+            progress = state.progress[agent_id]["tjr"]
+            assert progress.graduation_status == "pending_approval"
+            average = qualifying_quiz_average(progress)
+            assert average is not None
+            assert average >= PASSING_QUIZ_AVERAGE_PCT
+
+
+class TestCeoIsNeverTheAnswerSubjectForRealProgression:
+    """Section 10 of the directive: the CEO's own optional personal quiz
+    (grade_ceo_lesson_quiz/mark_ceo_lesson_viewed, gated behind
+    Settings.ceoAcademyLearningMode) must never be able to move a real
+    employee's graduation_status — it operates on an entirely separate
+    ceo_progress bucket. Real employee progression is driven exclusively
+    by tick_employee_progress()."""
+
+    def test_ceo_answering_a_quiz_never_changes_any_employee_progress_or_graduation_status(self):
+        state = default_foundational_mentor_state()
+        lesson_id = _tjr_lesson_ids(state)[0]
+        idx = _correct_index_for(state, "tjr", lesson_id)
+        for _ in range(10):
+            result = grade_ceo_lesson_quiz(state, "tjr", lesson_id, idx)  # type: ignore[arg-type]
+            assert result is not None
+            state, correct, _, _ = result
+            assert correct is True
+        # Ten "perfect" CEO quiz answers later, no employee has any real
+        # progress at all — the CEO's own optional practice never
+        # substitutes for, or contributes to, real employee evaluation.
+        assert state.progress == {}
+        for agent_id in STUDENT_AGENT_IDS:
+            assert agent_id not in state.progress
+
+    def test_ceo_lesson_view_never_touches_employee_progress(self):
+        state = default_foundational_mentor_state()
+        lesson_id = _tjr_lesson_ids(state)[0]
+        state = mark_ceo_lesson_viewed(state, "tjr", lesson_id)  # type: ignore[arg-type]
+        assert state.progress == {}

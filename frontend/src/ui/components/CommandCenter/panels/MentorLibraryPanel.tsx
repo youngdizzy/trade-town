@@ -5,7 +5,7 @@ import { SettingsManager } from "@/game/systems/SettingsManager";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
 import type { AgentId, CertificationRecord, FoundationalMentorId, FoundationalMentorLesson, FoundationalResourceType } from "@/types";
-import { ACADEMY_STUDENT_AGENT_IDS, certificationStatusTone, computeAcademyDashboard, type AcademyStudentSummary } from "../lib/derive";
+import { ACADEMY_STUDENT_AGENT_IDS, PASSING_QUIZ_AVERAGE_PCT, certificationStatusTone, computeAcademyDashboard, type AcademyStudentSummary } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const RESOURCE_TYPES: FoundationalResourceType[] = ["video", "book", "article", "pdf", "note"];
@@ -596,7 +596,16 @@ function EmployeeAcademyReport({
               <DataRow label="Current mentor" value={foundationalMentorState.mentors.find((m) => m.id === summary.mentorId)?.trackLabel ?? summary.mentorId} />
               <DataRow label="Current lesson" value={summary.currentLessonTitle ? `${summary.currentLessonOrder}. ${summary.currentLessonTitle}` : "Track complete"} />
               <DataRow label="Completion" value={`${summary.completedLessonCount} / ${summary.totalLessons} (${summary.completionPct.toFixed(0)}%)`} />
-              <DataRow label="Quiz average" value={`${summary.quizAveragePct.toFixed(0)}%`} />
+              <DataRow label="Quiz average" value={summary.hasQualifyingAttempts ? `${summary.quizAveragePct.toFixed(1)}%` : "No graded attempts yet"} />
+              <DataRow label="Passing threshold" value={`${PASSING_QUIZ_AVERAGE_PCT}%`} />
+              <DataRow
+                label="Meets threshold"
+                value={
+                  <StatusPill tone={summary.meetsQuizThreshold ? "green" : "amber"}>
+                    {summary.hasQualifyingAttempts ? (summary.meetsQuizThreshold ? "PASS" : "BLOCKED") : "—"}
+                  </StatusPill>
+                }
+              />
               <DataRow label="Consecutive quiz misses" value={summary.consecutiveQuizFailures} />
               <DataRow label="Graduation status" value={summary.graduationStatus.replace("_", " ")} />
               <DataRow label="Knowledge points" value={knowledge ? `${knowledge.points.toFixed(1)} (${knowledge.level})` : "—"} />
